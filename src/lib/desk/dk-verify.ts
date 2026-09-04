@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/db";
 import { applyDraftKingsSnapshot } from "@/lib/sports/dk-open.ts";
-import { canSpendOddsCredit, isFreeBetaMode, marketParam } from "@/lib/sports/free-beta.ts";
+import { marketParam, officialDkAction } from "@/lib/sports/free-beta.ts";
 import { LEAGUE_BY_ID } from "@/lib/sports/leagues.ts";
 import {
   fetchDraftKingsMarket,
@@ -80,25 +80,23 @@ export async function confirmDraftKings(
 ): Promise<{ ok: true; game: GameCard } | { ok: false; error: string }> {
   const cached = await loadCache(game.id, market);
   const remaining = await loadOddsRemaining();
-  const spend = canSpendOddsCredit({
+  const action = officialDkAction({
     remaining,
-    checksAlready: cached?.checks ?? 0,
     cacheAgeMs: cached?.ageMs ?? null,
+    cachedIsDk: Boolean(cached && isDraftKingsLine(cached.odds)),
+    checksAlready: cached?.checks ?? 0,
   });
 
-  if (!spend.fetch) {
-    if (cached && isDraftKingsLine(cached.odds)) {
-      return { ok: true, game: { ...game, odds: applyDraftKingsSnapshot(game.odds, cached.odds) } };
-    }
-    return { ok: false, error: `PASS: DraftKings line unavailable. ${spend.reason}` };
+  if (action === "use-cache" && cached) {
+    return { ok: true, game: { ...game, odds: applyDraftKingsSnapshot(game.odds, cached.odds) } };
+  }
+  if (action === "pass") {
+    return { ok: false, error: "PASS: DraftKings line unavailable or cache older than 20 minutes." };
   }
 
   const league = LEAGUE_BY_ID[game.league];
   const apiKey = process.env.ODDS_API_KEY?.trim();
   if (!league?.oddsApiKey || !apiKey) {
-    if (cached && isDraftKingsLine(cached.odds)) {
-      return { ok: true, game: { ...game, odds: applyDraftKingsSnapshot(game.odds, cached.odds) } };
-    }
     return { ok: false, error: "PASS: DraftKings line unavailable." };
   }
 
@@ -122,17 +120,17 @@ export async function confirmDraftKings(
     await addLog("scan", `Odds API ${err instanceof Error ? err.message : "failed"}`, game.sport);
   }
 
-  if (cached && isDraftKingsLine(cached.odds)) {
-    return { ok: true, game: { ...game, odds: applyDraftKingsSnapshot(game.odds, cached.odds) } };
-  }
-  return { ok: false, error: "PASS: DraftKings line unavailable." };
+  return { ok: false, error: "PASS: DraftKings line unavailable or cache older than 20 minutes." };
 }
 
-export async function pruneFreeBetaCaches(): Promise<void> {
-  if (!isFreeBetaMode()) return;
+export async function pruneFreeBetaCaches(force = false): Promise<void> {
   const sql = await getSql();
+  const rows = await sql<{ last_prune_at: unknown }>`select last_prune_at from desk_meta where id = 1`;
+  const last = rows[0]?.last_prune_at ? new Date(String(rows[0].last_prune_at)).getTime() : 0;
+  if (!force && Number.isFinite(last) && Date.now() - last < 6 * 3600_000) return;
   await sql`delete from dk_cache where verified_at < now() - interval '2 days'`;
   await sql`delete from research_cache where updated_at < now() - interval '2 days'`;
   await sql`delete from desk_log where id < (select coalesce(max(id), 0) - 80 from desk_log)`;
-  await sql`delete from games where start_at < now() - interval '10 days'`;
+  await sql`delete from games where start_at < now() - interval '10 days' and status in ('final','cancelled','postponed')`;
+  await sql`update desk_meta set last_prune_at = now(), updated_at = now() where id = 1`;
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bestOnSlate, bestPerSport, clampDailyPicks, dailyPickTarget, rankGames, takeTopPlays } from "./rank.ts";
+import { bestOnSlate, bestPerSport, clampDailyPicks, countsTowardDailyCap, dailyPickTarget, remainingDailySlots, rankGames, takeTopPlays } from "./rank.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
 
 const odds: OddsSnapshot = {
@@ -91,7 +91,7 @@ test("ESPN odds never become an official pick", () => {
 
 test("daily card keeps the top N plays and passes the rest", () => {
   assert.equal(clampDailyPicks(3), 3);
-  assert.equal(clampDailyPicks(99), 8);
+  assert.equal(clampDailyPicks(99), 6);
   const decisions = [
     { skip: { skipped: false, sport: "NBA" }, pick: { rank: { edgePct: 6 } } },
     { skip: { skipped: false, sport: "NFL" }, pick: { rank: { edgePct: 4 } } },
@@ -164,3 +164,22 @@ test("DAILY_PICK_TARGET env wins over desk setting", () => {
   assert.equal(dailyPickTarget(5, { DAILY_PICK_TARGET: "3" }), 3);
   assert.equal(dailyPickTarget(2, {}), 2);
 });
+
+test("true PT daily maximum: posted+graded fill the cap", () => {
+  assert.equal(remainingDailySlots(3, 0), 3);
+  assert.equal(remainingDailySlots(3, 2), 1);
+  assert.equal(remainingDailySlots(3, 3), 0);
+  assert.equal(remainingDailySlots(3, 4), 0);
+});
+
+test("skipped PASS tickets do not count toward the daily cap", () => {
+  const statuses = ["queued", "posting", "posted", "graded", "skipped", "skipped"];
+  const committed = statuses.filter(countsTowardDailyCap).length;
+  assert.equal(committed, 4);
+  assert.equal(remainingDailySlots(6, committed), 2);
+  assert.equal(countsTowardDailyCap("skipped"), false);
+  assert.equal(countsTowardDailyCap("queued"), true);
+  assert.equal(clampDailyPicks(8), 6);
+  assert.equal(clampDailyPicks(0), 1);
+});
+

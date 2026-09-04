@@ -117,9 +117,13 @@ export function unitsFor(confidence: number): number {
   return 1;
 }
 
+export const MIN_DAILY_PICKS = 1;
+export const MAX_DAILY_PICKS = 6;
+export const DEFAULT_DAILY_PICKS = 3;
+
 export function clampDailyPicks(n: number): number {
-  if (!Number.isFinite(n)) return 3;
-  return Math.min(8, Math.max(1, Math.round(n)));
+  if (!Number.isFinite(n)) return DEFAULT_DAILY_PICKS;
+  return Math.min(MAX_DAILY_PICKS, Math.max(MIN_DAILY_PICKS, Math.round(n)));
 }
 
 export function dailyPickTarget(deskMax: number, env: NodeJS.ProcessEnv = process.env): number {
@@ -129,6 +133,14 @@ export function dailyPickTarget(deskMax: number, env: NodeJS.ProcessEnv = proces
     if (Number.isFinite(n)) return clampDailyPicks(n);
   }
   return clampDailyPicks(deskMax);
+}
+
+export function countsTowardDailyCap(status: string): boolean {
+  return status === "queued" || status === "posting" || status === "posted" || status === "graded";
+}
+
+export function remainingDailySlots(target: number, committed: number): number {
+  return Math.max(0, clampDailyPicks(target) - Math.max(0, committed));
 }
 
 /** Rank every qualifying game on today's card. Not one-per-sport. */

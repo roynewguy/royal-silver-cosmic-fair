@@ -21,13 +21,39 @@ export function marketParam(market: Market): "h2h" | "spreads" | "totals" {
   return "spreads";
 }
 
+export const MAX_OFFICIAL_DK_CACHE_AGE_MINUTES = 20;
+export const MAX_OFFICIAL_DK_CACHE_AGE_MS = MAX_OFFICIAL_DK_CACHE_AGE_MINUTES * 60_000;
+
+export function isFreshOfficialDkCache(cacheAgeMs: number | null | undefined): boolean {
+  return cacheAgeMs != null && cacheAgeMs >= 0 && cacheAgeMs <= MAX_OFFICIAL_DK_CACHE_AGE_MS;
+}
+
+export type OfficialDkAction = "use-cache" | "fetch" | "pass";
+
+export function officialDkAction(input: {
+  remaining: number | null;
+  cacheAgeMs: number | null;
+  cachedIsDk: boolean;
+  checksAlready?: number;
+}): OfficialDkAction {
+  const fresh = input.cachedIsDk && isFreshOfficialDkCache(input.cacheAgeMs);
+  if (fresh) return "use-cache";
+  const spend = canSpendOddsCredit({
+    remaining: input.remaining,
+    checksAlready: input.checksAlready ?? 0,
+    cacheAgeMs: null,
+  });
+  if (spend.fetch) return "fetch";
+  return "pass";
+}
+
 export function canSpendOddsCredit(input: {
   remaining: number | null;
   checksAlready: number;
   cacheAgeMs: number | null;
 }): { fetch: boolean; reason: string } {
   const budget = oddsBudget(input.remaining);
-  if (budget === "frozen") return { fetch: false, reason: "Odds API credits exhausted. Using cached DraftKings only." };
+  if (budget === "frozen") return { fetch: false, reason: "Odds API credits exhausted." };
   if (input.checksAlready >= 2) return { fetch: false, reason: "Candidate already used two DraftKings checks." };
   if (input.cacheAgeMs != null && input.cacheAgeMs < 3 * 60_000) {
     return { fetch: false, reason: "Fresh DraftKings cache." };

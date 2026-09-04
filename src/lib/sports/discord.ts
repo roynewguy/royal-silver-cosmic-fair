@@ -1,5 +1,4 @@
 import { formatAmerican, formatKick, formatUnits } from "../utils.ts";
-import { impliedFromAmerican } from "./odds.ts";
 import type { DeskRecord, GameCard, PickResult, PickRow } from "./types.ts";
 
 export function discordWebhookOk(url: string): boolean {
@@ -92,8 +91,7 @@ export function scoreLine(game?: GameCard | null): string {
 export function favoredLine(pick: PickRow): string {
   const p = pick.modelProbability ?? pick.confidence / 100;
   const pct = Math.round(Math.max(0, Math.min(1, p)) * 100);
-  const units = Number.isFinite(pick.units) ? pick.units : 1;
-  return `Favored ${pct}% · ${units} units`;
+  return `BoatBoyz Probability: ${pct}%`;
 }
 
 export function currentLine(pick: PickRow): string {
@@ -128,50 +126,35 @@ export function vsLine(pick: PickRow, game?: GameCard | null): string {
 export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): string {
   const kick = formatKick(pick.startAt, "America/Los_Angeles");
   const modelPct = Math.round((pick.modelProbability ?? pick.confidence / 100) * 100);
-  const marketPct = Math.round(impliedFromAmerican(pick.lockedOdds) * 100);
-  const edge = pick.modelEdge ?? pick.edgePct;
-  const edgeStr = `${edge >= 0 ? "+" : ""}${edge.toFixed(1)}%`;
-  const book = isDkBook(pick) ? "DraftKings" : pick.lockedOddsJson.book || "book";
-  const reasons = pick.reason.includes("Why BoatBoyz")
-    ? pick.reason
-    : `Why BoatBoyz likes it:\n${pick.reason
-        .split(/[.;\n]/)
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .slice(0, 4)
-        .map((s) => `* ${s}`)
-        .join("\n")}`;
+  const verifiedAt = pick.postedAt
+    ? formatKick(pick.postedAt, "America/Los_Angeles")
+    : pick.lockedOddsJson.capturedAt
+      ? formatKick(pick.lockedOddsJson.capturedAt, "America/Los_Angeles")
+      : "pending";
+  const bullets = pick.reason
+    .replace(/^Why BoatBoyz likes it:\s*/i, "")
+    .split(/\n/)
+    .map((s) => s.replace(/^[•*-]\s*/, "").trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  const why = bullets.length ? bullets.map((b) => `• ${b}`).join("\n") : pick.reason;
   return [
-    "🌊 BOATBOYZ OFFICIAL PICK",
+    "🌊 BOATBOYZ OFFICIAL PLAY",
     "",
-    `${sportEmoji(pick.sport)} ${pick.sport}`,
-    "",
-    pick.selection,
-    vsLine(pick, game),
-    "",
-    `${book}: ${formatAmerican(pick.lockedOdds)}${pick.lockedLine != null ? ` · ${pick.lockedLine}` : ""}`,
+    pick.sport,
+    `${pick.selection} ${vsLine(pick, game)}`,
     "",
     `BoatBoyz Probability: ${modelPct}%`,
-    `Market Probability: ${marketPct}%`,
-    `Model Edge: ${edgeStr}`,
-    "",
-    `Confidence: ${Math.round(pick.confidence)}/100`,
+    `DraftKings at posting: ${formatAmerican(pick.lockedOdds)}${pick.lockedLine != null ? ` · ${pick.lockedLine}` : ""}`,
     `Units: ${Number(pick.units).toFixed(1)}U`,
     "",
-    reasons,
+    "Why:",
+    why,
     "",
-    "Game:",
-    kick,
-    "",
-    "Line verified:",
-    isDkBook(pick) ? "DraftKings" : book,
+    `Game: ${kick}`,
+    scoreLine(game).replace("Score: not started", "Score: Not started"),
+    `DK line verified: ${verifiedAt}`,
   ].join("\n");
-}
-
-function isDkBook(pick: PickRow): boolean {
-  const book = pick.lockedOddsJson.book ?? "";
-  const source = pick.lockedOddsJson.source;
-  return source === "odds-api" && /draft\s*kings/i.test(book);
 }
 
 export function buildRecapMessage(

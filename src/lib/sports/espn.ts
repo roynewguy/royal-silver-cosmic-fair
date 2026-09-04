@@ -1,4 +1,5 @@
 import { LEAGUES, type LeagueConfig } from "./leagues.ts";
+import { scanDateKeys } from "./day.ts";
 import { parseAmerican, parseLine } from "./odds.ts";
 import { parseInjuryStatus } from "./models/injury.ts";
 import type { GameCard, GameStatus, Injury, OddsSnapshot, Starter, TeamInfo } from "./types.ts";
@@ -65,18 +66,6 @@ type EspnEvent = {
   status?: { type?: { name?: string; state?: string; completed?: boolean } };
 };
 
-
-function nyDateKey(offsetDays: number): string {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const now = new Date();
-  const shifted = new Date(now.getTime() + offsetDays * 86_400_000);
-  return fmt.format(shifted).replaceAll("-", "");
-}
 
 function mapStatus(raw?: string, state?: string, completed?: boolean): GameStatus {
   if (completed || state === "post") return "final";
@@ -283,7 +272,22 @@ function eventToGames(event: EspnEvent, league: LeagueConfig): GameCard[] {
   return cards;
 }
 
+const scanStats = { requests: 0, started: 0 };
+
+export function beginEspnScan(): void {
+  scanStats.requests = 0;
+  scanStats.started = Date.now();
+}
+
+export function espnScanStats(): { espn_request_count: number; scan_duration_ms: number } {
+  return {
+    espn_request_count: scanStats.requests,
+    scan_duration_ms: Date.now() - (scanStats.started || Date.now()),
+  };
+}
+
 async function fetchJson(url: string): Promise<unknown> {
+  scanStats.requests += 1;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 9000);
   try {
@@ -301,20 +305,33 @@ async function fetchJson(url: string): Promise<unknown> {
   }
 }
 
-function urlsFor(league: LeagueConfig): string[] {
-  const base = `https://site.api.espn.com/apis/site/v2/sports/${league.espnSport}/${league.espnLeague}/scoreboard`;
-  const urls = [base];
-  if (league.daily) {
-    for (let i = 0; i <= league.lookAheadDays; i += 1) {
-      urls.push(`${base}?dates=${nyDateKey(i)}`);
+async function poolMap<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<PromiseSettledResult<R>[]> {
+  const out: PromiseSettledResult<R>[] = new Array(items.length);
+  let i = 0;
+  async function worker() {
+    while (i < items.length) {
+      const idx = i;
+      i += 1;
+      try {
+        out[idx] = { status: "fulfilled", value: await fn(items[idx] as T) };
+      } catch (reason) {
+        out[idx] = { status: "rejected", reason };
+      }
     }
   }
-  return urls;
+  const n = Math.max(1, Math.min(limit, items.length || 1));
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return out;
 }
 
-export async function fetchLeagueSlate(league: LeagueConfig): Promise<GameCard[]> {
-  const urls = urlsFor(league);
-  const results = await Promise.allSettled(urls.map((u) => fetchJson(u)));
+export function urlsFor(league: LeagueConfig, now = new Date()): string[] {
+  const base = `https://site.api.espn.com/apis/site/v2/sports/${league.espnSport}/${league.espnLeague}/scoreboard`;
+  return [...new Set(scanDateKeys(now))].map((k) => `${base}?dates=${k}`);
+}
+
+export async function fetchLeagueSlate(league: LeagueConfig, now = new Date()): Promise<GameCard[]> {
+  const urls = urlsFor(league, now);
+  const results = await poolMap(urls, 3, fetchJson);
   const byId = new Map<string, GameCard>();
   for (const result of results) {
     if (result.status !== "fulfilled") continue;
@@ -325,12 +342,16 @@ export async function fetchLeagueSlate(league: LeagueConfig): Promise<GameCard[]
       }
     }
   }
+  const games = [...byId.values()];
+  const needInjuries = games.some((g) => g.status === "scheduled");
+  if (!needInjuries) return games;
   const board = await fetchInjuryBoard(league);
-  return [...byId.values()].map((g) => mergeInjuryBoard(g, board));
+  return games.map((g) => mergeInjuryBoard(g, board));
 }
 
-export async function fetchAllSlates(): Promise<GameCard[]> {
-  const settled = await Promise.allSettled(LEAGUES.map((l) => fetchLeagueSlate(l)));
+export async function fetchAllSlates(now = new Date()): Promise<GameCard[]> {
+  const leagues = LEAGUES.filter((l) => l.official);
+  const settled = await poolMap(leagues, 4, (l) => fetchLeagueSlate(l, now));
   const games: GameCard[] = [];
   settled.forEach((result) => {
     if (result.status === "fulfilled") games.push(...result.value);
@@ -415,7 +436,7 @@ function mergeInjuryBoard(game: GameCard, board: BoardInj[]): GameCard {
 export function inWindow(game: GameCard, days: number, now = Date.now()): boolean {
   const t = new Date(game.startAt).getTime();
   if (Number.isNaN(t)) return false;
-  const horizon = now + days * 86_400_000;
-  const floor = now - 8 * 3_600_000;
+  const horizon = now + Math.min(days, 2) * 86_400_000;
+  const floor = now - 20 * 3_600_000;
   return t <= horizon && (t >= floor || game.status !== "scheduled");
 }

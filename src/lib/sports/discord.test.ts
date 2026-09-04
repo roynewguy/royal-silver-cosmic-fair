@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDiscordMessage, discordWebhookOk, favoredLine, resolveWebhook, scoreLine } from "./discord.ts";
+import { buildDiscordMessage, discordWebhookOk, favoredLine, resolveWebhook } from "./discord.ts";
 import type { GameCard, PickRow } from "./types.ts";
 
 test("rejects non-discord urls", () => {
@@ -48,14 +48,14 @@ test("play card has pick, favored %, units, score, and line", () => {
     home: { name: "Lakers", abbr: "LAL", score: null },
   } as GameCard;
   const msg = buildDiscordMessage(pick, game);
-  assert.match(msg, /BOATBOYZ OFFICIAL PICK/);
-  assert.match(msg, /Lakers ML/);
-  assert.match(msg, /vs Warriors/);
+  assert.equal(favoredLine(pick), "BoatBoyz Probability: 60%");
+  assert.match(msg, /BOATBOYZ OFFICIAL PLAY/);
+  assert.match(msg, /Lakers ML vs Warriors/);
   assert.match(msg, /BoatBoyz Probability: 60%/);
-  assert.match(msg, /Market Probability:/);
-  assert.match(msg, /Model Edge: \+3/);
-  assert.match(msg, /Confidence: 67\/100/);
+  assert.match(msg, /DraftKings at posting: -135/);
   assert.match(msg, /Units: 1\.0U/);
-  assert.match(msg, /DraftKings/);
+  assert.match(msg, /Score: Not started/);
+  assert.doesNotMatch(msg, /Favored /);
+  assert.doesNotMatch(msg, /current DK/i);
   assert.doesNotMatch(msg, /ESPN/);
 });

@@ -6,14 +6,14 @@ import {
   postWebhook,
   resolveWebhook,
 } from "@/lib/sports/discord";
-import { fetchAllSlates, inWindow } from "@/lib/sports/espn";
+import { fetchAllSlates, inWindow, beginEspnScan, espnScanStats } from "@/lib/sports/espn";
 import { gradePick, settle } from "@/lib/sports/grade";
 import { LEAGUE_BY_ID } from "@/lib/sports/leagues";
 import { buildFreezeSnapshot } from "@/lib/sports/freeze";
 import { impliedFromAmerican, lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import { isFreeBetaMode, oddsBudget } from "@/lib/sports/free-beta";
 import { mergeDraftKingsOdds } from "@/lib/sports/odds-api";
-import { bestOnSlate, dailyPickTarget, rankGame, rankGames, unitsFor } from "@/lib/sports/rank";
+import { bestOnSlate, dailyPickTarget, remainingDailySlots, rankGame, rankGames, unitsFor } from "@/lib/sports/rank";
 import { formatWhy } from "@/lib/sports/why";
 import {
   fingerprintResearch,
@@ -30,9 +30,9 @@ import type { GameCard, PickRow } from "@/lib/sports/types";
 import {
   addLog,
   clearWorkerLock,
-  loadOpenOfficial,
+  loadTodayOfficial,
+  loadLatestPicksByGames,
   loadRecord,
-  pickByGame,
   readDesk,
   readWebhook,
   touchScan,
@@ -132,16 +132,15 @@ function asPickRow(partial: Partial<PickRow> & Pick<PickRow, "id" | "gameId" | "
 }
 
 export async function refreshSlate(): Promise<GameCard[]> {
+  beginEspnScan();
   const raw = await fetchAllSlates();
   const merged = await mergeDraftKingsOdds(raw);
   const windowed = merged.filter((g) => {
-    const days = LEAGUE_BY_ID[g.league]?.lookAheadDays ?? 3;
+    const days = Math.min(LEAGUE_BY_ID[g.league]?.lookAheadDays ?? 3, 2);
     return inWindow(g, days);
   });
   const ranked = rankGames(windowed);
   await upsertGames(ranked);
-  const sql = await getSql();
-  await sql`delete from games where start_at < now() - interval '14 days'`;
   await pruneFreeBetaCaches();
   await touchScan("scan");
   return ranked;
@@ -492,28 +491,22 @@ export async function selectOfficialCard(
 ): Promise<number> {
   const target = dailyPickTarget(maxDailyPicks);
   const ranked = bestOnSlate(games, minEdge, minConf);
-  const open = await loadOpenOfficial();
-  const frozen = open.filter((p) => p.status === "posted" || p.status === "posting");
-  const queuedNow = open.filter((p) => p.status === "queued");
-  const frozenIds = new Set(frozen.map((p) => p.gameId));
-  const slots = Math.max(0, target - frozen.length);
-  const wanted = ranked.filter((g) => !frozenIds.has(g.id)).slice(0, slots);
-  const wantedIds = new Set(wanted.map((g) => g.id));
+  const committed = await loadTodayOfficial();
+  const remaining = remainingDailySlots(target, committed.length);
+  const committedIds = new Set(committed.map((p) => p.gameId));
+  const wanted = ranked.filter((g) => !committedIds.has(g.id)).slice(0, remaining);
+  const refreshQueued = committed
+    .filter((p) => p.status === "queued")
+    .map((p) => games.find((g) => g.id === p.gameId && g.status === "scheduled"))
+    .filter((g): g is GameCard => Boolean(g && g.rank));
+  const toWrite = [...refreshQueued, ...wanted.filter((g) => !refreshQueued.some((r) => r.id === g.id))];
 
-  if (ranked.length === 0 && frozen.length === 0 && queuedNow.length === 0) {
+  if (ranked.length === 0 && committed.length === 0) {
     await addLog("skip", `PASS: no qualifying bets on today's slate (target ${target}).`);
   }
 
   const sql = await getSql();
-  for (const ticket of queuedNow) {
-    if (wantedIds.has(ticket.gameId)) continue;
-    await sql`
-      update picks
-      set status = 'skipped', skip_reason = ${"Rotated off the daily card — stronger plays ranked higher."}
-      where id = ${ticket.id} and status = 'queued' and freeze_json is null
-    `;
-    await addLog("skip", `${ticket.sport} ${ticket.selection} rotated off the daily card.`, ticket.sport);
-  }
+  const existingByGame = await loadLatestPicksByGames(toWrite.map((g) => g.id));
 
   const aiPlays: AiPlay[] = [];
   if (allowResearch && wanted.length) {
@@ -551,11 +544,11 @@ export async function selectOfficialCard(
   }
 
   let queued = 0;
-  for (const game of wanted) {
+  for (const game of toWrite) {
     const rank = game.rank;
     if (!rank) continue;
     if (game.status !== "scheduled") continue;
-    const existing = await pickByGame(game.id);
+    const existing = existingByGame.get(game.id) ?? null;
     if (existing && (existing.status === "posted" || existing.status === "graded" || existing.status === "posting")) continue;
 
     const aiPlay = aiPlays.find((p) => p.gameId === game.id);
@@ -649,12 +642,19 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
       dailyPickTarget(meta.maxDailyPicks),
     );
     const posted = await flushDuePosts(games, meta.minEdgePct, meta.minConfidence);
-    await addLog("scan", `Tick ${source}: ${games.length} games · queued ${queued} · posted ${posted} · graded ${graded}`);
+    const espn = espnScanStats();
+    await addLog(
+      "scan",
+      `Tick ${source}: ${games.length} games · espn ${espn.espn_request_count} req · ${espn.scan_duration_ms}ms · queued ${queued} · posted ${posted} · graded ${graded}`,
+    );
     return {
       ok: true as const,
       skipped: false,
       source,
       games: games.length,
+      games_loaded: games.length,
+      espn_request_count: espn.espn_request_count,
+      scan_duration_ms: espn.scan_duration_ms,
       queued,
       posted,
       graded,

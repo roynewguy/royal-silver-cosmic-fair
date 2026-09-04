@@ -18,6 +18,7 @@ import type {
   SportScan,
 } from "@/lib/sports/types";
 import { LEAGUES } from "@/lib/sports/leagues";
+import { clampDailyPicks, countsTowardDailyCap } from "@/lib/sports/rank";
 
 function iso(v: unknown): string {
   if (v instanceof Date) return v.toISOString();
@@ -337,8 +338,9 @@ export async function loadLog(): Promise<DeskLog[]> {
 
 export async function addLog(kind: string, message: string, sport?: string | null): Promise<void> {
   const sql = await getSql();
+  const last = await sql<{ message: string }>`select message from desk_log order by id desc limit 1`;
+  if (last[0]?.message === message) return;
   await sql`insert into desk_log (kind, sport, message) values (${kind}, ${sport ?? null}, ${message})`;
-  await sql`delete from desk_log where id < (select coalesce(max(id), 0) - 200 from desk_log)`;
 }
 
 export async function touchScan(kind: "scan" | "desk"): Promise<void> {
@@ -379,14 +381,14 @@ export async function loadMeta(): Promise<{
     minEdgePct: num(r?.min_edge_pct) || 3,
     minConfidence: Math.round(num(r?.min_confidence) || 58),
     postLeadMinutes: Math.round(num(r?.post_lead_minutes) || 150),
-    maxDailyPicks: Math.min(8, Math.max(1, rawCap)),
+    maxDailyPicks: clampDailyPicks(rawCap),
     hasWebhook: Boolean(r?.discord_webhook && String(r.discord_webhook).trim()),
     autoRun: r?.auto_run !== false,
   };
 }
 
 export async function writeMaxDailyPicks(n: number): Promise<number> {
-  const cap = Math.min(8, Math.max(1, Math.round(n)));
+  const cap = clampDailyPicks(n);
   const sql = await getSql();
   await sql`update desk_meta set max_daily_picks = ${cap}, updated_at = now() where id = 1`;
   return cap;
@@ -459,6 +461,37 @@ export async function readDesk(): Promise<DeskState> {
     pinFromEnv: Boolean(process.env.BOATBOYZ_PIN?.trim()),
     calibration: buildCalibration(picks),
   };
+}
+
+export async function loadTodayOfficial(now = new Date()): Promise<PickRow[]> {
+  const sql = await getSql();
+  const rows = await sql<PickDb>`
+    select * from picks
+    where status in ('queued','posting','posted','graded')
+      and official_key is not null
+      and start_at >= now() - interval '2 days'
+      and start_at <= now() + interval '2 days'
+    order by created_at asc
+  `;
+  const { isOfficialDay } = await import("@/lib/sports/day");
+  return rows.map(pickFromRow).filter((p) => countsTowardDailyCap(p.status) && isOfficialDay(p.startAt, now));
+}
+
+export async function loadLatestPicksByGames(gameIds: string[]): Promise<Map<string, PickRow>> {
+  const map = new Map<string, PickRow>();
+  const ids = [...new Set(gameIds.filter(Boolean))];
+  if (!ids.length) return map;
+  const sql = await getSql();
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+  const rows = await sql.query<PickDb>(
+    `select * from picks where game_id in (${placeholders}) order by created_at desc`,
+    ids,
+  );
+  for (const row of rows) {
+    const pick = pickFromRow(row);
+    if (!map.has(pick.gameId)) map.set(pick.gameId, pick);
+  }
+  return map;
 }
 
 export async function loadOpenOfficial(): Promise<PickRow[]> {

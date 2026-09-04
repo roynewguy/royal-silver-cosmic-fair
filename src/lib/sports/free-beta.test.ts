@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { canSpendOddsCredit, isFreeBetaMode, marketParam, oddsBudget } from "./free-beta.ts";
+import {
+  canSpendOddsCredit,
+  isFreeBetaMode,
+  marketParam,
+  MAX_OFFICIAL_DK_CACHE_AGE_MS,
+  MAX_OFFICIAL_DK_CACHE_AGE_MINUTES,
+  oddsBudget,
+  officialDkAction,
+} from "./free-beta.ts";
 import { oddsApiUrl, parseUsageHeaders } from "./odds-api.ts";
 
 test("FREE_BETA_MODE parses truthy flags", () => {
@@ -88,4 +96,25 @@ test("free beta ranks ESPN lines; default mode does not", async () => {
     if (prev === undefined) delete process.env.FREE_BETA_MODE;
     else process.env.FREE_BETA_MODE = prev;
   }
+});
+
+test("stale DraftKings cache cannot become an official post", () => {
+  assert.equal(MAX_OFFICIAL_DK_CACHE_AGE_MINUTES, 20);
+  assert.equal(MAX_OFFICIAL_DK_CACHE_AGE_MS, 20 * 60_000);
+  assert.equal(
+    officialDkAction({ remaining: 0, cacheAgeMs: MAX_OFFICIAL_DK_CACHE_AGE_MS + 1, cachedIsDk: true }),
+    "pass",
+  );
+  assert.equal(
+    officialDkAction({ remaining: 200, cacheAgeMs: 5 * 60_000, cachedIsDk: true }),
+    "use-cache",
+  );
+  assert.equal(
+    officialDkAction({ remaining: 200, cacheAgeMs: 40 * 60_000, cachedIsDk: true }),
+    "fetch",
+  );
+  assert.equal(
+    officialDkAction({ remaining: 0, cacheAgeMs: 5 * 60_000, cachedIsDk: true }),
+    "use-cache",
+  );
 });
