@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
-import { discordWebhookOk, postWebhook, resolveWebhook } from "@/lib/sports/discord";
+import { discordWebhookOk, resolveWebhook } from "@/lib/sports/discord";
 import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, requireOperator } from "./admin";
-import { flushDuePosts, refreshSlate, runTick } from "./cycle";
+import { postQueuedPick, refreshSlate, runTick } from "./cycle";
 import { addLog, loadGames, loadMeta, readDesk, writeWebhook } from "./store";
 
 const g = globalThis as typeof globalThis & {
@@ -84,17 +84,15 @@ export const pushPick = createServerFn({ method: "POST" })
     if (!resolved.url) return { ok: false as const, error: "No Discord webhook configured." };
     if (pick.status === "queued") {
       const meta = await loadMeta();
-      const posted = await flushDuePosts(await loadGames(), meta.minEdgePct, meta.minConfidence);
-      if (posted > 0) return { ok: true as const, state: await deskForClient() };
-      const content = pick.discord_message ?? `${pick.sport} · ${pick.selection}\n${pick.matchup}`;
-      const sent = await postWebhook(resolved.url, content);
-      if (!sent.ok) return { ok: false as const, error: sent.error ?? "Webhook failed." };
-      await sql`
-        update picks
-        set status = 'posted', posted_at = now(), discord_message = ${content}, discord_message_id = ${sent.id ?? null}
-        where id = ${pick.id} and status = 'queued'
-      `;
-      await addLog("post", `Discord confirmed ${pick.selection} · ${pick.matchup}`, pick.sport);
+      const result = await postQueuedPick(
+        pick.id,
+        await loadGames(),
+        meta.minEdgePct,
+        meta.minConfidence,
+        { ignoreWindow: true },
+      );
+      if (!result.ok) return { ok: false as const, error: result.error ?? "Post failed." };
+      if (!result.posted) return { ok: true as const, state: await deskForClient() };
     }
     return { ok: true as const, state: await deskForClient() };
   });

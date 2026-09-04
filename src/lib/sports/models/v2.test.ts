@@ -101,8 +101,14 @@ test("NBA model tag is v2-nba, NFL is v2-nfl", () => {
     }),
   );
   const nfl = rankGame(base());
-  if (nba) assert.equal(nba.model, "v2-nba");
-  if (nfl) assert.equal(nfl.model, "v2-nfl");
+  if (nba) {
+    assert.equal(nba.model, "v2-nba");
+    assert.ok(nba.probability > 0.2 && nba.probability < 0.9);
+  }
+  if (nfl) {
+    assert.equal(nfl.model, "v2-nfl");
+    assert.ok(nfl.probability > 0.2 && nfl.probability < 0.9);
+  }
 });
 
 test("MLB starter ERA swing can flip relative to team-only", () => {

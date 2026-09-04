@@ -97,6 +97,10 @@ type PickDb = {
   discord_message_id?: string | null;
   official_key?: string | null;
   skip_reason: string | null;
+  model_version?: string | null;
+  model_probability?: unknown;
+  model_edge?: unknown;
+  freeze_json?: string | null;
   created_at: unknown;
   home_logo?: string | null;
   away_logo?: string | null;
@@ -207,6 +211,10 @@ export function pickFromRow(row: PickDb): PickRow {
     discordMessageId: row.discord_message_id ?? null,
     officialKey: row.official_key ?? null,
     skipReason: row.skip_reason,
+    modelVersion: row.model_version ?? null,
+    modelProbability: numOrNull(row.model_probability),
+    modelEdge: numOrNull(row.model_edge),
+    freezeJson: row.freeze_json ?? null,
     createdAt: iso(row.created_at),
     homeLogo: row.home_logo ?? null,
     awayLogo: row.away_logo ?? null,

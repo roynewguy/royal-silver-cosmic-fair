@@ -71,6 +71,10 @@ function pick(over: Partial<PickRow> = {}): PickRow {
     discordMessageId: null,
     officialKey: "nfl:nfl:1:official",
     skipReason: null,
+    modelVersion: "v2-nfl",
+    modelProbability: 0.57,
+    modelEdge: 4,
+    freezeJson: null,
     createdAt: new Date().toISOString(),
     homeLogo: null,
     awayLogo: null,
@@ -80,7 +84,7 @@ function pick(over: Partial<PickRow> = {}): PickRow {
     awayScore: 20,
     gameStatus: "final",
     ...over,
-  };
+  } as PickRow;
 }
 
 test("spread home cover is a win", () => {

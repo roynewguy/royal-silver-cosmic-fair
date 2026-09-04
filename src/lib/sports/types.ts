@@ -84,6 +84,7 @@ export type RankPick = {
   confidence: number;
   why: string;
   model: string;
+  probability: number;
 };
 
 export type GameCard = {
@@ -140,6 +141,10 @@ export type PickRow = {
   discordMessageId: string | null;
   officialKey: string | null;
   skipReason: string | null;
+  modelVersion: string | null;
+  modelProbability: number | null;
+  modelEdge: number | null;
+  freezeJson: string | null;
   createdAt: string;
   homeLogo: string | null;
   awayLogo: string | null;

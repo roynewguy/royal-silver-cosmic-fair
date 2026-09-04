@@ -85,6 +85,9 @@ export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): stri
     `${pick.matchup} · ${kick} PT`,
     `Locked ${odds.book || "book"} ${formatAmerican(pick.lockedOdds)}${pick.lockedLine != null ? ` · line ${pick.lockedLine}` : ""}`,
     `Edge ${pick.edgePct.toFixed(1)}% · Conf ${pick.confidence} · ${pick.units}u`,
+    pick.modelVersion
+      ? `${pick.modelVersion} · p ${(pick.modelProbability ?? 0).toFixed(3)}`
+      : "",
     "",
     pick.reason,
     "",

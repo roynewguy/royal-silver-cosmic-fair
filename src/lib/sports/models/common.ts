@@ -72,6 +72,7 @@ export function mlPlay(
     confidence: 0,
     why,
     model,
+    probability: pickHome ? modelHome : 1 - modelHome,
   };
 }
 
@@ -96,6 +97,7 @@ export function spreadPlay(
   const side: Side = pickHome ? "home" : "away";
   const price = (pickHome ? game.odds.homeSpreadOdds : game.odds.awaySpreadOdds) ?? -110;
   const playLine = pickHome ? game.odds.homeSpread : game.odds.awaySpread;
+  const coverProb = clamp(0.5 + coverHome, 0.18, 0.82);
   return {
     market: "spread",
     side,
@@ -113,6 +115,7 @@ export function spreadPlay(
     confidence: 0,
     why,
     model,
+    probability: pickHome ? coverProb : 1 - coverProb,
   };
 }
 
@@ -146,6 +149,7 @@ export function totalPlay(
     confidence: 0,
     why,
     model,
+    probability: pickOver ? modelOver : 1 - modelOver,
   };
 }
 

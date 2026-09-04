@@ -17,7 +17,7 @@ Official card is **today in PT**, **DraftKings only** (The Odds API). No DK line
 | NFL | Home/road splits, QB OUT, weather totals, spread cap 7.5 |
 | NHL | Splits + goalie save%, ML-first |
 
-Injuries are `{ team, player, status, position }`. An away OUT cannot haircut the home side.
+Each posted ticket freezes `model_version`, `model_probability`, `model_edge`, and a `freeze_json` snapshot. Manual post sends **that pick only**, not the whole queue. A queued sport is not swapped onto a different game.
 
 Every ~10 minutes the worker:
 

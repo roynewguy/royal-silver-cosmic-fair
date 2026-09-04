@@ -55,6 +55,7 @@ export function PickTicket({
           <span>Post {relativeTo(pick.postAt)}</span>
           <span>{pick.units}u</span>
           <span>Conf {pick.confidence}</span>
+          {pick.modelVersion ? <span>{pick.modelVersion}</span> : null}
         </div>
       </div>
       <div className="px-3 pt-3 pb-2">
