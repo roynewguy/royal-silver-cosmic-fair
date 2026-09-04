@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import { isFreeBetaMode } from "./free-beta.ts";
 import type { GameCard } from "./types.ts";
 import { parseResearchPlays, type AiPlay } from "./research-schema.ts";
 
@@ -47,6 +48,7 @@ export async function saveCachedResearch(gameId: string, fp: string, play: AiPla
 }
 
 export async function researchPlays(candidates: GameCard[]): Promise<AiPlay[] | null> {
+  if (isFreeBetaMode()) return null;
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey || candidates.length === 0) return null;
   const payload = candidates.slice(0, 6).map((g) => ({

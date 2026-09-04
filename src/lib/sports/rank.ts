@@ -1,4 +1,5 @@
 import { isOfficialDay } from "./day.ts";
+import { isFreeBetaMode } from "./free-beta.ts";
 import { LEAGUE_BY_ID } from "./leagues.ts";
 import { hasUsableOdds } from "./odds.ts";
 import { isDraftKingsLine } from "./odds-api.ts";
@@ -86,7 +87,7 @@ export function bestPerSport(
           skipReason:
             slate.length === 0
               ? "No games on today's PT card."
-              : slate.every((g) => !isDraftKingsLine(g.odds))
+              : !isFreeBetaMode() && slate.every((g) => !isDraftKingsLine(g.odds))
                 ? "PASS: DraftKings line unavailable."
                 : slate.every((g) => !hasUsableOdds(g.odds))
                   ? "No listed odds — pass."

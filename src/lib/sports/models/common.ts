@@ -1,10 +1,12 @@
 import {
   clamp,
   devig,
+  hasUsableOdds,
   impliedFromAmerican,
   parseWinPct,
   selectionLabel,
 } from "../odds.ts";
+import { isFreeBetaMode } from "../free-beta.ts";
 import { isDraftKingsLine } from "../odds-api.ts";
 import type { GameCard, RankPick, Side } from "../types.ts";
 
@@ -31,7 +33,11 @@ export function juiceImbalance(a: number | null, b: number | null): number {
 
 export function gate(game: GameCard): boolean {
   if (game.status !== "scheduled") return false;
-  if (!isDraftKingsLine(game.odds)) return false;
+  if (isFreeBetaMode()) {
+    if (!hasUsableOdds(game.odds) && !isDraftKingsLine(game.odds)) return false;
+  } else if (!isDraftKingsLine(game.odds)) {
+    return false;
+  }
   const start = new Date(game.startAt).getTime();
   if (Number.isNaN(start) || start < Date.now() - 5 * 60_000) return false;
   return true;

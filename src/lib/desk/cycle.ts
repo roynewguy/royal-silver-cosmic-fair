@@ -11,6 +11,7 @@ import { gradePick, settle } from "@/lib/sports/grade";
 import { LEAGUE_BY_ID } from "@/lib/sports/leagues";
 import { buildFreezeSnapshot } from "@/lib/sports/freeze";
 import { impliedFromAmerican, lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
+import { isFreeBetaMode, oddsBudget } from "@/lib/sports/free-beta";
 import { mergeDraftKingsOdds } from "@/lib/sports/odds-api";
 import { bestPerSport, rankGame, rankGames, unitsFor } from "@/lib/sports/rank";
 import {
@@ -21,6 +22,7 @@ import {
   shouldRefreshResearch,
   type AiPlay,
 } from "@/lib/sports/research";
+import { confirmDraftKings, loadOddsRemaining, pruneFreeBetaCaches } from "./dk-verify";
 import { gradeDisposition, UNPOSTED_SKIP } from "./posting";
 import { sendOnce, type ClaimStore, type CompletePayload, newPostingToken } from "./post-pipeline";
 import type { GameCard, PickRow } from "@/lib/sports/types";
@@ -139,6 +141,7 @@ export async function refreshSlate(): Promise<GameCard[]> {
   await upsertGames(ranked);
   const sql = await getSql();
   await sql`delete from games where start_at < now() - interval '14 days'`;
+  await pruneFreeBetaCaches();
   await touchScan("scan");
   return ranked;
 }
@@ -313,7 +316,21 @@ export async function postPickById(
     await sql`update picks set status = 'skipped', skip_reason = ${`Game ${game.status}.`} where id = ${row.id} and status = 'queued'`;
     return { ok: true, posted: false, pickId };
   }
-  const freshRank = rankGame(game);
+
+  const queuedMeta = await sql<{ market: string }>`select market from picks where id = ${row.id}`;
+  const queuedMarket = (queuedMeta[0]?.market ?? "spread") as import("@/lib/sports/types").Market;
+  const verified = await confirmDraftKings(game, queuedMarket);
+  if (!verified.ok) {
+    await sql`
+      update picks set status = 'skipped', skip_reason = ${verified.error}
+      where id = ${row.id} and status = 'queued'
+    `;
+    await addLog("skip", `${game.sport} ${verified.error}`, game.sport);
+    return { ok: true, posted: false, pickId };
+  }
+  const liveGame = verified.game;
+
+  const freshRank = rankGame(liveGame);
   if (!freshRank || freshRank.edgePct < minEdge || freshRank.confidence < minConf) {
     await sql`
       update picks
@@ -342,13 +359,13 @@ export async function postPickById(
   if (!pick) return { ok: false, posted: false, pickId, error: "Pick vanished." };
   if (pick.freeze_json || pick.status === "posted") return { ok: true, posted: false, pickId };
 
-  const lockedOdds = priceFor(game.odds, freshRank.market, freshRank.side) ?? freshRank.price;
-  const lockedLine = lineFor(game.odds, freshRank.market, freshRank.side);
+  const lockedOdds = priceFor(liveGame.odds, freshRank.market, freshRank.side) ?? freshRank.price;
+  const lockedLine = lineFor(liveGame.odds, freshRank.market, freshRank.side);
   const selection = selectionLabel({
     market: freshRank.market,
     side: freshRank.side,
-    homeAbbr: game.home.abbr,
-    awayAbbr: game.away.abbr,
+    homeAbbr: liveGame.home.abbr,
+    awayAbbr: liveGame.away.abbr,
     line: lockedLine,
     price: lockedOdds,
   });
@@ -360,7 +377,7 @@ export async function postPickById(
     lockedLine,
     selection,
     gameId: row.game_id,
-    odds: game.odds,
+    odds: liveGame.odds,
   });
   const asRow = asPickRow({
     id: pick.id,
@@ -373,7 +390,7 @@ export async function postPickById(
     side: freshRank.side,
     lockedLine,
     lockedOdds,
-    lockedOddsJson: game.odds,
+    lockedOddsJson: liveGame.odds,
     reason: pick.reason,
     confidence: freshRank.confidence,
     edgePct: freshRank.edgePct,
@@ -382,13 +399,13 @@ export async function postPickById(
     startAt: String(pick.start_at),
     postAt: String(pick.post_at),
     createdAt: String(pick.created_at),
-    homeAbbr: game.home.abbr,
-    awayAbbr: game.away.abbr,
+    homeAbbr: liveGame.home.abbr,
+    awayAbbr: liveGame.away.abbr,
     modelVersion: freshRank.model,
     modelProbability: freshRank.probability,
     modelEdge: freshRank.edgePct,
   });
-  const message = buildDiscordMessage(asRow, game);
+  const message = buildDiscordMessage(asRow, liveGame);
   const hook = await webhookUrl();
   if (!hook) {
     await addLog("post", "Due pick waiting — no DISCORD_WEBHOOK_URL.", pick.sport);
@@ -407,7 +424,7 @@ export async function postPickById(
       side: freshRank.side,
       lockedOdds,
       lockedLine,
-      lockedOddsJson: JSON.stringify(game.odds),
+      lockedOddsJson: JSON.stringify(liveGame.odds),
       edgePct: freshRank.edgePct,
       confidence: freshRank.confidence,
       units,
@@ -427,6 +444,25 @@ export async function postPickById(
   }
   await addLog("post", `Discord confirmed ${selection} · ${pick.matchup} · ${freshRank.model}`, pick.sport);
   return { ok: true, posted: true, pickId };
+}
+
+export async function prefetchDueDraftKings(games: GameCard[]): Promise<GameCard[]> {
+  if (!isFreeBetaMode()) return games;
+  const remaining = await loadOddsRemaining();
+  if (oddsBudget(remaining) !== "normal") return games;
+  const sql = await getSql();
+  const due = await sql<{ game_id: string; market: string }>`
+    select game_id, market from picks
+    where status = 'queued' and post_at <= now() + interval '20 minutes' and start_at > now()
+  `;
+  let next = games;
+  for (const row of due) {
+    const g = next.find((x) => x.id === row.game_id);
+    if (!g) continue;
+    const verified = await confirmDraftKings(g, row.market as import("@/lib/sports/types").Market);
+    if (verified.ok) next = next.map((x) => (x.id === g.id ? verified.game : x));
+  }
+  return next;
 }
 
 export const postQueuedPick = postPickById;
@@ -582,12 +618,15 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
   const locked = await tryWorkerLock();
   if (!locked) return { ok: true as const, skipped: true, source };
   try {
-    const games = await refreshSlate();
+    const games = await prefetchDueDraftKings(await refreshSlate());
     const { loadMeta } = await import("./store");
     const meta = await loadMeta();
     const voided = await voidDeadGames(games);
     const graded = await gradeOpenPicks(games);
-    const research = opts.research !== false && (source === "cron" || source === "desk" || source === "boot");
+    const research =
+      !isFreeBetaMode() &&
+      opts.research !== false &&
+      (source === "cron" || source === "desk" || source === "boot");
     const queued = await selectOfficialCard(
       games,
       meta.minEdgePct,

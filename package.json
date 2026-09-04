@@ -16,7 +16,7 @@
     "preview:stop": "node scripts/preview.mjs stop",
     "typecheck": "tsc --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
-    "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/sports/grade.test.ts src/lib/sports/day.test.ts src/lib/sports/discord.test.ts src/lib/sports/rank.test.ts src/lib/sports/odds-api.test.ts src/lib/sports/models/v2.test.ts src/lib/sports/freeze.test.ts src/lib/sports/beta.test.ts src/lib/sports/calibration.test.ts src/lib/desk/cron-auth.test.ts src/lib/desk/operator-secret.test.ts src/lib/desk/redact.test.ts src/lib/desk/post-pipeline.test.ts",
+    "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/sports/grade.test.ts src/lib/sports/day.test.ts src/lib/sports/discord.test.ts src/lib/sports/rank.test.ts src/lib/sports/odds-api.test.ts src/lib/sports/models/v2.test.ts src/lib/sports/freeze.test.ts src/lib/sports/beta.test.ts src/lib/sports/calibration.test.ts src/lib/sports/free-beta.test.ts src/lib/desk/cron-auth.test.ts src/lib/desk/operator-secret.test.ts src/lib/desk/redact.test.ts src/lib/desk/post-pipeline.test.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

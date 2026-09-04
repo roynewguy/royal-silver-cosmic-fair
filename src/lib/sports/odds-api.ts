@@ -1,4 +1,5 @@
 import { applyDraftKingsSnapshot, nearestKickHours, shouldFetchLeagueOdds } from "./dk-open.ts";
+import { isFreeBetaMode } from "./free-beta.ts";
 import { LEAGUES } from "./leagues.ts";
 import { parseAmerican, parseLine } from "./odds.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
@@ -104,19 +105,55 @@ function snapshotFromApi(game: OddsApiGame, homeName: string, awayName: string):
   };
 }
 
-async function fetchLeagueOdds(sportKey: string, apiKey: string): Promise<OddsApiGame[]> {
+export type OddsUsage = {
+  remaining: number | null;
+  used: number | null;
+  last: number | null;
+};
+
+export function parseUsageHeaders(headers: { get: (name: string) => string | null }): OddsUsage {
+  const num = (k: string) => {
+    const v = headers.get(k);
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  return {
+    remaining: num("x-requests-remaining"),
+    used: num("x-requests-used"),
+    last: num("x-requests-last"),
+  };
+}
+
+export function oddsApiUrl(sportKey: string, apiKey: string, markets: string): string {
   const url = new URL(`https://api.the-odds-api.com/v4/sports/${sportKey}/odds`);
   url.searchParams.set("apiKey", apiKey);
   url.searchParams.set("regions", "us");
-  url.searchParams.set("markets", "h2h,spreads,totals");
+  url.searchParams.set("markets", markets);
   url.searchParams.set("oddsFormat", "american");
   url.searchParams.set("bookmakers", "draftkings");
-  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  return url.toString();
+}
+
+export async function fetchDraftKingsMarket(
+  sportKey: string,
+  apiKey: string,
+  markets: string,
+): Promise<{ rows: OddsApiGame[]; usage: OddsUsage }> {
+  const res = await fetch(oddsApiUrl(sportKey, apiKey, markets), { signal: AbortSignal.timeout(8000) });
+  const usage = parseUsageHeaders(res.headers);
   if (!res.ok) throw new Error(`Odds API ${res.status}`);
-  return (await res.json()) as OddsApiGame[];
+  return { rows: (await res.json()) as OddsApiGame[], usage };
+}
+
+export function overlayDraftKings(game: GameCard, event: OddsApiGame): GameCard | null {
+  const snap = snapshotFromApi(event, game.home.name, game.away.name);
+  if (!snap) return null;
+  return { ...game, odds: applyDraftKingsSnapshot(game.odds, snap) };
 }
 
 export async function mergeDraftKingsOdds(games: GameCard[]): Promise<GameCard[]> {
+  if (isFreeBetaMode()) return games;
   const apiKey = process.env.ODDS_API_KEY?.trim();
   if (!apiKey) return games;
   const now = Date.now();
@@ -142,7 +179,7 @@ export async function mergeDraftKingsOdds(games: GameCard[]): Promise<GameCard[]
         applyPairs(leagueGames, cached.rows, byId);
         return;
       }
-      const rows = await fetchLeagueOdds(league.oddsApiKey, apiKey);
+      const { rows } = await fetchDraftKingsMarket(league.oddsApiKey, apiKey, "h2h,spreads,totals");
       cache.byLeague.set(league.id, { at: now, rows });
       applyPairs(leagueGames, rows, byId);
     }),
