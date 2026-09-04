@@ -1,9 +1,12 @@
-# 24/7 tick for Vercel Hobby (native Vercel cron is once/day).
+# BoatBoyz 24/7 tick — Vercel Hobby cron is once/day, so GitHub does */10.
+#
 # Required GitHub repo secrets (Settings → Secrets and variables → Actions):
-#   APP_URL      = https://your-app.vercel.app   (no trailing slash)
-#   CRON_SECRET  = same value as CRON_SECRET on the host
-# The deployed app must also have CRON_SECRET. The tick endpoint only
-# accepts Authorization: Bearer $CRON_SECRET.
+#   APP_URL     = https://your-app.vercel.app   (no trailing slash)
+#   CRON_SECRET = EXACT same value as Vercel env CRON_SECRET
+#
+# The Action POSTs:
+#   ${APP_URL}/api/cron/tick
+#   Authorization: Bearer ${CRON_SECRET}
 name: BoatBoyz tick
 on:
   schedule:
@@ -18,12 +21,44 @@ jobs:
         env:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
-            echo "::notice::Set GitHub repo secrets APP_URL and CRON_SECRET (same CRON_SECRET as the host) to enable 24/7 ticks. Skipping this run."
+            echo "::notice title=BoatBoyz 24/7 is NOT armed::GitHub secrets APP_URL and/or CRON_SECRET are empty. This run did NOT call BoatBoyz."
+            echo "Set them now: GitHub repo → Settings → Secrets and variables → Actions → New repository secret"
+            echo "  APP_URL      = https://YOUR-APP.vercel.app     (no trailing slash)"
+            echo "  CRON_SECRET  = the SAME random string you put on Vercel as CRON_SECRET"
+            echo "Then: Actions → BoatBoyz tick → Run workflow"
+            echo "A good run prints HTTP 200 and contacted: true"
+            if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+              echo "::error::Manual tick aborted — add APP_URL and CRON_SECRET first."
+              exit 1
+            fi
             exit 0
           fi
-          curl -fsS -X POST "${APP_URL%/}/api/cron/tick" \
+
+          URL="${APP_URL%/}/api/cron/tick"
+          echo "Contacting deployed BoatBoyz: ${URL}"
+          echo "Authorization: Bearer *** (CRON_SECRET length ${#CRON_SECRET})"
+
+          code=$(curl -sS -L --max-time 90 -o /tmp/boatboyz-tick.json -w "%{http_code}" \
+            -X POST "${URL}" \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            -H "Content-Type: application/json"
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json")
+
+          echo "HTTP ${code}"
+          echo "Response:"
+          cat /tmp/boatboyz-tick.json || true
+          echo
+
+          if [ "${code}" != "200" ]; then
+            echo "::error::Tick did not reach a healthy BoatBoyz. HTTP ${code}. Host CRON_SECRET must match this GitHub secret. DATABASE_URL and FREE_BETA_MODE=true must be set on Vercel."
+            exit 1
+          fi
+          if ! grep -q '"contacted":true' /tmp/boatboyz-tick.json && ! grep -q '"contacted": true' /tmp/boatboyz-tick.json; then
+            echo "::error::HTTP 200 but response is not a BoatBoyz tick (missing contacted:true). Check APP_URL points at this app."
+            exit 1
+          fi
+          echo "BoatBoyz tick succeeded — deployed endpoint was contacted."
