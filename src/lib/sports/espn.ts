@@ -40,6 +40,7 @@ type EspnOdds = {
 type EspnEvent = {
   id?: string;
   date?: string;
+  headlines?: { description?: string }[];
   competitions?: {
     id?: string;
     date?: string;
@@ -47,6 +48,8 @@ type EspnEvent = {
     status?: { type?: { name?: string; state?: string; completed?: boolean } };
     competitors?: EspnCompetitor[];
     odds?: EspnOdds[];
+    notes?: { headline?: string; text?: string }[];
+    weather?: { displayValue?: string; temperature?: number; conditionId?: string };
   }[];
   status?: { type?: { name?: string; state?: string; completed?: boolean } };
 };
@@ -64,11 +67,72 @@ function nyDateKey(offsetDays: number): string {
 }
 
 function mapStatus(raw?: string, state?: string, completed?: boolean): GameStatus {
-  if (completed) return "final";
-  const s = (raw ?? state ?? "").toLowerCase();
-  if (s.includes("final") || s.includes("complete")) return "final";
+  if (completed || state === "post") return "final";
+  const s = `${raw ?? ""} ${state ?? ""}`.toLowerCase();
+  if (s.includes("postpone")) return "postponed";
+  if (s.includes("cancel")) return "cancelled";
+  if (s.includes("suspend")) return "suspended";
+  if (s.includes("delay")) return "delayed";
+  if (s.includes("final") || s.includes("complete") || s.includes("status_final")) return "final";
   if (s.includes("in_progress") || s.includes("in-progress") || state === "in") return "in_progress";
   return "scheduled";
+}
+
+function pickEspnOdds(list?: EspnOdds[]): EspnOdds | undefined {
+  if (!list?.length) return undefined;
+  const named = (o: EspnOdds) => o.provider?.displayName ?? o.provider?.name ?? "";
+  return (
+    list.find((o) => /draft\s*kings/i.test(named(o))) ??
+    list.find((o) => named(o).trim().length > 0) ??
+    list[0]
+  );
+}
+
+function parseOdds(raw: EspnOdds | undefined): OddsSnapshot {
+  const empty: OddsSnapshot = {
+    book: "—",
+    details: null,
+    homeMl: null,
+    awayMl: null,
+    homeSpread: null,
+    awaySpread: null,
+    homeSpreadOdds: null,
+    awaySpreadOdds: null,
+    total: null,
+    overOdds: null,
+    underOdds: null,
+    openHomeSpread: null,
+    openTotal: null,
+    openHomeMl: null,
+    source: "unknown",
+    capturedAt: null,
+  };
+  if (!raw) return empty;
+  const homeSpread =
+    parseLine(raw.pointSpread?.home?.close?.line) ??
+    (typeof raw.spread === "number" ? raw.spread : null);
+  const awaySpread =
+    parseLine(raw.pointSpread?.away?.close?.line) ??
+    (homeSpread != null ? -homeSpread : null);
+  const book = raw.provider?.displayName ?? raw.provider?.name ?? "ESPN";
+  return {
+    book,
+    details: raw.details ?? null,
+    homeMl: parseAmerican(raw.moneyline?.home?.close?.odds),
+    awayMl: parseAmerican(raw.moneyline?.away?.close?.odds),
+    homeSpread,
+    awaySpread,
+    homeSpreadOdds: parseAmerican(raw.pointSpread?.home?.close?.odds),
+    awaySpreadOdds: parseAmerican(raw.pointSpread?.away?.close?.odds),
+    total: parseLine(raw.total?.over?.close?.line) ?? parseLine(raw.overUnder),
+    overOdds: parseAmerican(raw.total?.over?.close?.odds),
+    underOdds: parseAmerican(raw.total?.under?.close?.odds),
+    openHomeSpread: parseLine(raw.pointSpread?.home?.open?.line),
+    openTotal: parseLine(raw.total?.over?.open?.line),
+    openHomeMl: parseAmerican(raw.moneyline?.home?.open?.odds),
+    source: "espn",
+    capturedAt: new Date().toISOString(),
+  };
 }
 
 function teamFrom(comp: EspnCompetitor | undefined): TeamInfo {
@@ -97,46 +161,38 @@ function teamFrom(comp: EspnCompetitor | undefined): TeamInfo {
   };
 }
 
-function parseOdds(raw: EspnOdds | undefined): OddsSnapshot {
-  const empty: OddsSnapshot = {
-    book: "—",
-    details: null,
-    homeMl: null,
-    awayMl: null,
-    homeSpread: null,
-    awaySpread: null,
-    homeSpreadOdds: null,
-    awaySpreadOdds: null,
-    total: null,
-    overOdds: null,
-    underOdds: null,
-    openHomeSpread: null,
-    openTotal: null,
-    openHomeMl: null,
+function notesFrom(comp: { notes?: { headline?: string; text?: string }[]; headlines?: { description?: string; shortLinkText?: string }[] }, event: EspnEvent): string[] {
+  const out: string[] = [];
+  for (const n of comp.notes ?? []) {
+    const t = n.headline ?? n.text;
+    if (t) out.push(t);
+  }
+  for (const h of (event as { headlines?: { description?: string }[] }).headlines ?? []) {
+    if (h.description) out.push(h.description);
+  }
+  return out.slice(0, 6);
+}
+
+function injuriesFrom(home?: EspnCompetitor, away?: EspnCompetitor): string[] {
+  const rows: string[] = [];
+  const pull = (c?: EspnCompetitor) => {
+    const list = (c as { injuries?: { athlete?: { displayName?: string }; status?: string; details?: { type?: string } }[] })?.injuries ?? [];
+    for (const inj of list) {
+      const name = inj.athlete?.displayName;
+      if (!name) continue;
+      rows.push(`${name} ${inj.status ?? inj.details?.type ?? "injury"}`.trim());
+    }
   };
-  if (!raw) return empty;
-  const homeSpread =
-    parseLine(raw.pointSpread?.home?.close?.line) ??
-    (typeof raw.spread === "number" ? raw.spread : null);
-  const awaySpread =
-    parseLine(raw.pointSpread?.away?.close?.line) ??
-    (homeSpread != null ? -homeSpread : null);
-  return {
-    book: raw.provider?.displayName ?? raw.provider?.name ?? "DraftKings",
-    details: raw.details ?? null,
-    homeMl: parseAmerican(raw.moneyline?.home?.close?.odds),
-    awayMl: parseAmerican(raw.moneyline?.away?.close?.odds),
-    homeSpread,
-    awaySpread,
-    homeSpreadOdds: parseAmerican(raw.pointSpread?.home?.close?.odds),
-    awaySpreadOdds: parseAmerican(raw.pointSpread?.away?.close?.odds),
-    total: parseLine(raw.total?.over?.close?.line) ?? parseLine(raw.overUnder),
-    overOdds: parseAmerican(raw.total?.over?.close?.odds),
-    underOdds: parseAmerican(raw.total?.under?.close?.odds),
-    openHomeSpread: parseLine(raw.pointSpread?.home?.open?.line),
-    openTotal: parseLine(raw.total?.over?.open?.line),
-    openHomeMl: parseAmerican(raw.moneyline?.home?.open?.odds),
-  };
+  pull(home);
+  pull(away);
+  return rows.slice(0, 8);
+}
+
+function weatherFrom(comp: { weather?: { displayValue?: string; temperature?: number; conditionId?: string } }): string | null {
+  const w = comp.weather;
+  if (!w) return null;
+  const bits = [w.displayValue, w.temperature != null ? `${w.temperature}°` : null].filter(Boolean);
+  return bits.length ? bits.join(" · ") : null;
 }
 
 function eventToGames(event: EspnEvent, league: LeagueConfig): GameCard[] {
@@ -166,8 +222,11 @@ function eventToGames(event: EspnEvent, league: LeagueConfig): GameCard[] {
       home: teamFrom(home),
       away: teamFrom(away),
       venue: comp.venue?.fullName ?? null,
-      odds: parseOdds(comp.odds?.[0]),
+      odds: parseOdds(pickEspnOdds(comp.odds)),
       rank: null,
+      notes: notesFrom(comp, event),
+      injuries: injuriesFrom(home, away),
+      weather: weatherFrom(comp),
     });
   }
   return cards;

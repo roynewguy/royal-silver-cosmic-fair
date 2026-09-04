@@ -1,14 +1,21 @@
-import { profitFromOdds } from "@/lib/utils";
-import type { GameCard, PickResult, PickRow } from "./types";
+import { profitFromOdds } from "../utils.ts";
+import { LEAGUE_BY_ID } from "./leagues.ts";
+import type { GameCard, PickResult, PickRow } from "./types.ts";
+
+const DEAD = new Set(["postponed", "cancelled", "suspended"]);
 
 export function gradePick(pick: PickRow, game: GameCard): PickResult | null {
+  if (DEAD.has(game.status)) return "VOID";
   if (game.status !== "final") return null;
   const hs = game.home.score;
   const as = game.away.score;
   if (hs == null || as == null) return null;
 
+  const league = LEAGUE_BY_ID[pick.league as keyof typeof LEAGUE_BY_ID];
+  const soccer = league?.soccer3way === true;
+
   if (pick.market === "moneyline") {
-    if (hs === as) return "PUSH";
+    if (hs === as) return soccer ? "LOSS" : "PUSH";
     const homeWon = hs > as;
     const tookHome = pick.side === "home";
     return homeWon === tookHome ? "WIN" : "LOSS";

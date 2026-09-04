@@ -10,7 +10,7 @@ import type { PickRow } from "@/lib/sports/types";
 function resultTone(result: PickRow["result"]): "win" | "loss" | "push" | "muted" | "accent" {
   if (result === "WIN") return "win";
   if (result === "LOSS") return "loss";
-  if (result === "PUSH") return "push";
+  if (result === "PUSH" || result === "VOID") return "push";
   return "muted";
 }
 

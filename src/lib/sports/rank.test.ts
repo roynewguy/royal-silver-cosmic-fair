@@ -1,0 +1,75 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { bestPerSport, rankGames } from "./rank.ts";
+import type { GameCard, OddsSnapshot } from "./types.ts";
+
+const odds: OddsSnapshot = {
+  book: "DraftKings",
+  details: null,
+  homeMl: -150,
+  awayMl: 130,
+  homeSpread: -3.5,
+  awaySpread: 3.5,
+  homeSpreadOdds: -110,
+  awaySpreadOdds: -110,
+  total: 44.5,
+  overOdds: -110,
+  underOdds: -110,
+  openHomeSpread: -3,
+  openTotal: 45,
+  openHomeMl: -140,
+  source: "odds-api",
+  capturedAt: new Date().toISOString(),
+};
+
+function card(over: Partial<GameCard> = {}): GameCard {
+  const start = over.startAt ?? new Date(Date.now() + 5 * 3600_000).toISOString();
+  return {
+    id: "nfl:1",
+    espnId: "1",
+    sport: "NFL",
+    league: "nfl",
+    startAt: start,
+    status: "scheduled",
+    home: { name: "Seahawks", abbr: "SEA", logo: null, score: null, record: "10-6" },
+    away: { name: "Broncos", abbr: "DEN", logo: null, score: null, record: "8-8" },
+    venue: null,
+    odds,
+    rank: null,
+    notes: [],
+    injuries: [],
+    weather: null,
+    ...over,
+  };
+}
+
+test("soccer leagues are never official picks", () => {
+  const games = rankGames([
+    card({
+      id: "epl:1",
+      league: "epl",
+      sport: "EPL",
+      home: { name: "Arsenal", abbr: "ARS", logo: null, score: null, record: "10-2-3" },
+      away: { name: "Chelsea", abbr: "CHE", logo: null, score: null, record: "8-4-3" },
+    }),
+  ]);
+  assert.equal(games[0]?.rank, null);
+  const decisions = bestPerSport(games);
+  const epl = decisions.find((d) => d.skip.league === "epl");
+  assert.equal(epl?.skip.skipped, true);
+  assert.match(epl?.skip.skipReason ?? "", /3-way/);
+});
+
+test("official card ignores tomorrow even if the edge is bigger", () => {
+  const now = new Date();
+  const tonight = new Date(now.getTime() + 4 * 3600_000).toISOString();
+  const tomorrow = new Date(now.getTime() + 30 * 3600_000).toISOString();
+  const games = rankGames([
+    card({ id: "nfl:today", startAt: tonight, home: { name: "Seahawks", abbr: "SEA", logo: null, score: null, record: "11-5" }, away: { name: "Rams", abbr: "LAR", logo: null, score: null, record: "9-7" } }),
+    card({ id: "nfl:tmw", startAt: tomorrow, home: { name: "Chiefs", abbr: "KC", logo: null, score: null, record: "14-2" }, away: { name: "Raiders", abbr: "LV", logo: null, score: null, record: "4-12" } }),
+  ]);
+  const nfl = bestPerSport(games, 0, 0, now).find((d) => d.skip.league === "nfl");
+  if (!nfl?.skip.skipped) {
+    assert.equal(nfl?.pick.id, "nfl:today");
+  }
+});

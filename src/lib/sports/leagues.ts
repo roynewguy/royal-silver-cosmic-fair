@@ -1,4 +1,4 @@
-import type { SportId } from "./types";
+import type { SportId } from "./types.ts";
 
 export type LeagueConfig = {
   id: SportId;
@@ -11,6 +11,9 @@ export type LeagueConfig = {
   daily: boolean;
   lookAheadDays: number;
   avgTotal: number | null;
+  official: boolean;
+  soccer3way: boolean;
+  oddsApiKey: string | null;
 };
 
 export const LEAGUES: LeagueConfig[] = [
@@ -25,6 +28,9 @@ export const LEAGUES: LeagueConfig[] = [
     daily: false,
     lookAheadDays: 12,
     avgTotal: 44.5,
+    official: true,
+    soccer3way: false,
+    oddsApiKey: "americanfootball_nfl",
   },
   {
     id: "ncaaf",
@@ -37,6 +43,9 @@ export const LEAGUES: LeagueConfig[] = [
     daily: false,
     lookAheadDays: 7,
     avgTotal: 52,
+    official: true,
+    soccer3way: false,
+    oddsApiKey: "americanfootball_ncaaf",
   },
   {
     id: "mlb",
@@ -49,6 +58,9 @@ export const LEAGUES: LeagueConfig[] = [
     daily: true,
     lookAheadDays: 2,
     avgTotal: 8.5,
+    official: true,
+    soccer3way: false,
+    oddsApiKey: "baseball_mlb",
   },
   {
     id: "mls",
@@ -61,6 +73,9 @@ export const LEAGUES: LeagueConfig[] = [
     daily: true,
     lookAheadDays: 3,
     avgTotal: null,
+    official: false,
+    soccer3way: true,
+    oddsApiKey: "soccer_usa_mls",
   },
   {
     id: "epl",
@@ -73,6 +88,9 @@ export const LEAGUES: LeagueConfig[] = [
     daily: true,
     lookAheadDays: 3,
     avgTotal: null,
+    official: false,
+    soccer3way: true,
+    oddsApiKey: "soccer_epl",
   },
   {
     id: "nhl",
@@ -85,6 +103,9 @@ export const LEAGUES: LeagueConfig[] = [
     daily: true,
     lookAheadDays: 3,
     avgTotal: 6,
+    official: true,
+    soccer3way: false,
+    oddsApiKey: "icehockey_nhl",
   },
   {
     id: "nba",
@@ -97,6 +118,9 @@ export const LEAGUES: LeagueConfig[] = [
     daily: true,
     lookAheadDays: 3,
     avgTotal: 224,
+    official: true,
+    soccer3way: false,
+    oddsApiKey: "basketball_nba",
   },
   {
     id: "wnba",
@@ -109,6 +133,9 @@ export const LEAGUES: LeagueConfig[] = [
     daily: true,
     lookAheadDays: 3,
     avgTotal: 162,
+    official: true,
+    soccer3way: false,
+    oddsApiKey: "basketball_wnba",
   },
   {
     id: "ncaab",
@@ -121,6 +148,9 @@ export const LEAGUES: LeagueConfig[] = [
     daily: true,
     lookAheadDays: 3,
     avgTotal: 142,
+    official: true,
+    soccer3way: false,
+    oddsApiKey: "basketball_ncaab",
   },
   {
     id: "ufc",
@@ -133,6 +163,9 @@ export const LEAGUES: LeagueConfig[] = [
     daily: false,
     lookAheadDays: 8,
     avgTotal: null,
+    official: true,
+    soccer3way: false,
+    oddsApiKey: "mma_mixed_martial_arts",
   },
 ];
 

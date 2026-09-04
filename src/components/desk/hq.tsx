@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Loader2, Radar, Ship } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,29 +12,11 @@ import { useDesk } from "@/lib/desk/use-desk";
 import { formatKick, relativeTo } from "@/lib/utils";
 import type { GameCard } from "@/lib/sports/types";
 
-const WEBHOOK_KEY = "boat-boyz-discord-webhook";
-
 export function DeskHq() {
   const desk = useDesk();
   const [webhook, setWebhook] = useState("");
-
-  useEffect(() => {
-    try {
-      setWebhook(localStorage.getItem(WEBHOOK_KEY) ?? "");
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  function saveWebhook(value: string) {
-    setWebhook(value);
-    try {
-      if (value) localStorage.setItem(WEBHOOK_KEY, value);
-      else localStorage.removeItem(WEBHOOK_KEY);
-    } catch {
-      /* ignore */
-    }
-  }
+  const [pin, setPin] = useState("");
+  const op = desk.data.operator;
 
   const queued = desk.data.picks.filter((p) => p.status === "queued" || p.status === "posted");
   const busy = desk.scanning || desk.running;
@@ -46,19 +28,46 @@ export function DeskHq() {
           <p className="text-xs tracking-[0.22em] text-accent uppercase">Command desk</p>
           <h1 className="mt-1 font-display text-4xl tracking-wide text-fg sm:text-5xl">Today's board</h1>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
-            Scan every live sport, rank the number, research the top of the card, and lock one play per
-            sport. Thin edges get skipped. Odds freeze the moment a pick hits #picks.
+            Official card is today in PT. Worker scans, ranks, posts after Discord confirms, then grades.
+            MLS/EPL stay dark until 3-way markets.
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Button variant="secondary" onClick={() => desk.refresh()} disabled={busy} className="min-h-12">
-            {desk.scanning ? <Loader2 className="size-4 animate-spin" /> : <Radar className="size-4" />}
-            Scan odds
-          </Button>
-          <Button onClick={() => desk.run()} disabled={busy} className="min-h-12">
-            {desk.running ? <Loader2 className="size-4 animate-spin" /> : <Ship className="size-4" />}
-            Run the desk
-          </Button>
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          {op ? (
+            <>
+              <Button variant="secondary" onClick={() => desk.refresh()} disabled={busy} className="min-h-12">
+                {desk.scanning ? <Loader2 className="size-4 animate-spin" /> : <Radar className="size-4" />}
+                Scan odds
+              </Button>
+              <Button onClick={() => desk.run()} disabled={busy} className="min-h-12">
+                {desk.running ? <Loader2 className="size-4 animate-spin" /> : <Ship className="size-4" />}
+                Run the desk
+              </Button>
+              <Button variant="ghost" onClick={() => desk.lock()} className="min-h-12">
+                Lock
+              </Button>
+            </>
+          ) : (
+            <form
+              className="flex min-w-0 gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                desk.unlock(pin);
+              }}
+            >
+              <Input
+                type="password"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                placeholder="Operator PIN"
+                className="min-h-12 w-36"
+                autoComplete="off"
+              />
+              <Button type="submit" className="min-h-12">
+                Unlock
+              </Button>
+            </form>
+          )}
         </div>
       </div>
 
@@ -111,18 +120,23 @@ export function DeskHq() {
           <div className="rounded-xl bg-surface p-4 shadow-border">
             <p className="text-sm font-medium text-fg">Discord webhook</p>
             <p className="mt-1 text-xs text-subtle">
-              Saved on the desk so auto-post can hit #picks 2–3 hours before kick.
-              {desk.data.hasWebhook ? " Webhook is on file." : " No webhook saved yet."}
+              {desk.data.webhookSource === "env"
+                ? "Using DISCORD_WEBHOOK_URL on the server. Never commit it."
+                : desk.data.hasWebhook
+                  ? "Webhook is saved on the desk (not GitHub)."
+                  : "Set DISCORD_WEBHOOK_URL in hosting secrets, or paste here after unlock."}
             </p>
-            <Input
-              className="mt-3"
-              type="password"
-              autoComplete="off"
-              placeholder="https://discord.com/api/webhooks/…"
-              value={webhook}
-              onChange={(e) => saveWebhook(e.target.value)}
-              onBlur={() => desk.saveHook(webhook)}
-            />
+            {op && desk.data.webhookSource !== "env" ? (
+              <Input
+                className="mt-3"
+                type="password"
+                autoComplete="off"
+                placeholder="https://discord.com/api/webhooks/…"
+                value={webhook}
+                onChange={(e) => setWebhook(e.target.value)}
+                onBlur={() => desk.saveHook(webhook)}
+              />
+            ) : null}
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
-import { formatAmerican, formatLine } from "@/lib/utils";
-import type { Market, OddsSnapshot, Side } from "./types";
+import { formatAmerican, formatLine } from "../utils.ts";
+import type { Market, OddsSnapshot, Side } from "./types.ts";
 
 export function parseAmerican(raw: unknown): number | null {
   if (raw == null) return null;

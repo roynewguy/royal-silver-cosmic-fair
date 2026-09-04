@@ -61,8 +61,12 @@ export function relativeTo(iso: string, now = Date.now()): string {
   return diff >= 0 ? `in ${days}d` : `${days}d ago`;
 }
 
-export function profitFromOdds(american: number, units: number, result: "WIN" | "LOSS" | "PUSH"): number {
-  if (result === "PUSH") return 0;
+export function profitFromOdds(
+  american: number,
+  units: number,
+  result: "WIN" | "LOSS" | "PUSH" | "VOID",
+): number {
+  if (result === "PUSH" || result === "VOID") return 0;
   if (result === "LOSS") return -units;
   if (american < 0) return (100 / Math.abs(american)) * units;
   return (american / 100) * units;

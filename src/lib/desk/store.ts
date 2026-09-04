@@ -1,3 +1,4 @@
+import { resolveWebhook } from "@/lib/sports/discord";
 import { getSql } from "@/lib/db";
 import type {
   DeskLog,
@@ -93,6 +94,8 @@ type PickDb = {
   posted_at: unknown;
   graded_at: unknown;
   discord_message: string | null;
+  discord_message_id?: string | null;
+  official_key?: string | null;
   skip_reason: string | null;
   created_at: unknown;
   home_logo?: string | null;
@@ -142,8 +145,13 @@ export function gameFromRow(row: GameRow): GameCard {
       openHomeSpread: null,
       openTotal: null,
       openHomeMl: null,
+      source: "unknown",
+      capturedAt: null,
     }),
     rank: jsonParse<RankPick | null>(row.rank_json, null),
+    notes: [],
+    injuries: [],
+    weather: null,
   };
 }
 
@@ -174,6 +182,8 @@ export function pickFromRow(row: PickDb): PickRow {
       openHomeSpread: null,
       openTotal: null,
       openHomeMl: null,
+      source: "unknown",
+      capturedAt: null,
     }),
     reason: row.reason,
     research: row.research,
@@ -188,6 +198,8 @@ export function pickFromRow(row: PickDb): PickRow {
     postedAt: row.posted_at ? iso(row.posted_at) : null,
     gradedAt: row.graded_at ? iso(row.graded_at) : null,
     discordMessage: row.discord_message,
+    discordMessageId: row.discord_message_id ?? null,
+    officialKey: row.official_key ?? null,
     skipReason: row.skip_reason,
     createdAt: iso(row.created_at),
     homeLogo: row.home_logo ?? null,
@@ -389,6 +401,7 @@ export async function readDesk(): Promise<DeskState> {
     loadLog(),
     loadMeta(),
   ]);
+  const hook = resolveWebhook(await readWebhook());
   return {
     record,
     games,
@@ -400,7 +413,10 @@ export async function readDesk(): Promise<DeskState> {
     minEdgePct: meta.minEdgePct,
     minConfidence: meta.minConfidence,
     postLeadMinutes: meta.postLeadMinutes,
-    hasWebhook: meta.hasWebhook,
+    hasWebhook: hook.source !== "none",
+    webhookSource: hook.source,
+    operator: false,
+    soccerDesk: "off",
   };
 }
 

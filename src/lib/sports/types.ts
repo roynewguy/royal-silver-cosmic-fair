@@ -10,7 +10,14 @@ export type SportId =
   | "ncaab"
   | "ufc";
 
-export type GameStatus = "scheduled" | "in_progress" | "final";
+export type GameStatus =
+  | "scheduled"
+  | "in_progress"
+  | "final"
+  | "postponed"
+  | "cancelled"
+  | "delayed"
+  | "suspended";
 
 export type Market = "spread" | "moneyline" | "total";
 
@@ -18,7 +25,7 @@ export type Side = "home" | "away" | "over" | "under";
 
 export type PickStatus = "queued" | "posted" | "skipped" | "graded";
 
-export type PickResult = "WIN" | "LOSS" | "PUSH";
+export type PickResult = "WIN" | "LOSS" | "PUSH" | "VOID";
 
 export type OddsSnapshot = {
   book: string;
@@ -35,6 +42,8 @@ export type OddsSnapshot = {
   openHomeSpread: number | null;
   openTotal: number | null;
   openHomeMl: number | null;
+  source: "odds-api" | "espn" | "unknown";
+  capturedAt: string | null;
 };
 
 export type TeamInfo = {
@@ -68,6 +77,9 @@ export type GameCard = {
   venue: string | null;
   odds: OddsSnapshot;
   rank: RankPick | null;
+  notes: string[];
+  injuries: string[];
+  weather: string | null;
 };
 
 export type SportScan = {
@@ -104,6 +116,8 @@ export type PickRow = {
   postedAt: string | null;
   gradedAt: string | null;
   discordMessage: string | null;
+  discordMessageId: string | null;
+  officialKey: string | null;
   skipReason: string | null;
   createdAt: string;
   homeLogo: string | null;
@@ -143,4 +157,7 @@ export type DeskState = {
   minConfidence: number;
   postLeadMinutes: number;
   hasWebhook: boolean;
+  webhookSource: "env" | "desk" | "none";
+  operator: boolean;
+  soccerDesk: "off";
 };

@@ -1,4 +1,5 @@
-import { LEAGUE_BY_ID, type LeagueConfig } from "./leagues";
+import { isOfficialDay } from "./day.ts";
+import { LEAGUE_BY_ID, type LeagueConfig } from "./leagues.ts";
 import {
   clamp,
   devig,
@@ -6,8 +7,8 @@ import {
   impliedFromAmerican,
   parseWinPct,
   selectionLabel,
-} from "./odds";
-import type { GameCard, RankPick, SportScan } from "./types";
+} from "./odds.ts";
+import type { GameCard, RankPick, SportScan } from "./types.ts";
 
 const MIN_EDGE = 0.03;
 const MIN_CONF = 58;
@@ -32,13 +33,19 @@ function spreadMoveBonus(game: GameCard): number {
 }
 
 function rankOne(game: GameCard, league: LeagueConfig): RankPick | null {
-  if (game.status !== "scheduled") return null;
+  if (game.status !== "scheduled" && game.status !== "delayed") return null;
+  if (game.status === "delayed") return null;
   if (!hasUsableOdds(game.odds)) return null;
   const start = new Date(game.startAt).getTime();
   if (Number.isNaN(start) || start < Date.now() - 5 * 60_000) return null;
 
+  const injuryHit = (game.injuries ?? []).join(" ").toLowerCase();
+  const homeHurt = injuryHit.includes(game.home.abbr.toLowerCase()) || injuryHit.includes("out");
+  const injuryHaircut = (game.injuries?.length ?? 0) > 0 ? (homeHurt ? 0.01 : 0.005) : 0;
+
   const candidates: RankPick[] = [];
-  const modelHome = modelHomeWin(game, league);
+  const modelHomeRaw = modelHomeWin(game, league);
+  const modelHome = modelHomeRaw == null ? null : clamp(modelHomeRaw - injuryHaircut, 0.18, 0.82);
 
   if (modelHome != null && game.odds.homeMl != null && game.odds.awayMl != null) {
     const modelAway = 1 - modelHome;
@@ -173,10 +180,17 @@ function rankOne(game: GameCard, league: LeagueConfig): RankPick | null {
   return { ...best, confidence: Math.round(conf) };
 }
 
+export function rankGame(game: GameCard): RankPick | null {
+  const league = LEAGUE_BY_ID[game.league];
+  if (!league?.official) return null;
+  return rankOne(game, league);
+}
+
 export function rankGames(games: GameCard[]): GameCard[] {
   return games.map((game) => {
     const league = LEAGUE_BY_ID[game.league];
     if (!league) return { ...game, rank: null };
+    if (!league.official) return { ...game, rank: null };
     return { ...game, rank: rankOne(game, league) };
   });
 }
@@ -185,6 +199,7 @@ export function bestPerSport(
   games: GameCard[],
   minEdge = 3,
   minConf = 58,
+  now = new Date(),
 ): { pick: GameCard; skip: SportScan }[] {
   const bySport = new Map<string, GameCard[]>();
   for (const g of games) {
@@ -194,7 +209,22 @@ export function bestPerSport(
   }
   const out: { pick: GameCard; skip: SportScan }[] = [];
   for (const league of Object.values(LEAGUE_BY_ID)) {
-    const slate = (bySport.get(league.id) ?? []).filter((g) => g.status === "scheduled");
+    const all = bySport.get(league.id) ?? [];
+    if (!league.official) {
+      out.push({
+        pick: all[0] ?? ({ league: league.id, sport: league.sport } as GameCard),
+        skip: {
+          league: league.id,
+          sport: league.sport,
+          active: false,
+          gameCount: all.length,
+          skipped: true,
+          skipReason: "Soccer desk dark until 3-way markets ship.",
+        },
+      });
+      continue;
+    }
+    const slate = all.filter((g) => g.status === "scheduled" && isOfficialDay(g.startAt, now));
     const playable = slate.filter(
       (g) => g.rank && g.rank.edgePct >= minEdge && g.rank.confidence >= minConf,
     );
@@ -211,7 +241,7 @@ export function bestPerSport(
           skipped: true,
           skipReason:
             slate.length === 0
-              ? "No games in window."
+              ? "No games on today's PT card."
               : slate.every((g) => !hasUsableOdds(g.odds))
                 ? "No listed odds — pass."
                 : "No play meets the edge threshold.",

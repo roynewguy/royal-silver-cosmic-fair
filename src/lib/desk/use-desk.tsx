@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { toast } from "sonner";
-import { getDesk, pushPick, refreshBoard, runDesk, saveWebhook } from "@/lib/desk/api";
+import { getDesk, lockDesk, pushPick, refreshBoard, runDesk, saveWebhook, unlockDesk } from "@/lib/desk/api";
 import type { DeskState } from "@/lib/sports/types";
 
 const empty: DeskState = {
@@ -18,6 +18,9 @@ const empty: DeskState = {
   minConfidence: 58,
   postLeadMinutes: 150,
   hasWebhook: false,
+  webhookSource: "none",
+  operator: false,
+  soccerDesk: "off",
 };
 
 type DeskApi = {
@@ -30,13 +33,14 @@ type DeskApi = {
   run: () => void;
   push: (input: { pickId: number; webhookUrl?: string }) => void;
   saveHook: (webhookUrl: string) => void;
+  unlock: (pin: string) => void;
+  lock: () => void;
 };
 
 const DeskContext = createContext<DeskApi | null>(null);
 
 function useDeskController(): DeskApi {
   const qc = useQueryClient();
-  const booted = useRef(false);
 
   const query = useQuery({
     queryKey: ["desk"],
@@ -49,7 +53,7 @@ function useDeskController(): DeskApi {
     onSuccess: (data) => {
       qc.setQueryData(["desk"], data);
     },
-    onError: () => toast.error("Scan failed. Try again."),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Scan failed."),
   });
 
   const run = useMutation({
@@ -58,7 +62,7 @@ function useDeskController(): DeskApi {
       qc.setQueryData(["desk"], data);
       toast.success("Desk run complete.");
     },
-    onError: () => toast.error("Desk run failed."),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Desk run failed."),
   });
 
   const push = useMutation({
@@ -69,7 +73,7 @@ function useDeskController(): DeskApi {
         return;
       }
       if (res.state) qc.setQueryData(["desk"], res.state);
-      toast.success("Posted to #picks.");
+      toast.success("Posted to Discord.");
     },
     onError: () => toast.error("Post failed."),
   });
@@ -82,17 +86,26 @@ function useDeskController(): DeskApi {
         return;
       }
       if (res.state) qc.setQueryData(["desk"], res.state);
+      toast.success("Webhook saved on the desk.");
     },
   });
 
-  useEffect(() => {
-    if (booted.current) return;
-    if (!query.isSuccess) return;
-    booted.current = true;
-    if (!query.data.lastScanAt && !refresh.isPending) {
-      refresh.mutate();
-    }
-  }, [query.isSuccess, query.data?.lastScanAt, refresh]);
+  const unlock = useMutation({
+    mutationFn: (pin: string) => unlockDesk({ data: { pin } }),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      if ("state" in res && res.state) qc.setQueryData(["desk"], res.state);
+      toast.success("Desk unlocked.");
+    },
+  });
+
+  const lock = useMutation({
+    mutationFn: () => lockDesk(),
+    onSuccess: (data) => qc.setQueryData(["desk"], data),
+  });
 
   return {
     data: query.data ?? empty,
@@ -104,6 +117,8 @@ function useDeskController(): DeskApi {
     run: () => run.mutate(),
     push: (input) => push.mutate(input),
     saveHook: (webhookUrl) => saveHook.mutate(webhookUrl),
+    unlock: (pin) => unlock.mutate(pin),
+    lock: () => lock.mutate(),
   };
 }
 
