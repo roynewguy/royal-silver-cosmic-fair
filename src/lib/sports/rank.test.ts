@@ -1,6 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bestOnSlate, bestPerSport, clampDailyPicks, countsTowardDailyCap, dailyPickTarget, remainingDailySlots, rankGames, takeTopPlays } from "./rank.ts";
+import {
+  bestOnSlate,
+  bestPerSport,
+  clampDailyPicks,
+  countsTowardDailyCap,
+  dailyPickTarget,
+  envDefaultDailyPicks,
+  nextOfficialSlots,
+  officialPicksForPtDay,
+  remainingDailySlots,
+  rankGames,
+  resolveDailyPickTarget,
+  takeTopPlays,
+} from "./rank.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
 
 const odds: OddsSnapshot = {
@@ -160,26 +173,59 @@ test("bestOnSlate posts fewer than target when few qualify, and none if none qua
   assert.equal(bestOnSlate([started], 3, 58, now).length, 0);
 });
 
-test("DAILY_PICK_TARGET env wins over desk setting", () => {
-  assert.equal(dailyPickTarget(5, { DAILY_PICK_TARGET: "3" }), 3);
+test("dashboard daily target wins; env is the initial default only", () => {
+  assert.equal(envDefaultDailyPicks({ DAILY_PICK_TARGET: "5" }), 5);
+  assert.equal(envDefaultDailyPicks({ DAILY_PICK_TARGET: "99" }), 6);
+  assert.equal(envDefaultDailyPicks({}), 3);
+  assert.equal(resolveDailyPickTarget({ stored: 3, source: "env", env: { DAILY_PICK_TARGET: "5" } }), 5);
+  assert.equal(resolveDailyPickTarget({ stored: 2, source: "operator", env: { DAILY_PICK_TARGET: "5" } }), 2);
+  assert.equal(dailyPickTarget(5, { DAILY_PICK_TARGET: "3" }), 5);
   assert.equal(dailyPickTarget(2, {}), 2);
-});
-
-test("true PT daily maximum: posted+graded fill the cap", () => {
-  assert.equal(remainingDailySlots(3, 0), 3);
-  assert.equal(remainingDailySlots(3, 2), 1);
-  assert.equal(remainingDailySlots(3, 3), 0);
-  assert.equal(remainingDailySlots(3, 4), 0);
-});
-
-test("skipped PASS tickets do not count toward the daily cap", () => {
-  const statuses = ["queued", "posting", "posted", "graded", "skipped", "skipped"];
-  const committed = statuses.filter(countsTowardDailyCap).length;
-  assert.equal(committed, 4);
-  assert.equal(remainingDailySlots(6, committed), 2);
-  assert.equal(countsTowardDailyCap("skipped"), false);
-  assert.equal(countsTowardDailyCap("queued"), true);
   assert.equal(clampDailyPicks(8), 6);
   assert.equal(clampDailyPicks(0), 1);
 });
 
+test("true PT daily maximum: 3 graded today blocks a fourth", () => {
+  const now = new Date("2026-09-04T19:00:00-07:00");
+  const today = "2026-09-04T20:00:00-07:00";
+  const committed = [
+    { gameId: "nba:1", status: "graded", startAt: today },
+    { gameId: "nba:2", status: "graded", startAt: today },
+    { gameId: "nfl:1", status: "graded", startAt: today },
+  ];
+  assert.equal(officialPicksForPtDay(committed, now).length, 3);
+  assert.deepEqual(nextOfficialSlots(["mlb:1"], committed, 3, now), []);
+  assert.equal(remainingDailySlots(3, 3), 0);
+});
+
+test("yesterday's ungraded pick does not use today's slot", () => {
+  const now = new Date("2026-09-04T19:00:00-07:00");
+  const today = "2026-09-04T20:00:00-07:00";
+  const yesterday = "2026-09-03T19:10:00-07:00";
+  const committed = [
+    { gameId: "mlb:old", status: "posted", startAt: yesterday },
+    { gameId: "nba:1", status: "graded", startAt: today },
+    { gameId: "pass:1", status: "skipped", startAt: today },
+  ];
+  assert.equal(officialPicksForPtDay(committed, now).length, 1);
+  assert.equal(countsTowardDailyCap("skipped"), false);
+  assert.deepEqual(nextOfficialSlots(["nba:2", "nfl:1", "nhl:1"], committed, 3, now), [
+    "nba:2",
+    "nfl:1",
+  ]);
+});
+
+test("queued+posting+posted+graded fill the cap; skipped does not", () => {
+  const now = new Date("2026-09-04T12:00:00-07:00");
+  const today = "2026-09-04T18:00:00-07:00";
+  const committed = [
+    { gameId: "a", status: "queued", startAt: today },
+    { gameId: "b", status: "posting", startAt: today },
+    { gameId: "c", status: "posted", startAt: today },
+    { gameId: "d", status: "graded", startAt: today },
+    { gameId: "e", status: "skipped", startAt: today },
+  ];
+  assert.equal(officialPicksForPtDay(committed, now).length, 4);
+  assert.deepEqual(nextOfficialSlots(["f"], committed, 3, now), []);
+  assert.deepEqual(nextOfficialSlots(["f"], committed, 6, now), ["f"]);
+});

@@ -58,7 +58,7 @@ Project → **Settings** → **Environment Variables** (Production):
 | Name | Value |
 | --- | --- |
 | `FREE_BETA_MODE` | `true` |
-| `DAILY_PICK_TARGET` | `3` (best N bets on the whole slate; desk can still change 1–6) |
+| `DAILY_PICK_TARGET` | `3` — **initial default only** (1–6). After first unlock, the operator dashboard is the live target. |
 | `CRON_SECRET` | the random string from step 5 |
 | `ODDS_API_KEY` | Odds API key |
 | `DISCORD_WEBHOOK_URL` | Discord webhook URL |
@@ -101,7 +101,10 @@ After that, the schedule (`*/10 * * * *`) keeps POSTing:
 * No automatic Grok / xAI spend.
 * DraftKings (Odds API) is rationed near post time, one market only.
 * Official posts require a verified DraftKings line. ESPN is never labeled DraftKings.
-* At 0 Odds API credits: cached DK or PASS.
+* At 0 Odds API credits: cached DK (fresh within 20 minutes) or PASS.
+
+Daily card: best N qualifying bets on today's PT slate (default 3, operator sets 1–6 on the desk). Graded tickets still fill today's cap. Skipped/PASS do not. Yesterday does not take today's slots. Official posts never freeze a DraftKings line older than 20 minutes.
+
 
 ## What you still enter by hand
 

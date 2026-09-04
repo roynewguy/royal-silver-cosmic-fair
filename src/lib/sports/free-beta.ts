@@ -47,6 +47,29 @@ export function officialDkAction(input: {
   return "pass";
 }
 
+/**
+ * Hard official-post rule: stored cache may live for history, but a stale DK
+ * line cannot freeze a ticket. Failed refresh + stale cache = PASS.
+ */
+export function officialLineDecision(input: {
+  remaining: number | null;
+  cacheAgeMs: number | null;
+  cachedIsDk: boolean;
+  checksAlready?: number;
+  fetchOk?: boolean;
+}): OfficialDkAction {
+  const action = officialDkAction(input);
+  if (action === "use-cache") {
+    return isFreshOfficialDkCache(input.cacheAgeMs) && input.cachedIsDk ? "use-cache" : "pass";
+  }
+  if (action === "fetch") {
+    if (input.fetchOk) return "fetch";
+    if (input.fetchOk === false) return "pass";
+    return "fetch";
+  }
+  return "pass";
+}
+
 export function canSpendOddsCredit(input: {
   remaining: number | null;
   checksAlready: number;

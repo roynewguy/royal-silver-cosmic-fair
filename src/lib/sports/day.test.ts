@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isOfficialDay, officialKey, ptDayKey, scanDateKeys } from "./day.ts";
+import { extraScanDateKeys, isOfficialDay, officialKey, ptDayKey, scanDateKeys, scanDateKeysForLeague } from "./day.ts";
 
 test("official key is stable", () => {
   assert.equal(officialKey("nfl", "nfl:401772510"), "nfl:nfl:401772510:official");
@@ -31,4 +31,11 @@ test("PT scan dates keep today's card after NY midnight", () => {
   assert.ok(keys.includes("20260904"), "yesterday PT still fetched at midnight for grading");
   assert.ok(keys.includes("20260905"));
   assert.equal(isOfficialDay("2026-09-05T02:00:00.000Z", midnight), false);
+});
+
+test("daily leagues skip tomorrow on the scoreboard plan", () => {
+  const now = new Date("2026-09-04T19:00:00-07:00");
+  assert.deepEqual(scanDateKeysForLeague(true, now).sort(), ["20260903", "20260904"]);
+  assert.deepEqual(scanDateKeysForLeague(false, now).sort(), ["20260903", "20260904", "20260905"]);
+  assert.deepEqual(extraScanDateKeys(false, 0, now), ["20260903"]);
 });

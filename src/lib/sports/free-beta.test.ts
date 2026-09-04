@@ -8,6 +8,7 @@ import {
   MAX_OFFICIAL_DK_CACHE_AGE_MINUTES,
   oddsBudget,
   officialDkAction,
+  officialLineDecision,
 } from "./free-beta.ts";
 import { oddsApiUrl, parseUsageHeaders } from "./odds-api.ts";
 
@@ -115,6 +116,32 @@ test("stale DraftKings cache cannot become an official post", () => {
   );
   assert.equal(
     officialDkAction({ remaining: 0, cacheAgeMs: 5 * 60_000, cachedIsDk: true }),
+    "use-cache",
+  );
+  assert.equal(
+    officialLineDecision({
+      remaining: 200,
+      cacheAgeMs: 40 * 60_000,
+      cachedIsDk: true,
+      fetchOk: false,
+    }),
+    "pass",
+  );
+  assert.equal(
+    officialLineDecision({
+      remaining: 0,
+      cacheAgeMs: 6 * 3600_000,
+      cachedIsDk: true,
+      fetchOk: false,
+    }),
+    "pass",
+  );
+  assert.equal(
+    officialLineDecision({
+      remaining: 200,
+      cacheAgeMs: 10 * 60_000,
+      cachedIsDk: true,
+    }),
     "use-cache",
   );
 });

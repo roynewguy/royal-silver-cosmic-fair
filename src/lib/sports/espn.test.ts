@@ -1,25 +1,47 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LEAGUE_BY_ID } from "./leagues.ts";
-import { urlsFor } from "./espn.ts";
+import { extraScanDateKeys } from "./day.ts";
+import { LEAGUE_BY_ID, LEAGUES } from "./leagues.ts";
+import { espnScoreboardUrlCount, INJURY_CACHE_MS, urlsFor } from "./espn.ts";
 
-test("each PT calendar date is requested once, not NY plus overlapping look-ahead", () => {
-  const stamps = [
-    new Date("2026-09-04T20:59:00-07:00"),
-    new Date("2026-09-04T21:01:00-07:00"),
-    new Date("2026-09-04T23:59:00-07:00"),
-  ];
-  for (const now of stamps) {
-    const urls = urlsFor(LEAGUE_BY_ID.nba, now);
-    assert.equal(urls.length, 3, now.toISOString());
-    assert.equal(new Set(urls).size, 3);
-    assert.ok(urls.every((u) => u.includes("dates=")));
-    assert.ok(urls.some((u) => u.includes("dates=20260904")), urls.join("\n"));
-  }
+test("daily leagues fetch today + yesterday, not a third overlapping date", () => {
+  const now = new Date("2026-09-04T21:01:00-07:00");
+  const nba = urlsFor(LEAGUE_BY_ID.nba, now);
+  assert.equal(nba.length, 2);
+  assert.equal(new Set(nba).size, 2);
+  assert.ok(nba.every((u) => u.includes("dates=")));
+  assert.ok(nba.some((u) => u.includes("dates=20260904")));
+  assert.ok(nba.some((u) => u.includes("dates=20260903")));
+  assert.ok(!nba.some((u) => u.includes("dates=20260905")));
+});
+
+test("weekly leagues still prep tomorrow", () => {
   const nfl = urlsFor(LEAGUE_BY_ID.nfl, new Date("2026-09-04T21:01:00-07:00"));
   assert.equal(nfl.length, 3);
+  assert.ok(nfl.some((u) => u.includes("dates=20260904")));
+  assert.ok(nfl.some((u) => u.includes("dates=20260905")));
+});
+
+test("empty weekly board skips tomorrow at runtime", () => {
+  const now = new Date("2026-09-04T12:00:00-07:00");
+  assert.deepEqual(extraScanDateKeys(true, 8, now), ["20260903"]);
+  assert.deepEqual(extraScanDateKeys(false, 0, now), ["20260903"]);
+  assert.equal(extraScanDateKeys(false, 4, now).includes("20260905"), true);
+});
+
+test("normal tick scoreboard plan is under the old 24-call fan-out", () => {
+  const now = new Date("2026-09-04T19:00:00-07:00");
+  const official = LEAGUES.filter((l) => l.official).length;
+  assert.equal(official, 8);
+  const count = espnScoreboardUrlCount(now);
+  assert.equal(count, 19);
+  assert.ok(count < 24);
+  assert.equal(INJURY_CACHE_MS, 60 * 60_000);
+});
+
+test("PT midnight still grades yesterday", () => {
   const midnight = urlsFor(LEAGUE_BY_ID.mlb, new Date("2026-09-05T00:00:00-07:00"));
-  assert.equal(midnight.length, 3);
   assert.ok(midnight.some((u) => u.includes("dates=20260904")));
   assert.ok(midnight.some((u) => u.includes("dates=20260905")));
+  assert.equal(midnight.length, 2);
 });

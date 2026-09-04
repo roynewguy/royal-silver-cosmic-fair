@@ -1,6 +1,6 @@
 import { getSql } from "@/lib/db";
 import { applyDraftKingsSnapshot } from "@/lib/sports/dk-open.ts";
-import { marketParam, officialDkAction } from "@/lib/sports/free-beta.ts";
+import { isFreshOfficialDkCache, marketParam, officialDkAction } from "@/lib/sports/free-beta.ts";
 import { LEAGUE_BY_ID } from "@/lib/sports/leagues.ts";
 import {
   fetchDraftKingsMarket,
@@ -11,6 +11,8 @@ import {
 } from "@/lib/sports/odds-api.ts";
 import type { GameCard, Market, OddsSnapshot } from "@/lib/sports/types";
 import { addLog } from "./store";
+
+const STALE_DK = "PASS: DraftKings line unavailable or cache older than 20 minutes.";
 
 function jsonParse<T>(raw: unknown, fallback: T): T {
   if (raw && typeof raw === "object") return raw as T;
@@ -74,12 +76,17 @@ async function saveCache(gameId: string, market: Market, odds: OddsSnapshot, che
   `;
 }
 
+function cacheIsOfficiallyValid(cached: { odds: OddsSnapshot; ageMs: number } | null): boolean {
+  return Boolean(cached && isDraftKingsLine(cached.odds) && isFreshOfficialDkCache(cached.ageMs));
+}
+
 export async function confirmDraftKings(
   game: GameCard,
   market: Market,
 ): Promise<{ ok: true; game: GameCard } | { ok: false; error: string }> {
   const cached = await loadCache(game.id, market);
   const remaining = await loadOddsRemaining();
+  const fresh = cacheIsOfficiallyValid(cached);
   const action = officialDkAction({
     remaining,
     cacheAgeMs: cached?.ageMs ?? null,
@@ -87,11 +94,12 @@ export async function confirmDraftKings(
     checksAlready: cached?.checks ?? 0,
   });
 
-  if (action === "use-cache" && cached) {
+  if (action === "use-cache") {
+    if (!fresh || !cached) return { ok: false, error: STALE_DK };
     return { ok: true, game: { ...game, odds: applyDraftKingsSnapshot(game.odds, cached.odds) } };
   }
   if (action === "pass") {
-    return { ok: false, error: "PASS: DraftKings line unavailable or cache older than 20 minutes." };
+    return { ok: false, error: STALE_DK };
   }
 
   const league = LEAGUE_BY_ID[game.league];
@@ -120,7 +128,7 @@ export async function confirmDraftKings(
     await addLog("scan", `Odds API ${err instanceof Error ? err.message : "failed"}`, game.sport);
   }
 
-  return { ok: false, error: "PASS: DraftKings line unavailable or cache older than 20 minutes." };
+  return { ok: false, error: STALE_DK };
 }
 
 export async function pruneFreeBetaCaches(force = false): Promise<void> {

@@ -13,7 +13,7 @@ import { buildFreezeSnapshot } from "@/lib/sports/freeze";
 import { impliedFromAmerican, lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import { isFreeBetaMode, oddsBudget } from "@/lib/sports/free-beta";
 import { mergeDraftKingsOdds } from "@/lib/sports/odds-api";
-import { bestOnSlate, dailyPickTarget, remainingDailySlots, rankGame, rankGames, unitsFor } from "@/lib/sports/rank";
+import { bestOnSlate, dailyPickTarget, nextOfficialSlots, rankGame, rankGames, unitsFor } from "@/lib/sports/rank";
 import { formatWhy } from "@/lib/sports/why";
 import {
   fingerprintResearch,
@@ -492,9 +492,13 @@ export async function selectOfficialCard(
   const target = dailyPickTarget(maxDailyPicks);
   const ranked = bestOnSlate(games, minEdge, minConf);
   const committed = await loadTodayOfficial();
-  const remaining = remainingDailySlots(target, committed.length);
-  const committedIds = new Set(committed.map((p) => p.gameId));
-  const wanted = ranked.filter((g) => !committedIds.has(g.id)).slice(0, remaining);
+  const wantedIds = nextOfficialSlots(
+    ranked.map((g) => g.id),
+    committed.map((p) => ({ gameId: p.gameId, status: p.status, startAt: p.startAt })),
+    target,
+  );
+  const wantedIdSet = new Set(wantedIds);
+  const wanted = ranked.filter((g) => wantedIdSet.has(g.id));
   const refreshQueued = committed
     .filter((p) => p.status === "queued")
     .map((p) => games.find((g) => g.id === p.gameId && g.status === "scheduled"))
@@ -639,7 +643,7 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
       meta.minConfidence,
       meta.postLeadMinutes,
       research,
-      dailyPickTarget(meta.maxDailyPicks),
+      meta.maxDailyPicks,
     );
     const posted = await flushDuePosts(games, meta.minEdgePct, meta.minConfidence);
     const espn = espnScanStats();

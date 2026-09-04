@@ -126,12 +126,27 @@ export function clampDailyPicks(n: number): number {
   return Math.min(MAX_DAILY_PICKS, Math.max(MIN_DAILY_PICKS, Math.round(n)));
 }
 
-export function dailyPickTarget(deskMax: number, env: NodeJS.ProcessEnv = process.env): number {
+/** Env is the initial default only. Dashboard/DB is the live target. */
+export function envDefaultDailyPicks(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.DAILY_PICK_TARGET?.trim();
   if (raw) {
     const n = Number(raw);
     if (Number.isFinite(n)) return clampDailyPicks(n);
   }
+  return DEFAULT_DAILY_PICKS;
+}
+
+export function resolveDailyPickTarget(input: {
+  stored: number | null | undefined;
+  source: string | null | undefined;
+  env?: NodeJS.ProcessEnv;
+}): number {
+  if (input.source === "operator") return clampDailyPicks(Number(input.stored) || DEFAULT_DAILY_PICKS);
+  return envDefaultDailyPicks(input.env);
+}
+
+/** Live daily cap from the desk setting (already resolved). Env does not override. */
+export function dailyPickTarget(deskMax: number, _env?: NodeJS.ProcessEnv): number {
   return clampDailyPicks(deskMax);
 }
 
@@ -141,6 +156,26 @@ export function countsTowardDailyCap(status: string): boolean {
 
 export function remainingDailySlots(target: number, committed: number): number {
   return Math.max(0, clampDailyPicks(target) - Math.max(0, committed));
+}
+
+export type CapPick = { gameId: string; status: string; startAt: string };
+
+/** Today's PT official tickets. Skipped/PASS never count. Yesterday never consumes today. */
+export function officialPicksForPtDay(picks: CapPick[], now = new Date()): CapPick[] {
+  return picks.filter((p) => countsTowardDailyCap(p.status) && isOfficialDay(p.startAt, now));
+}
+
+/** Ranked game ids still allowed onto today's card after committed tickets. */
+export function nextOfficialSlots(
+  rankedIds: string[],
+  committed: CapPick[],
+  target: number,
+  now = new Date(),
+): string[] {
+  const today = officialPicksForPtDay(committed, now);
+  const remaining = remainingDailySlots(target, today.length);
+  const taken = new Set(today.map((p) => p.gameId));
+  return rankedIds.filter((id) => !taken.has(id)).slice(0, remaining);
 }
 
 /** Rank every qualifying game on today's card. Not one-per-sport. */

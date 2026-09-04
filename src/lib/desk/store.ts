@@ -18,7 +18,7 @@ import type {
   SportScan,
 } from "@/lib/sports/types";
 import { LEAGUES } from "@/lib/sports/leagues";
-import { clampDailyPicks, countsTowardDailyCap } from "@/lib/sports/rank";
+import { clampDailyPicks, countsTowardDailyCap, resolveDailyPickTarget } from "@/lib/sports/rank";
 
 function iso(v: unknown): string {
   if (v instanceof Date) return v.toISOString();
@@ -370,9 +370,10 @@ export async function loadMeta(): Promise<{
     min_confidence: unknown;
     post_lead_minutes: unknown;
     max_daily_picks: unknown;
+    daily_picks_source: string | null;
     discord_webhook: string | null;
     auto_run: unknown;
-  }>`select last_scan_at, last_desk_at, min_edge_pct, min_confidence, post_lead_minutes, max_daily_picks, discord_webhook, auto_run from desk_meta where id = 1`;
+  }>`select last_scan_at, last_desk_at, min_edge_pct, min_confidence, post_lead_minutes, max_daily_picks, daily_picks_source, discord_webhook, auto_run from desk_meta where id = 1`;
   const r = rows[0];
   const rawCap = Math.round(num(r?.max_daily_picks) || 3);
   return {
@@ -381,7 +382,10 @@ export async function loadMeta(): Promise<{
     minEdgePct: num(r?.min_edge_pct) || 3,
     minConfidence: Math.round(num(r?.min_confidence) || 58),
     postLeadMinutes: Math.round(num(r?.post_lead_minutes) || 150),
-    maxDailyPicks: clampDailyPicks(rawCap),
+    maxDailyPicks: resolveDailyPickTarget({
+      stored: rawCap,
+      source: r?.daily_picks_source,
+    }),
     hasWebhook: Boolean(r?.discord_webhook && String(r.discord_webhook).trim()),
     autoRun: r?.auto_run !== false,
   };
@@ -390,7 +394,7 @@ export async function loadMeta(): Promise<{
 export async function writeMaxDailyPicks(n: number): Promise<number> {
   const cap = clampDailyPicks(n);
   const sql = await getSql();
-  await sql`update desk_meta set max_daily_picks = ${cap}, updated_at = now() where id = 1`;
+  await sql`update desk_meta set max_daily_picks = ${cap}, daily_picks_source = 'operator', updated_at = now() where id = 1`;
   return cap;
 }
 
@@ -492,16 +496,6 @@ export async function loadLatestPicksByGames(gameIds: string[]): Promise<Map<str
     if (!map.has(pick.gameId)) map.set(pick.gameId, pick);
   }
   return map;
-}
-
-export async function loadOpenOfficial(): Promise<PickRow[]> {
-  const sql = await getSql();
-  const rows = await sql<PickDb>`
-    select * from picks
-    where status in ('queued','posting','posted') and result is null
-    order by created_at asc
-  `;
-  return rows.map(pickFromRow);
 }
 
 export async function livePickForSport(sport: string): Promise<PickRow | null> {

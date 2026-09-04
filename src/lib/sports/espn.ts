@@ -1,5 +1,5 @@
+import { extraScanDateKeys, scanDateKeysForLeague, ymdToEspn, ptYmd } from "./day.ts";
 import { LEAGUES, type LeagueConfig } from "./leagues.ts";
-import { scanDateKeys } from "./day.ts";
 import { parseAmerican, parseLine } from "./odds.ts";
 import { parseInjuryStatus } from "./models/injury.ts";
 import type { GameCard, GameStatus, Injury, OddsSnapshot, Starter, TeamInfo } from "./types.ts";
@@ -66,6 +66,7 @@ type EspnEvent = {
   status?: { type?: { name?: string; state?: string; completed?: boolean } };
 };
 
+export const INJURY_CACHE_MS = 60 * 60_000;
 
 function mapStatus(raw?: string, state?: string, completed?: boolean): GameStatus {
   if (completed || state === "post") return "final";
@@ -273,10 +274,12 @@ function eventToGames(event: EspnEvent, league: LeagueConfig): GameCard[] {
 }
 
 const scanStats = { requests: 0, started: 0 };
+const inflight = new Map<string, Promise<unknown>>();
 
 export function beginEspnScan(): void {
   scanStats.requests = 0;
   scanStats.started = Date.now();
+  inflight.clear();
 }
 
 export function espnScanStats(): { espn_request_count: number; scan_duration_ms: number } {
@@ -286,7 +289,7 @@ export function espnScanStats(): { espn_request_count: number; scan_duration_ms:
   };
 }
 
-async function fetchJson(url: string): Promise<unknown> {
+async function fetchJsonUncached(url: string): Promise<unknown> {
   scanStats.requests += 1;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 9000);
@@ -303,6 +306,14 @@ async function fetchJson(url: string): Promise<unknown> {
   } finally {
     clearTimeout(t);
   }
+}
+
+async function fetchJson(url: string): Promise<unknown> {
+  const hit = inflight.get(url);
+  if (hit) return hit;
+  const p = fetchJsonUncached(url);
+  inflight.set(url, p);
+  return p;
 }
 
 async function poolMap<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<PromiseSettledResult<R>[]> {
@@ -324,26 +335,42 @@ async function poolMap<T, R>(items: T[], limit: number, fn: (item: T) => Promise
   return out;
 }
 
+export function scoreboardUrl(league: LeagueConfig, dateKey: string): string {
+  return `https://site.api.espn.com/apis/site/v2/sports/${league.espnSport}/${league.espnLeague}/scoreboard?dates=${dateKey}`;
+}
+
 export function urlsFor(league: LeagueConfig, now = new Date()): string[] {
-  const base = `https://site.api.espn.com/apis/site/v2/sports/${league.espnSport}/${league.espnLeague}/scoreboard`;
-  return [...new Set(scanDateKeys(now))].map((k) => `${base}?dates=${k}`);
+  return scanDateKeysForLeague(league.daily, now).map((k) => scoreboardUrl(league, k));
+}
+
+export function espnScoreboardUrlCount(now = new Date()): number {
+  return LEAGUES.filter((l) => l.official).reduce((n, l) => n + urlsFor(l, now).length, 0);
+}
+
+function absorb(payload: unknown, league: LeagueConfig, byId: Map<string, GameCard>) {
+  const events = (payload as { events?: EspnEvent[] })?.events ?? [];
+  for (const event of events) {
+    for (const game of eventToGames(event, league)) {
+      byId.set(game.id, game);
+    }
+  }
 }
 
 export async function fetchLeagueSlate(league: LeagueConfig, now = new Date()): Promise<GameCard[]> {
-  const urls = urlsFor(league, now);
-  const results = await poolMap(urls, 3, fetchJson);
+  const todayKey = ymdToEspn(ptYmd(now));
   const byId = new Map<string, GameCard>();
-  for (const result of results) {
-    if (result.status !== "fulfilled") continue;
-    const payload = result.value as { events?: EspnEvent[] };
-    for (const event of payload.events ?? []) {
-      for (const game of eventToGames(event, league)) {
-        byId.set(game.id, game);
-      }
-    }
+  try {
+    absorb(await fetchJson(scoreboardUrl(league, todayKey)), league, byId);
+  } catch {
+    /* keep going — yesterday may still grade */
+  }
+  const extra = extraScanDateKeys(league.daily, byId.size, now);
+  const extraResults = await poolMap(extra, 2, (k) => fetchJson(scoreboardUrl(league, k)));
+  for (const result of extraResults) {
+    if (result.status === "fulfilled") absorb(result.value, league, byId);
   }
   const games = [...byId.values()];
-  const needInjuries = games.some((g) => g.status === "scheduled");
+  const needInjuries = games.some((g) => g.status === "scheduled" && g.injuries.length === 0);
   if (!needInjuries) return games;
   const board = await fetchInjuryBoard(league);
   return games.map((g) => mergeInjuryBoard(g, board));
@@ -365,7 +392,7 @@ const injuryCache = new Map<string, { at: number; rows: BoardInj[] }>();
 
 async function fetchInjuryBoard(league: LeagueConfig): Promise<BoardInj[]> {
   const hit = injuryCache.get(league.id);
-  if (hit && Date.now() - hit.at < 30 * 60_000) return hit.rows;
+  if (hit && Date.now() - hit.at < INJURY_CACHE_MS) return hit.rows;
   const url = `https://site.api.espn.com/apis/site/v2/sports/${league.espnSport}/${league.espnLeague}/injuries`;
   try {
     const payload = (await fetchJson(url)) as {
