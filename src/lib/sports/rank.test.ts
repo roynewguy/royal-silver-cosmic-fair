@@ -73,3 +73,18 @@ test("official card ignores tomorrow even if the edge is bigger", () => {
     assert.equal(nfl?.pick.id, "nfl:today");
   }
 });
+
+test("ESPN odds never become an official pick", () => {
+  const now = new Date();
+  const kick = new Date(now.getTime() + 20 * 60_000).toISOString();
+  const games = rankGames([
+    card({
+      startAt: kick,
+      odds: { ...odds, source: "espn", book: "ESPN" },
+    }),
+  ]);
+  assert.equal(games[0]?.rank, null);
+  const nfl = bestPerSport(games, 3, 58, now).find((d) => d.skip.league === "nfl");
+  assert.equal(nfl?.skip.skipped, true);
+  assert.match(nfl?.skip.skipReason ?? "", /DraftKings/);
+});

@@ -6,6 +6,8 @@ Official desk for **#1 Picks Boat Boyz Picks**.
 
 ## Loop (unattended)
 
+Official card is **today in PT**, **DraftKings only** (The Odds API). No DK line → PASS. Soccer stays dark.
+
 Every ~10 minutes the worker:
 
 1. Refresh slate (ESPN schedule/scores; DraftKings via The Odds API when `ODDS_API_KEY` is set)
@@ -36,7 +38,7 @@ Set these on the host, not in the repo:
 | Var | Purpose |
 | --- | --- |
 | `DISCORD_WEBHOOK_URL` | Auto-post + recaps |
-| `BOATBOYZ_PIN` | **Required on Vercel.** No default PIN in production. |
+| `BOATBOYZ_PIN` | **Required.** Operator secret, 8+ characters. No default. Unlock is rate-limited. |
 | `CRON_SECRET` | Required. Tick endpoint only accepts `Authorization: Bearer $CRON_SECRET` |
 | `ODDS_API_KEY` | The Odds API, `bookmakers=draftkings` |
 | `XAI_API_KEY` | Injected by Grok for research |

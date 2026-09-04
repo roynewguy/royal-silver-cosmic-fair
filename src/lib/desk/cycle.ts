@@ -233,6 +233,7 @@ export async function flushDuePosts(games: GameCard[], minEdge: number, minConf:
     }>`select * from picks where id = ${row.id}`;
     const pick = full[0];
     if (!pick) continue;
+    const units = unitsFor(freshRank.confidence);
     const asRow = asPickRow({
       id: pick.id,
       gameId: row.game_id,
@@ -248,7 +249,7 @@ export async function flushDuePosts(games: GameCard[], minEdge: number, minConf:
       reason: pick.reason,
       confidence: freshRank.confidence,
       edgePct: freshRank.edgePct,
-      units: Number(pick.units),
+      units,
       status: "queued",
       startAt: String(pick.start_at),
       postAt: String(pick.post_at),
@@ -278,6 +279,7 @@ export async function flushDuePosts(games: GameCard[], minEdge: number, minConf:
         locked_odds_json = ${JSON.stringify(game.odds)},
         edge_pct = ${freshRank.edgePct},
         confidence = ${freshRank.confidence},
+        units = ${units},
         discord_message = ${message},
         discord_message_id = ${sent.id ?? null}
       where id = ${pick.id} and status = 'queued'
@@ -323,7 +325,7 @@ export async function selectOfficialCard(
       continue;
     }
     const reason = (aiPlay?.reason ?? rank.why).trim().slice(0, 420);
-    const confidence = Math.round(aiPlay?.confidence ?? rank.confidence);
+    const confidence = Math.round(rank.confidence);
     const units = unitsFor(confidence);
     const postAt = postAtFor(game.startAt, leadMinutes);
     const matchup = `${game.away.abbr} @ ${game.home.abbr}`;

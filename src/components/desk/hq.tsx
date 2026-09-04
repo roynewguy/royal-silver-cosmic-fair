@@ -28,7 +28,7 @@ export function DeskHq() {
           <p className="text-xs tracking-[0.22em] text-accent uppercase">Command desk</p>
           <h1 className="mt-1 font-display text-4xl tracking-wide text-fg sm:text-5xl">Today's board</h1>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
-            Official card is today in PT. Worker scans, ranks, posts after Discord confirms, then grades.
+            Official card is today in PT, DraftKings only. Worker posts after Discord confirms, then grades.
             MLS/EPL stay dark until 3-way markets.
           </p>
         </div>
@@ -59,9 +59,10 @@ export function DeskHq() {
                 type="password"
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
-                placeholder="Operator PIN"
-                className="min-h-12 w-36"
+                placeholder="Operator secret"
+                className="min-h-12 w-44"
                 autoComplete="off"
+                minLength={8}
               />
               <Button type="submit" className="min-h-12">
                 Unlock

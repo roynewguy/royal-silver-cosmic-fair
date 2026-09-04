@@ -8,6 +8,7 @@ import {
   parseWinPct,
   selectionLabel,
 } from "./odds.ts";
+import { isDraftKingsLine } from "./odds-api.ts";
 import type { GameCard, RankPick, SportScan } from "./types.ts";
 
 const MIN_EDGE = 0.03;
@@ -33,19 +34,14 @@ function spreadMoveBonus(game: GameCard): number {
 }
 
 function rankOne(game: GameCard, league: LeagueConfig): RankPick | null {
-  if (game.status !== "scheduled" && game.status !== "delayed") return null;
-  if (game.status === "delayed") return null;
+  if (game.status !== "scheduled") return null;
+  if (!isDraftKingsLine(game.odds)) return null;
   if (!hasUsableOdds(game.odds)) return null;
   const start = new Date(game.startAt).getTime();
   if (Number.isNaN(start) || start < Date.now() - 5 * 60_000) return null;
 
-  const injuryHit = (game.injuries ?? []).join(" ").toLowerCase();
-  const homeHurt = injuryHit.includes(game.home.abbr.toLowerCase()) || injuryHit.includes("out");
-  const injuryHaircut = (game.injuries?.length ?? 0) > 0 ? (homeHurt ? 0.01 : 0.005) : 0;
-
   const candidates: RankPick[] = [];
-  const modelHomeRaw = modelHomeWin(game, league);
-  const modelHome = modelHomeRaw == null ? null : clamp(modelHomeRaw - injuryHaircut, 0.18, 0.82);
+  const modelHome = modelHomeWin(game, league);
 
   if (modelHome != null && game.odds.homeMl != null && game.odds.awayMl != null) {
     const modelAway = 1 - modelHome;
@@ -242,9 +238,11 @@ export function bestPerSport(
           skipReason:
             slate.length === 0
               ? "No games on today's PT card."
-              : slate.every((g) => !hasUsableOdds(g.odds))
-                ? "No listed odds — pass."
-                : "No play meets the edge threshold.",
+              : slate.every((g) => !isDraftKingsLine(g.odds))
+                ? "PASS: DraftKings line unavailable."
+                : slate.every((g) => !hasUsableOdds(g.odds))
+                  ? "No listed odds — pass."
+                  : "No play meets the edge threshold.",
         },
       });
     } else {

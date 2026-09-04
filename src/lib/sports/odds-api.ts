@@ -1,13 +1,13 @@
-import { LEAGUES } from "./leagues";
-import { parseAmerican, parseLine } from "./odds";
-import type { GameCard, OddsSnapshot } from "./types";
+import { LEAGUES } from "./leagues.ts";
+import { parseAmerican, parseLine } from "./odds.ts";
+import type { GameCard, OddsSnapshot } from "./types.ts";
 
 type OddsApiMarket = {
   key?: string;
   outcomes?: { name?: string; price?: number; point?: number }[];
 };
 
-type OddsApiGame = {
+export type OddsApiGame = {
   home_team?: string;
   away_team?: string;
   commence_time?: string;
@@ -19,19 +19,59 @@ const cache: { at: number; byLeague: Map<string, OddsApiGame[]> } = {
   byLeague: new Map(),
 };
 
+const MAX_START_DELTA_MS = 4 * 60 * 60 * 1000;
+
 function norm(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-function namesMatch(a: string, b: string): boolean {
+export function namesMatch(a: string, b: string): boolean {
   const na = norm(a);
   const nb = norm(b);
   if (!na || !nb) return false;
   return na === nb || na.includes(nb) || nb.includes(na);
 }
 
+export function isDraftKingsLine(odds: OddsSnapshot): boolean {
+  if (odds.source !== "odds-api") return false;
+  return /draft\s*kings/i.test(odds.book);
+}
+
+export function pairOddsEvents(
+  games: { id: string; home: string; away: string; startAt: string }[],
+  events: { home_team?: string; away_team?: string; commence_time?: string }[],
+  maxDeltaMs = MAX_START_DELTA_MS,
+): Map<string, number> {
+  const used = new Set<number>();
+  const out = new Map<string, number>();
+  const ordered = [...games].sort((a, b) => +new Date(a.startAt) - +new Date(b.startAt));
+  for (const game of ordered) {
+    const start = new Date(game.startAt).getTime();
+    if (Number.isNaN(start)) continue;
+    let best = -1;
+    let bestDelta = Infinity;
+    events.forEach((event, i) => {
+      if (used.has(i)) return;
+      if (!namesMatch(event.home_team ?? "", game.home)) return;
+      if (!namesMatch(event.away_team ?? "", game.away)) return;
+      const commence = new Date(event.commence_time ?? "").getTime();
+      if (Number.isNaN(commence)) return;
+      const delta = Math.abs(commence - start);
+      if (delta < bestDelta) {
+        best = i;
+        bestDelta = delta;
+      }
+    });
+    if (best >= 0 && bestDelta <= maxDeltaMs) {
+      used.add(best);
+      out.set(game.id, best);
+    }
+  }
+  return out;
+}
+
 function snapshotFromApi(game: OddsApiGame, homeName: string, awayName: string): OddsSnapshot | null {
-  const book = game.bookmakers?.[0];
+  const book = game.bookmakers?.find((b) => /draftkings/i.test(`${b.key ?? ""} ${b.title ?? ""}`));
   if (!book) return null;
   const markets = book.markets ?? [];
   const h2h = markets.find((m) => m.key === "h2h");
@@ -45,7 +85,7 @@ function snapshotFromApi(game: OddsApiGame, homeName: string, awayName: string):
   const under = totals?.outcomes?.find((o) => /^under$/i.test(o.name ?? ""));
   if (homeMl == null && homeSp == null && over == null) return null;
   return {
-    book: book.title ?? "DraftKings",
+    book: book.title || "DraftKings",
     details: null,
     homeMl: parseAmerican(homeMl),
     awayMl: parseAmerican(awayMl),
@@ -94,17 +134,31 @@ export async function mergeDraftKingsOdds(games: GameCard[]): Promise<GameCard[]
         rows = await fetchLeagueOdds(league.oddsApiKey, apiKey);
         cache.byLeague.set(league.id, rows);
       }
-      for (const game of games.filter((g) => g.league === league.id)) {
-        const hit = rows.find(
-          (r) =>
-            namesMatch(r.home_team ?? "", game.home.name) &&
-            namesMatch(r.away_team ?? "", game.away.name),
-        );
-        if (!hit) continue;
-        const snap = snapshotFromApi(hit, game.home.name, game.away.name);
+      const leagueGames = games.filter((g) => g.league === league.id);
+      const pairs = pairOddsEvents(
+        leagueGames.map((g) => ({
+          id: g.id,
+          home: g.home.name,
+          away: g.away.name,
+          startAt: g.startAt,
+        })),
+        rows,
+      );
+      for (const [gameId, eventIndex] of pairs) {
+        const hit = rows[eventIndex];
+        const cur = byId.get(gameId);
+        if (!hit || !cur) continue;
+        const snap = snapshotFromApi(hit, cur.home.name, cur.away.name);
         if (!snap) continue;
-        const cur = byId.get(game.id);
-        if (cur) byId.set(game.id, { ...cur, odds: { ...snap, openHomeSpread: cur.odds.openHomeSpread, openHomeMl: cur.odds.openHomeMl, openTotal: cur.odds.openTotal } });
+        byId.set(gameId, {
+          ...cur,
+          odds: {
+            ...snap,
+            openHomeSpread: cur.odds.openHomeSpread,
+            openHomeMl: cur.odds.openHomeMl,
+            openTotal: cur.odds.openTotal,
+          },
+        });
       }
     }),
   );

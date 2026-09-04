@@ -1,32 +1,88 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server";
+import { createHash, randomBytes } from "node:crypto";
+import { deleteCookie, getCookie, getRequest, setCookie } from "@tanstack/react-start/server";
 import { getSql } from "@/lib/db";
 import { cronAuthorized } from "./cron-auth";
+import {
+  envSecretMatches,
+  hashOperatorSecret,
+  secretTooShort,
+  verifyOperatorSecret,
+} from "./operator-secret";
 
 export { cronAuthorized };
 
 const COOKIE = "boatboyz_op";
-const LOCAL_ONLY_PIN = "boatboyz";
+const LOCK_AFTER = 8;
+const LOCK_MINUTES = 15;
+const IP_FAILS = 5;
+const WINDOW_MINUTES = 15;
 
-function hashPin(pin: string): string {
-  return createHash("sha256").update(`boatboyz:${pin.trim()}`).digest("hex");
+function clientIp(): string {
+  try {
+    const req = getRequest();
+    const xf = req?.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    return xf || req?.headers.get("x-real-ip")?.trim() || "local";
+  } catch {
+    return "local";
+  }
 }
 
-function onVercel(): boolean {
-  return Boolean(process.env.VERCEL);
+function ipHash(ip: string): string {
+  return createHash("sha256").update(ip).digest("hex").slice(0, 32);
 }
 
-async function configuredPinHash(): Promise<string | null> {
+async function recordAttempt(ip: string, ok: boolean): Promise<void> {
+  const sql = await getSql();
+  const hash = ipHash(ip);
+  await sql`insert into operator_attempts (ip_hash, ok) values (${hash}, ${ok})`;
+  await sql`delete from operator_attempts where attempted_at < now() - interval '2 days'`;
+  if (ok) {
+    await sql`update desk_meta set auth_fail_count = 0, auth_locked_until = null, updated_at = now() where id = 1`;
+    return;
+  }
+  await sql`
+    update desk_meta
+    set auth_fail_count = auth_fail_count + 1,
+        auth_locked_until = case
+          when auth_fail_count + 1 >= ${LOCK_AFTER} then now() + (${LOCK_MINUTES} * interval '1 minute')
+          else auth_locked_until
+        end,
+        updated_at = now()
+    where id = 1
+  `;
+}
+
+async function unlockBlocked(ip: string): Promise<string | null> {
+  const sql = await getSql();
+  const meta = await sql<{ auth_locked_until: unknown }>`
+    select auth_locked_until from desk_meta where id = 1
+  `;
+  const until = meta[0]?.auth_locked_until ? new Date(String(meta[0].auth_locked_until)) : null;
+  if (until && until.getTime() > Date.now()) {
+    return "Desk locked after too many failed unlocks. Try later.";
+  }
+  const hash = ipHash(ip);
+  const fails = await sql<{ n: unknown }>`
+    select count(*) as n from operator_attempts
+    where ip_hash = ${hash} and ok = false
+      and attempted_at > now() - (${WINDOW_MINUTES} * interval '1 minute')
+  `;
+  if (Number(fails[0]?.n ?? 0) >= IP_FAILS) {
+    return "Too many attempts from this network. Wait 15 minutes.";
+  }
+  return null;
+}
+
+async function verifyConfigured(pin: string): Promise<boolean | "missing"> {
   const env = process.env.BOATBOYZ_PIN?.trim();
-  if (env) return hashPin(env);
+  if (env) return envSecretMatches(pin, env);
   const sql = await getSql();
   const rows = await sql<{ operator_pin_hash: string | null }>`
     select operator_pin_hash from desk_meta where id = 1
   `;
-  if (rows[0]?.operator_pin_hash) return rows[0].operator_pin_hash;
-  // Local / Grok preview only. Never write this into the database, never use it on Vercel.
-  if (!onVercel()) return hashPin(LOCAL_ONLY_PIN);
-  return null;
+  const stored = rows[0]?.operator_pin_hash;
+  if (!stored) return "missing";
+  return verifyOperatorSecret(pin, stored);
 }
 
 export async function isOperator(): Promise<boolean> {
@@ -41,19 +97,30 @@ export async function isOperator(): Promise<boolean> {
 
 export async function requireOperator(): Promise<{ ok: true } | { ok: false; error: string }> {
   if (await isOperator()) return { ok: true };
-  return { ok: false, error: "Operator PIN required." };
+  return { ok: false, error: "Operator unlock required." };
 }
 
 export async function loginWithPin(pin: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const expectedHex = await configuredPinHash();
-  if (!expectedHex) {
+  const ip = clientIp();
+  const blocked = await unlockBlocked(ip);
+  if (blocked) return { ok: false, error: blocked };
+
+  if (secretTooShort(pin)) {
+    await recordAttempt(ip, false);
+    return { ok: false, error: "Operator secret must be at least 8 characters." };
+  }
+
+  const result = await verifyConfigured(pin);
+  if (result === "missing") {
+    await recordAttempt(ip, false);
     return { ok: false, error: "BOATBOYZ_PIN is not set. Add it in hosting secrets." };
   }
-  const expected = Buffer.from(expectedHex, "hex");
-  const got = Buffer.from(hashPin(pin), "hex");
-  if (expected.length !== got.length || !timingSafeEqual(expected, got)) {
-    return { ok: false, error: "Wrong PIN." };
+  if (!result) {
+    await recordAttempt(ip, false);
+    return { ok: false, error: "Unlock failed." };
   }
+
+  await recordAttempt(ip, true);
   const token = randomBytes(24).toString("hex");
   const sql = await getSql();
   await sql`insert into desk_sessions (token, expires_at) values (${token}, now() + interval '14 days')`;
@@ -77,8 +144,8 @@ export async function logoutOperator(): Promise<void> {
 }
 
 export async function changePin(next: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (next.trim().length < 4) return { ok: false, error: "PIN must be at least 4 characters." };
+  if (secretTooShort(next)) return { ok: false, error: "Operator secret must be at least 8 characters." };
   const sql = await getSql();
-  await sql`update desk_meta set operator_pin_hash = ${hashPin(next)}, updated_at = now() where id = 1`;
+  await sql`update desk_meta set operator_pin_hash = ${hashOperatorSecret(next.trim())}, updated_at = now() where id = 1`;
   return { ok: true };
 }
