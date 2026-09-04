@@ -142,4 +142,5 @@ export type DeskState = {
   minEdgePct: number;
   minConfidence: number;
   postLeadMinutes: number;
+  hasWebhook: boolean;
 };

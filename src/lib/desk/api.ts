@@ -4,7 +4,7 @@ import { fetchAllSlates, inWindow } from "@/lib/sports/espn";
 import { LEAGUE_BY_ID } from "@/lib/sports/leagues";
 import { bestPerSport, rankGames, unitsFor } from "@/lib/sports/rank";
 import { gradePick, settle } from "@/lib/sports/grade";
-import { buildDiscordMessage, postWebhook } from "@/lib/sports/discord";
+import { discordWebhookOk, buildDiscordMessage, postWebhook } from "@/lib/sports/discord";
 import { researchPlays } from "@/lib/sports/research";
 import { lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import type { GameCard, PickRow } from "@/lib/sports/types";
@@ -14,8 +14,12 @@ import {
   loadGames,
   pickByGame,
   readDesk,
+  readWebhook,
   touchScan,
+  tryWorkerLock,
+  clearWorkerLock,
   upsertGames,
+  writeWebhook,
 } from "./store";
 
 function postAtFor(startAt: string, leadMinutes: number): string {
@@ -189,6 +193,15 @@ async function flushDuePosts(games: GameCard[], leadMinutes: number): Promise<nu
       gameStatus: game?.status ?? "scheduled",
     };
     const message = buildDiscordMessage(asRow, game);
+    const webhook = await readWebhook();
+    let discordOk = true;
+    if (webhook) {
+      const sent = await postWebhook(webhook, message);
+      if (!sent.ok) {
+        discordOk = false;
+        await addLog("post", `Discord failed: ${sent.error ?? "webhook error"}`, pick.sport);
+      }
+    }
     await sql`
       update picks set
         status = 'posted',
@@ -200,7 +213,15 @@ async function flushDuePosts(games: GameCard[], leadMinutes: number): Promise<nu
         discord_message = ${message}
       where id = ${pick.id}
     `;
-    await addLog("post", `Posted ${selection} · ${pick.matchup}`, pick.sport);
+    await addLog(
+      "post",
+      webhook && discordOk
+        ? `Posted to Discord · ${selection} · ${pick.matchup}`
+        : webhook
+          ? `Line frozen, Discord retry needed · ${selection}`
+          : `Posted (no webhook saved) · ${selection} · ${pick.matchup}`,
+      pick.sport,
+    );
     posted += 1;
     void leadMinutes;
   }
@@ -227,6 +248,7 @@ async function refreshInternal(): Promise<GameCard[]> {
 }
 
 export const getDesk = createServerFn({ method: "GET" }).handler(async () => {
+  ensureWorkerStarted();
   return readDesk();
 });
 
@@ -310,7 +332,8 @@ export const runDesk = createServerFn({ method: "POST" }).handler(async () => {
         where id = ${live.id}
       `;
     } else {
-      await sql`
+      try {
+        await sql`
         insert into picks (
           game_id, sport, league, matchup, market, selection, side,
           locked_line, locked_odds, locked_odds_json, reason, research,
@@ -321,6 +344,10 @@ export const runDesk = createServerFn({ method: "POST" }).handler(async () => {
           ${confidence}, ${rank.edgePct}, ${units}, 'queued', ${game.startAt}, ${postAt}
         )
       `;
+      } catch {
+        await addLog("skip", `${game.sport}: live ticket already exists.`, game.sport);
+        continue;
+      }
     }
     await addLog("research", `${game.sport} ${rank.selection} queued · posts ${postAt}`, game.sport);
   }
@@ -356,8 +383,60 @@ export const pushPick = createServerFn({ method: "POST" })
       await addLog("post", `Manual post ${pick.selection} · ${pick.matchup}`, pick.sport);
     }
     if (data.webhookUrl) {
+      if (discordWebhookOk(data.webhookUrl)) await writeWebhook(data.webhookUrl);
       const sent = await postWebhook(data.webhookUrl, content);
       if (!sent.ok) return { ok: false as const, error: sent.error ?? "Webhook failed." };
+    } else {
+      const stored = await readWebhook();
+      if (stored) {
+        const sent = await postWebhook(stored, content);
+        if (!sent.ok) return { ok: false as const, error: sent.error ?? "Webhook failed." };
+      }
     }
     return { ok: true as const, state: await readDesk() };
   });
+
+export const saveWebhook = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const data = input as { webhookUrl?: string };
+    return { webhookUrl: typeof data.webhookUrl === "string" ? data.webhookUrl.trim() : "" };
+  })
+  .handler(async ({ data }) => {
+    if (data.webhookUrl && !discordWebhookOk(data.webhookUrl)) {
+      return { ok: false as const, error: "Webhook URL is not a Discord webhook." };
+    }
+    await writeWebhook(data.webhookUrl);
+    await addLog("post", data.webhookUrl ? "Discord webhook saved on the desk." : "Discord webhook cleared.");
+    return { ok: true as const, state: await readDesk() };
+  });
+
+const g = globalThis as typeof globalThis & {
+  __boatboyzWorker?: ReturnType<typeof setInterval>;
+  __boatboyzBoot?: ReturnType<typeof setTimeout>;
+};
+
+export function ensureWorkerStarted() {
+  if (typeof setInterval === "undefined") return;
+  if (g.__boatboyzWorker) return;
+  g.__boatboyzWorker = setInterval(() => {
+    void tickDesk("interval").catch((err) => {
+      void addLog("scan", `Worker error: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }, 8 * 60 * 1000);
+  g.__boatboyzBoot = setTimeout(() => {
+    void tickDesk("boot").catch((err) => {
+      void addLog("scan", `Boot tick failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }, 4000);
+}
+
+export async function tickDesk(source: string) {
+  const locked = await tryWorkerLock();
+  if (!locked) return { ok: true as const, skipped: true, source };
+  try {
+    const games = await refreshInternal();
+    return { ok: true as const, skipped: false, source, games: games.length };
+  } finally {
+    await clearWorkerLock();
+  }
+}

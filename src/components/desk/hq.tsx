@@ -111,7 +111,8 @@ export function DeskHq() {
           <div className="rounded-xl bg-surface p-4 shadow-border">
             <p className="text-sm font-medium text-fg">Discord webhook</p>
             <p className="mt-1 text-xs text-subtle">
-              Optional. Stored only on this device. Posts from the desk never save the URL.
+              Saved on the desk so auto-post can hit #picks 2–3 hours before kick.
+              {desk.data.hasWebhook ? " Webhook is on file." : " No webhook saved yet."}
             </p>
             <Input
               className="mt-3"
@@ -120,6 +121,7 @@ export function DeskHq() {
               placeholder="https://discord.com/api/webhooks/…"
               value={webhook}
               onChange={(e) => saveWebhook(e.target.value)}
+              onBlur={() => desk.saveHook(webhook)}
             />
           </div>
         </div>

@@ -2,40 +2,24 @@
 
 Official desk for **#1 Picks Boat Boyz Picks**.
 
-This is the GitHub home for the Grok-built desk. Scan the day’s slates, pull live odds, rank matchups, lock **one best play per sport** (or skip if nothing is sharp), post 2–3 hours before kick, freeze the exact line, then grade WIN / LOSS / PUSH.
+**GitHub:** [roynewguy/royal-silver-cosmic-fair](https://github.com/roynewguy/royal-silver-cosmic-fair)
 
-**Repo:** [roynewguy/royal-silver-cosmic-fair](https://github.com/roynewguy/royal-silver-cosmic-fair)
+Last synced from Grok: **2026-09-04**.
 
-## You don’t need Git commands
+Scans the day’s slates, pulls live odds, ranks matchups, locks **one best play per sport** (or skips), posts 2–3 hours before kick with a short reason, freezes the exact line, then grades WIN / LOSS / PUSH.
 
-Stay in Grok chat. Tell Grok to update **this** repo.
+## This repo is the main one
 
-### Save the latest desk (Grok → GitHub)
+When you tell Grok `push this to GitHub`, it updates **this** repository.
 
-- `push this to GitHub`
-- `update royal-silver-cosmic-fair`
+## Desk loop
 
-### Pull GitHub into the live desk (GitHub → Grok)
+1. Scan active sports
+2. Rank vs the market
+3. Research the top of the card
+4. Queue one play per sport (skip thin edges)
+5. Auto-post to Discord when the 2–3h window hits
+6. Freeze odds at post time
+7. Grade WIN / LOSS / PUSH and roll the record
 
-- `pull from GitHub`
-- `use the GitHub version`
-
-## Do not commit secrets
-
-Keep these out of GitHub:
-
-- Discord webhook URL
-- operator PIN
-- API keys
-
-Those live in desk settings, not in this repo.
-
-## Layout
-
-| Path | What it is |
-| --- | --- |
-| `src/components/desk/` | HQ board, tickets, sport rail, channel |
-| `src/lib/sports/` | ESPN odds, ranker, research, Discord, grading |
-| `src/lib/desk/` | Scan / run desk / store |
-| `migrations/0002_picks.sql` | Games, picks, logs |
-| `src/routes/` | Board, slate, ledger |
+Webhook URL stays in desk settings, not in committed files.

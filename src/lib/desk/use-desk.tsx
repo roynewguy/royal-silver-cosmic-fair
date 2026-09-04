@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import { toast } from "sonner";
-import { getDesk, pushPick, refreshBoard, runDesk } from "@/lib/desk/api";
+import { getDesk, pushPick, refreshBoard, runDesk, saveWebhook } from "@/lib/desk/api";
 import type { DeskState } from "@/lib/sports/types";
 
 const empty: DeskState = {
@@ -17,6 +17,7 @@ const empty: DeskState = {
   minEdgePct: 3,
   minConfidence: 58,
   postLeadMinutes: 150,
+  hasWebhook: false,
 };
 
 type DeskApi = {
@@ -28,6 +29,7 @@ type DeskApi = {
   refresh: () => void;
   run: () => void;
   push: (input: { pickId: number; webhookUrl?: string }) => void;
+  saveHook: (webhookUrl: string) => void;
 };
 
 const DeskContext = createContext<DeskApi | null>(null);
@@ -72,6 +74,17 @@ function useDeskController(): DeskApi {
     onError: () => toast.error("Post failed."),
   });
 
+  const saveHook = useMutation({
+    mutationFn: (webhookUrl: string) => saveWebhook({ data: { webhookUrl } }),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        toast.error(res.error ?? "Webhook not saved.");
+        return;
+      }
+      if (res.state) qc.setQueryData(["desk"], res.state);
+    },
+  });
+
   useEffect(() => {
     if (booted.current) return;
     if (!query.isSuccess) return;
@@ -90,6 +103,7 @@ function useDeskController(): DeskApi {
     refresh: () => refresh.mutate(),
     run: () => run.mutate(),
     push: (input) => push.mutate(input),
+    saveHook: (webhookUrl) => saveHook.mutate(webhookUrl),
   };
 }
 

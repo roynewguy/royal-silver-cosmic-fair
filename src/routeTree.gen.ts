@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LedgerRouteImport } from './routes/ledger'
 import { Route as SlateRouteImport } from './routes/slate'
+import { Route as ApiCronTickRouteImport } from './routes/api/cron/tick'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +29,44 @@ const SlateRoute = SlateRouteImport.update({
   path: '/slate',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronTickRoute = ApiCronTickRouteImport.update({
+  id: '/api/cron/tick',
+  path: '/api/cron/tick',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ledger': typeof LedgerRoute
   '/slate': typeof SlateRoute
+  '/api/cron/tick': typeof ApiCronTickRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ledger': typeof LedgerRoute
   '/slate': typeof SlateRoute
+  '/api/cron/tick': typeof ApiCronTickRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/ledger': typeof LedgerRoute
   '/slate': typeof SlateRoute
+  '/api/cron/tick': typeof ApiCronTickRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/ledger' | '/slate'
+  fullPaths: '/' | '/ledger' | '/slate' | '/api/cron/tick'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/ledger' | '/slate'
-  id: '__root__' | '/' | '/ledger' | '/slate'
+  to: '/' | '/ledger' | '/slate' | '/api/cron/tick'
+  id: '__root__' | '/' | '/ledger' | '/slate' | '/api/cron/tick'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LedgerRoute: typeof LedgerRoute
   SlateRoute: typeof SlateRoute
+  ApiCronTickRoute: typeof ApiCronTickRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SlateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/tick': {
+      id: '/api/cron/tick'
+      path: '/api/cron/tick'
+      fullPath: '/api/cron/tick'
+      preLoaderRoute: typeof ApiCronTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LedgerRoute: LedgerRoute,
   SlateRoute: SlateRoute,
+  ApiCronTickRoute: ApiCronTickRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

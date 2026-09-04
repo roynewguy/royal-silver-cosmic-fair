@@ -317,6 +317,8 @@ export async function loadMeta(): Promise<{
   minEdgePct: number;
   minConfidence: number;
   postLeadMinutes: number;
+  hasWebhook: boolean;
+  autoRun: boolean;
 }> {
   const sql = await getSql();
   const rows = await sql<{
@@ -325,7 +327,9 @@ export async function loadMeta(): Promise<{
     min_edge_pct: unknown;
     min_confidence: unknown;
     post_lead_minutes: unknown;
-  }>`select last_scan_at, last_desk_at, min_edge_pct, min_confidence, post_lead_minutes from desk_meta where id = 1`;
+    discord_webhook: string | null;
+    auto_run: unknown;
+  }>`select last_scan_at, last_desk_at, min_edge_pct, min_confidence, post_lead_minutes, discord_webhook, auto_run from desk_meta where id = 1`;
   const r = rows[0];
   return {
     lastScanAt: r?.last_scan_at ? iso(r.last_scan_at) : null,
@@ -333,6 +337,8 @@ export async function loadMeta(): Promise<{
     minEdgePct: num(r?.min_edge_pct) || 3,
     minConfidence: Math.round(num(r?.min_confidence) || 58),
     postLeadMinutes: Math.round(num(r?.post_lead_minutes) || 150),
+    hasWebhook: Boolean(r?.discord_webhook && String(r.discord_webhook).trim()),
+    autoRun: r?.auto_run !== false,
   };
 }
 
@@ -394,6 +400,7 @@ export async function readDesk(): Promise<DeskState> {
     minEdgePct: meta.minEdgePct,
     minConfidence: meta.minConfidence,
     postLeadMinutes: meta.postLeadMinutes,
+    hasWebhook: meta.hasWebhook,
   };
 }
 
@@ -417,4 +424,31 @@ export async function pickByGame(gameId: string): Promise<PickRow | null> {
     limit 1
   `;
   return rows[0] ? pickFromRow(rows[0]) : null;
+}
+
+export async function readWebhook(): Promise<string> {
+  const sql = await getSql();
+  const rows = await sql<{ discord_webhook: string | null }>`select discord_webhook from desk_meta where id = 1`;
+  return rows[0]?.discord_webhook?.trim() ?? "";
+}
+
+export async function writeWebhook(url: string): Promise<void> {
+  const sql = await getSql();
+  await sql`update desk_meta set discord_webhook = ${url || null}, updated_at = now() where id = 1`;
+}
+
+export async function tryWorkerLock(): Promise<boolean> {
+  const sql = await getSql();
+  const rows = await sql<{ id: number }>`
+    update desk_meta
+    set worker_lock_until = now() + interval '3 minutes'
+    where id = 1 and (worker_lock_until is null or worker_lock_until < now())
+    returning id
+  `;
+  return rows.length > 0;
+}
+
+export async function clearWorkerLock(): Promise<void> {
+  const sql = await getSql();
+  await sql`update desk_meta set worker_lock_until = null where id = 1`;
 }
