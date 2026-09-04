@@ -7,11 +7,14 @@ import {
   countsTowardDailyCap,
   dailyPickTarget,
   envDefaultDailyPicks,
+  isLockedOfficialStatus,
   nextOfficialSlots,
   officialPicksForPtDay,
+  planDailyCard,
   remainingDailySlots,
   rankGames,
   resolveDailyPickTarget,
+  ROTATE_SKIP_REASON,
   takeTopPlays,
 } from "./rank.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
@@ -226,6 +229,77 @@ test("queued+posting+posted+graded fill the cap; skipped does not", () => {
     { gameId: "e", status: "skipped", startAt: today },
   ];
   assert.equal(officialPicksForPtDay(committed, now).length, 4);
+  assert.equal(isLockedOfficialStatus("queued"), false);
+  assert.equal(isLockedOfficialStatus("posting"), true);
+  // Locked (posting+posted+graded) already fill target 3; queued is rotatable.
   assert.deepEqual(nextOfficialSlots(["f"], committed, 3, now), []);
   assert.deepEqual(nextOfficialSlots(["f"], committed, 6, now), ["f"]);
+  const trim = planDailyCard(["f"], committed, 3, now);
+  assert.deepEqual(trim.rotateOffIds, ["a"]);
+  assert.equal(trim.remaining, 0);
+});
+
+test("stronger game replaces a weaker queued play", () => {
+  const now = new Date("2026-09-04T12:00:00-07:00");
+  const today = "2026-09-04T20:00:00-07:00";
+  const queued = [
+    { gameId: "nba:lakers", status: "queued", startAt: today },
+    { gameId: "mlb:dodgers", status: "queued", startAt: today },
+    { gameId: "mlb:yankees", status: "queued", startAt: today },
+  ];
+  const ranked = ["nba:celtics", "nba:lakers", "mlb:dodgers", "mlb:yankees"];
+  const plan = planDailyCard(ranked, queued, 3, now);
+  assert.deepEqual(plan.keepIds, ["nba:celtics", "nba:lakers", "mlb:dodgers"]);
+  assert.deepEqual(plan.rotateOffIds, ["mlb:yankees"]);
+  assert.equal(plan.remaining, 3);
+  assert.match(ROTATE_SKIP_REASON, /stronger play ranked higher/);
+});
+
+test("target 3 to 1 trims the provisional queued card", () => {
+  const now = new Date("2026-09-04T12:00:00-07:00");
+  const today = "2026-09-04T20:00:00-07:00";
+  const queued = [
+    { gameId: "nba:lakers", status: "queued", startAt: today },
+    { gameId: "mlb:dodgers", status: "queued", startAt: today },
+    { gameId: "nfl:eagles", status: "queued", startAt: today },
+  ];
+  const ranked = ["nba:lakers", "mlb:dodgers", "nfl:eagles"];
+  const plan = planDailyCard(ranked, queued, 1, now);
+  assert.deepEqual(plan.keepIds, ["nba:lakers"]);
+  assert.deepEqual(plan.rotateOffIds.sort(), ["mlb:dodgers", "nfl:eagles"].sort());
+  assert.equal(plan.lockedCount, 0);
+  assert.equal(plan.remaining, 1);
+});
+
+test("posted picks are never rotated off the card", () => {
+  const now = new Date("2026-09-04T14:00:00-07:00");
+  const today = "2026-09-04T20:00:00-07:00";
+  const tickets = [
+    { gameId: "nba:lakers", status: "posted", startAt: today },
+    { gameId: "mlb:dodgers", status: "queued", startAt: today },
+    { gameId: "mlb:yankees", status: "queued", startAt: today },
+  ];
+  const ranked = ["nba:celtics", "nba:lakers", "mlb:dodgers", "mlb:yankees"];
+  const plan = planDailyCard(ranked, tickets, 3, now);
+  assert.ok(!plan.keepIds.includes("nba:lakers"));
+  assert.ok(!plan.rotateOffIds.includes("nba:lakers"));
+  assert.deepEqual(plan.keepIds, ["nba:celtics", "mlb:dodgers"]);
+  assert.deepEqual(plan.rotateOffIds, ["mlb:yankees"]);
+  assert.equal(plan.lockedCount, 1);
+});
+
+test("target below already-posted count queues nothing new", () => {
+  const now = new Date("2026-09-04T16:00:00-07:00");
+  const today = "2026-09-04T20:00:00-07:00";
+  const tickets = [
+    { gameId: "nba:lakers", status: "posted", startAt: today },
+    { gameId: "mlb:dodgers", status: "posted", startAt: today },
+    { gameId: "nfl:eagles", status: "queued", startAt: today },
+  ];
+  const ranked = ["nba:celtics", "nba:lakers", "mlb:dodgers", "nfl:eagles"];
+  const plan = planDailyCard(ranked, tickets, 1, now);
+  assert.deepEqual(plan.keepIds, []);
+  assert.deepEqual(plan.rotateOffIds, ["nfl:eagles"]);
+  assert.equal(plan.remaining, 0);
+  assert.equal(plan.lockedCount, 2);
 });

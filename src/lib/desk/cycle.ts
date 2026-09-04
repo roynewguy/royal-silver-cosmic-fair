@@ -13,7 +13,7 @@ import { buildFreezeSnapshot } from "@/lib/sports/freeze";
 import { impliedFromAmerican, lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import { isFreeBetaMode, oddsBudget } from "@/lib/sports/free-beta";
 import { mergeDraftKingsOdds } from "@/lib/sports/odds-api";
-import { bestOnSlate, dailyPickTarget, nextOfficialSlots, rankGame, rankGames, unitsFor } from "@/lib/sports/rank";
+import { bestOnSlate, dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, unitsFor } from "@/lib/sports/rank";
 import { formatWhy } from "@/lib/sports/why";
 import {
   fingerprintResearch,
@@ -492,25 +492,31 @@ export async function selectOfficialCard(
   const target = dailyPickTarget(maxDailyPicks);
   const ranked = bestOnSlate(games, minEdge, minConf);
   const committed = await loadTodayOfficial();
-  const wantedIds = nextOfficialSlots(
+  const plan = planDailyCard(
     ranked.map((g) => g.id),
     committed.map((p) => ({ gameId: p.gameId, status: p.status, startAt: p.startAt })),
     target,
   );
-  const wantedIdSet = new Set(wantedIds);
+  const wantedIdSet = new Set(plan.keepIds);
   const wanted = ranked.filter((g) => wantedIdSet.has(g.id));
-  const refreshQueued = committed
-    .filter((p) => p.status === "queued")
-    .map((p) => games.find((g) => g.id === p.gameId && g.status === "scheduled"))
-    .filter((g): g is GameCard => Boolean(g && g.rank));
-  const toWrite = [...refreshQueued, ...wanted.filter((g) => !refreshQueued.some((r) => r.id === g.id))];
 
-  if (ranked.length === 0 && committed.length === 0) {
+  const sql = await getSql();
+  for (const gameId of plan.rotateOffIds) {
+    const row = committed.find((p) => p.gameId === gameId && p.status === "queued");
+    if (!row) continue;
+    await sql`
+      update picks
+      set status = 'skipped', skip_reason = ${ROTATE_SKIP_REASON}
+      where id = ${row.id} and status = 'queued' and freeze_json is null
+    `;
+    await addLog("skip", `${row.selection} — ${ROTATE_SKIP_REASON}`, row.sport);
+  }
+
+  if (plan.keepIds.length === 0 && plan.remaining > 0) {
     await addLog("skip", `PASS: no qualifying bets on today's slate (target ${target}).`);
   }
 
-  const sql = await getSql();
-  const existingByGame = await loadLatestPicksByGames(toWrite.map((g) => g.id));
+  const existingByGame = await loadLatestPicksByGames(wanted.map((g) => g.id));
 
   const aiPlays: AiPlay[] = [];
   if (allowResearch && wanted.length) {
@@ -548,7 +554,7 @@ export async function selectOfficialCard(
   }
 
   let queued = 0;
-  for (const game of toWrite) {
+  for (const game of wanted) {
     const rank = game.rank;
     if (!rank) continue;
     if (game.status !== "scheduled") continue;

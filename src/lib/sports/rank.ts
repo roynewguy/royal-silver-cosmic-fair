@@ -154,6 +154,13 @@ export function countsTowardDailyCap(status: string): boolean {
   return status === "queued" || status === "posting" || status === "posted" || status === "graded";
 }
 
+/** Locked tickets are sacred. Queued stays rotatable until posting starts. */
+export function isLockedOfficialStatus(status: string): boolean {
+  return status === "posting" || status === "posted" || status === "graded";
+}
+
+export const ROTATE_SKIP_REASON = "Rotated off daily card — stronger play ranked higher.";
+
 export function remainingDailySlots(target: number, committed: number): number {
   return Math.max(0, clampDailyPicks(target) - Math.max(0, committed));
 }
@@ -165,17 +172,46 @@ export function officialPicksForPtDay(picks: CapPick[], now = new Date()): CapPi
   return picks.filter((p) => countsTowardDailyCap(p.status) && isOfficialDay(p.startAt, now));
 }
 
-/** Ranked game ids still allowed onto today's card after committed tickets. */
+export function lockedOfficialForPtDay(picks: CapPick[], now = new Date()): CapPick[] {
+  return picks.filter((p) => isLockedOfficialStatus(p.status) && isOfficialDay(p.startAt, now));
+}
+
+export type DailyCardPlan = {
+  keepIds: string[];
+  rotateOffIds: string[];
+  remaining: number;
+  lockedCount: number;
+};
+
+/**
+ * Queued tickets are provisional. Posting/posted/graded never rotate.
+ * remainingSlots = target - locked. Keep set is the current best remaining games.
+ */
+export function planDailyCard(
+  rankedIds: string[],
+  tickets: CapPick[],
+  target: number,
+  now = new Date(),
+): DailyCardPlan {
+  const today = officialPicksForPtDay(tickets, now);
+  const locked = today.filter((p) => isLockedOfficialStatus(p.status));
+  const queued = today.filter((p) => p.status === "queued");
+  const remaining = remainingDailySlots(target, locked.length);
+  const lockedIds = new Set(locked.map((p) => p.gameId));
+  const keepIds = rankedIds.filter((id) => !lockedIds.has(id)).slice(0, remaining);
+  const keepSet = new Set(keepIds);
+  const rotateOffIds = [...new Set(queued.map((p) => p.gameId).filter((id) => !keepSet.has(id)))];
+  return { keepIds, rotateOffIds, remaining, lockedCount: locked.length };
+}
+
+/** Ranked game ids still allowed onto today's card after locked tickets. */
 export function nextOfficialSlots(
   rankedIds: string[],
   committed: CapPick[],
   target: number,
   now = new Date(),
 ): string[] {
-  const today = officialPicksForPtDay(committed, now);
-  const remaining = remainingDailySlots(target, today.length);
-  const taken = new Set(today.map((p) => p.gameId));
-  return rankedIds.filter((id) => !taken.has(id)).slice(0, remaining);
+  return planDailyCard(rankedIds, committed, target, now).keepIds;
 }
 
 /** Rank every qualifying game on today's card. Not one-per-sport. */

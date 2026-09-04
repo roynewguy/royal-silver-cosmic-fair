@@ -103,7 +103,7 @@ After that, the schedule (`*/10 * * * *`) keeps POSTing:
 * Official posts require a verified DraftKings line. ESPN is never labeled DraftKings.
 * At 0 Odds API credits: cached DK (fresh within 20 minutes) or PASS.
 
-Daily card: best N qualifying bets on today's PT slate (default 3, operator sets 1–6 on the desk). Graded tickets still fill today's cap. Skipped/PASS do not. Yesterday does not take today's slots. Official posts never freeze a DraftKings line older than 20 minutes.
+Daily card: best N qualifying bets on today's PT slate (default 3, operator sets 1–6 on the desk). Queued tickets stay rotatable until posting starts — a stronger play (or a lower target) can rotate a weaker queued pick off. Posting, posted, and graded tickets never move. Graded/posted/posting still fill today's cap. Skipped/PASS do not. Yesterday does not take today's slots. Official posts never freeze a DraftKings line older than 20 minutes.
 
 
 ## What you still enter by hand
