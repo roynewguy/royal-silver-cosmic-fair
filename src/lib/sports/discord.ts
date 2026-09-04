@@ -76,18 +76,46 @@ export async function postWebhook(
   return { ok: false, error: last };
 }
 
-export function buildDiscordMessage(pick: PickRow, _game?: GameCard | null): string {
-  const odds = pick.lockedOddsJson;
+export function scoreLine(game?: GameCard | null): string {
+  if (!game) return "Score: —";
+  const away = `${game.away.abbr} ${game.away.score ?? "—"}`;
+  const home = `${game.home.abbr} ${game.home.score ?? "—"}`;
+  if (game.status === "scheduled" || (game.away.score == null && game.home.score == null)) {
+    return "Score: not started";
+  }
+  if (game.status === "in_progress") return `Score: ${away} @ ${home} (LIVE)`;
+  if (game.status === "final") return `Final: ${away} @ ${home}`;
+  return `Score: ${away} @ ${home}`;
+}
+
+export function favoredLine(pick: PickRow): string {
+  const p = pick.modelProbability ?? pick.confidence / 100;
+  const pct = Math.round(Math.max(0, Math.min(1, p)) * 100);
+  const units = Number.isFinite(pick.units) ? pick.units : 1;
+  return `Favored ${pct}% · ${units} units`;
+}
+
+export function currentLine(pick: PickRow): string {
+  const book = pick.lockedOddsJson.book || "DraftKings";
+  const odds = formatAmerican(pick.lockedOdds);
+  const line =
+    pick.lockedLine == null || !Number.isFinite(pick.lockedLine)
+      ? ""
+      : pick.market === "total"
+        ? ` · total ${pick.lockedLine}`
+        : ` · line ${pick.lockedLine > 0 ? `+${pick.lockedLine}` : pick.lockedLine}`;
+  return `${book} ${odds}${line}`;
+}
+
+export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): string {
   const kick = formatKick(pick.startAt, "America/Los_Angeles");
   return [
-    `**${pick.sport} · BEST PLAY**`,
+    `**${pick.sport} · OFFICIAL PLAY**`,
     pick.selection,
     `${pick.matchup} · ${kick} PT`,
-    `Locked ${odds.book || "book"} ${formatAmerican(pick.lockedOdds)}${pick.lockedLine != null ? ` · line ${pick.lockedLine}` : ""}`,
-    `Edge ${pick.edgePct.toFixed(1)}% · Conf ${pick.confidence} · ${pick.units}u`,
-    pick.modelVersion
-      ? `${pick.modelVersion} · p ${(pick.modelProbability ?? 0).toFixed(3)}`
-      : "",
+    scoreLine(game),
+    favoredLine(pick),
+    currentLine(pick),
     "",
     pick.reason,
     "",

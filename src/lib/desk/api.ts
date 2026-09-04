@@ -4,7 +4,7 @@ import { discordWebhookOk, resolveWebhook } from "@/lib/sports/discord";
 import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
 import { postPickById, refreshSlate, runTick } from "./cycle";
 import { redactDesk } from "./redact";
-import { addLog, loadGames, loadMeta, readDesk, writeWebhook } from "./store";
+import { addLog, loadGames, loadMeta, readDesk, writeMaxDailyPicks, writeWebhook } from "./store";
 
 const g = globalThis as typeof globalThis & {
   __boatboyzWorker?: ReturnType<typeof setInterval>;
@@ -131,6 +131,16 @@ export const lockDesk = createServerFn({ method: "POST" }).handler(async () => {
   await logoutOperator();
   return deskForClient();
 });
+
+export const saveDailyPicks = createServerFn({ method: "POST" })
+  .validator((input: unknown) => ({ count: Number((input as { count?: number }).count) }))
+  .handler(async ({ data }) => {
+    const gate = await requireOperator();
+    if (!gate.ok) return { ok: false as const, error: gate.error };
+    const count = await writeMaxDailyPicks(data.count);
+    await addLog("desk", `Daily card set to ${count} play${count === 1 ? "" : "s"}.`);
+    return { ok: true as const, state: await deskForClient() };
+  });
 
 export const rotatePin = createServerFn({ method: "POST" })
   .validator((input: unknown) => ({ pin: String((input as { pin?: string }).pin ?? "") }))

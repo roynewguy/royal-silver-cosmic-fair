@@ -116,3 +116,19 @@ export function unitsFor(confidence: number): number {
   if (confidence >= 72) return 1.5;
   return 1;
 }
+
+export function clampDailyPicks(n: number): number {
+  if (!Number.isFinite(n)) return 3;
+  return Math.min(8, Math.max(1, Math.round(n)));
+}
+
+export function takeTopPlays<T extends { skip: { skipped: boolean }; pick: { rank?: { edgePct: number } | null } }>(
+  decisions: T[],
+  maxPicks = 3,
+): { take: T[]; rest: T[] } {
+  const cap = clampDailyPicks(maxPicks);
+  const playable = decisions
+    .filter((d) => !d.skip.skipped && d.pick.rank)
+    .sort((a, b) => (b.pick.rank?.edgePct ?? 0) - (a.pick.rank?.edgePct ?? 0));
+  return { take: playable.slice(0, cap), rest: playable.slice(cap) };
+}

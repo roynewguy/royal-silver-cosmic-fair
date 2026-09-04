@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Loader2, Radar, Ship } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,8 +28,7 @@ export function DeskHq() {
           <p className="text-xs tracking-[0.22em] text-accent uppercase">Command desk</p>
           <h1 className="mt-1 font-display text-4xl tracking-wide text-fg sm:text-5xl">Today's board</h1>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
-            Official card is today in PT, DraftKings only. Worker posts after Discord confirms, then grades.
-            MLS/EPL stay dark until 3-way markets.
+          Official card is today in PT, up to {desk.data.maxDailyPicks || 3} plays, DraftKings on the freeze. Worker posts after Discord confirms, then grades.
           </p>
         </div>
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -72,10 +71,30 @@ export function DeskHq() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <Meta label="Last scan" value={desk.data.lastScanAt ? relativeTo(desk.data.lastScanAt) : "—"} />
         <Meta label="Post window" value={`${desk.data.postLeadMinutes / 60}h pre-kick`} />
         <Meta label="Edge floor" value={`${desk.data.minEdgePct}% · conf ${desk.data.minConfidence}`} />
+        <Meta
+          label="Daily plays"
+          value={
+            op ? (
+              <select
+                className="mt-1 bg-transparent font-mono text-sm text-fg"
+                value={desk.data.maxDailyPicks}
+                onChange={(e) => desk.setDailyPicks(Number(e.target.value))}
+              >
+                {[1, 2, 3, 4, 5, 6].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              String(desk.data.maxDailyPicks || "—")
+            )
+          }
+        />
       </div>
 
       {desk.loading || busy ? (
@@ -146,11 +165,15 @@ export function DeskHq() {
   );
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
+function Meta({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-lg bg-surface px-4 py-3 shadow-border">
       <p className="text-[10px] tracking-[0.16em] text-subtle uppercase">{label}</p>
-      <p className="mt-1 font-mono text-sm break-words tabular-nums text-fg">{value}</p>
+      {typeof value === "string" ? (
+        <p className="mt-1 font-mono text-sm break-words tabular-nums text-fg">{value}</p>
+      ) : (
+        value
+      )}
     </div>
   );
 }

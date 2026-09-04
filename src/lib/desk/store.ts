@@ -356,6 +356,7 @@ export async function loadMeta(): Promise<{
   minEdgePct: number;
   minConfidence: number;
   postLeadMinutes: number;
+  maxDailyPicks: number;
   hasWebhook: boolean;
   autoRun: boolean;
 }> {
@@ -366,19 +367,29 @@ export async function loadMeta(): Promise<{
     min_edge_pct: unknown;
     min_confidence: unknown;
     post_lead_minutes: unknown;
+    max_daily_picks: unknown;
     discord_webhook: string | null;
     auto_run: unknown;
-  }>`select last_scan_at, last_desk_at, min_edge_pct, min_confidence, post_lead_minutes, discord_webhook, auto_run from desk_meta where id = 1`;
+  }>`select last_scan_at, last_desk_at, min_edge_pct, min_confidence, post_lead_minutes, max_daily_picks, discord_webhook, auto_run from desk_meta where id = 1`;
   const r = rows[0];
+  const rawCap = Math.round(num(r?.max_daily_picks) || 3);
   return {
     lastScanAt: r?.last_scan_at ? iso(r.last_scan_at) : null,
     lastDeskAt: r?.last_desk_at ? iso(r.last_desk_at) : null,
     minEdgePct: num(r?.min_edge_pct) || 3,
     minConfidence: Math.round(num(r?.min_confidence) || 58),
     postLeadMinutes: Math.round(num(r?.post_lead_minutes) || 150),
+    maxDailyPicks: Math.min(8, Math.max(1, rawCap)),
     hasWebhook: Boolean(r?.discord_webhook && String(r.discord_webhook).trim()),
     autoRun: r?.auto_run !== false,
   };
+}
+
+export async function writeMaxDailyPicks(n: number): Promise<number> {
+  const cap = Math.min(8, Math.max(1, Math.round(n)));
+  const sql = await getSql();
+  await sql`update desk_meta set max_daily_picks = ${cap}, updated_at = now() where id = 1`;
+  return cap;
 }
 
 export function scansFrom(games: GameCard[], picks: PickRow[]): SportScan[] {
@@ -440,6 +451,7 @@ export async function readDesk(): Promise<DeskState> {
     minEdgePct: meta.minEdgePct,
     minConfidence: meta.minConfidence,
     postLeadMinutes: meta.postLeadMinutes,
+    maxDailyPicks: meta.maxDailyPicks,
     hasWebhook: hook.source !== "none",
     webhookSource: hook.source,
     operator: false,

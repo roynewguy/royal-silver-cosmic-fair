@@ -211,6 +211,7 @@ export type DeskState = {
   minEdgePct: number;
   minConfidence: number;
   postLeadMinutes: number;
+  maxDailyPicks: number;
   hasWebhook: boolean;
   webhookSource: "env" | "desk" | "none";
   operator: boolean;

@@ -1,16 +1,17 @@
 import type { DeskState, GameCard, PickRow, SportScan } from "@/lib/sports/types";
 
 function publicPick(pick: PickRow): PickRow {
+  const posted = pick.status === "posted" || pick.status === "graded";
   return {
     ...pick,
     research: null,
-    edgePct: 0,
-    confidence: 0,
-    modelProbability: null,
+    edgePct: posted ? pick.edgePct : 0,
+    confidence: posted ? pick.confidence : 0,
+    modelProbability: posted ? pick.modelProbability : null,
     modelEdge: null,
     freezeJson: null,
-    discordMessage: null,
-    skipReason: pick.status === "graded" || pick.status === "posted" ? pick.skipReason : null,
+    discordMessage: posted ? pick.discordMessage : null,
+    skipReason: posted ? pick.skipReason : null,
   };
 }
 
@@ -48,6 +49,7 @@ export function redactDesk(state: DeskState, operator: boolean): DeskState {
     scans: state.scans.map(publicScan),
     minEdgePct: 0,
     minConfidence: 0,
+    maxDailyPicks: 0,
     lastDeskAt: null,
     calibration: null,
   };

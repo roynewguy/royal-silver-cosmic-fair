@@ -13,7 +13,7 @@ import { buildFreezeSnapshot } from "@/lib/sports/freeze";
 import { impliedFromAmerican, lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import { isFreeBetaMode, oddsBudget } from "@/lib/sports/free-beta";
 import { mergeDraftKingsOdds } from "@/lib/sports/odds-api";
-import { bestPerSport, rankGame, rankGames, unitsFor } from "@/lib/sports/rank";
+import { bestPerSport, rankGame, rankGames, takeTopPlays, unitsFor } from "@/lib/sports/rank";
 import {
   fingerprintResearch,
   loadCachedResearch,
@@ -487,9 +487,23 @@ export async function selectOfficialCard(
   minConf: number,
   leadMinutes: number,
   allowResearch: boolean,
+  maxDailyPicks = 3,
 ): Promise<number> {
   const decisions = bestPerSport(games, minEdge, minConf);
-  const candidates = decisions.filter((d) => !d.skip.skipped && d.pick.rank).map((d) => d.pick);
+  const { take, rest } = takeTopPlays(decisions, maxDailyPicks);
+  for (const decision of decisions) {
+    if (decision.skip.skipped) {
+      await addLog("skip", `${decision.skip.sport}: ${decision.skip.skipReason}`, decision.skip.sport);
+    }
+  }
+  for (const extra of rest) {
+    await addLog(
+      "skip",
+      `${extra.skip.sport}: Daily card is full (${maxDailyPicks} plays). Raise Daily plays if you want more.`,
+      extra.skip.sport,
+    );
+  }
+  const candidates = take.map((d) => d.pick);
   const aiPlays: AiPlay[] = [];
   if (allowResearch && candidates.length) {
     const need: GameCard[] = [];
@@ -526,7 +540,7 @@ export async function selectOfficialCard(
   }
   const sql = await getSql();
   let queued = 0;
-  for (const decision of decisions) {
+  for (const decision of take) {
     if (decision.skip.skipped) {
       await addLog("skip", `${decision.skip.sport}: ${decision.skip.skipReason}`, decision.skip.sport);
       continue;
@@ -633,6 +647,7 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
       meta.minConfidence,
       meta.postLeadMinutes,
       research,
+      meta.maxDailyPicks,
     );
     const posted = await flushDuePosts(games, meta.minEdgePct, meta.minConfidence);
     await addLog("scan", `Tick ${source}: ${games.length} games · queued ${queued} · posted ${posted} · graded ${graded}`);

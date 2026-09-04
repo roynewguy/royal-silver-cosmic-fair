@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, type ReactNode } from "react";
 import { toast } from "sonner";
-import { getDesk, lockDesk, pushPick, refreshBoard, runDesk, saveWebhook, unlockDesk } from "@/lib/desk/api";
+import { getDesk, lockDesk, pushPick, refreshBoard, runDesk, saveDailyPicks, saveWebhook, unlockDesk } from "@/lib/desk/api";
 import type { DeskState } from "@/lib/sports/types";
 
 const empty: DeskState = {
@@ -17,6 +17,7 @@ const empty: DeskState = {
   minEdgePct: 3,
   minConfidence: 58,
   postLeadMinutes: 150,
+  maxDailyPicks: 3,
   hasWebhook: false,
   webhookSource: "none",
   operator: false,
@@ -35,6 +36,7 @@ type DeskApi = {
   run: () => void;
   push: (input: { pickId: number; webhookUrl?: string }) => void;
   saveHook: (webhookUrl: string) => void;
+  setDailyPicks: (count: number) => void;
   unlock: (pin: string) => void;
   lock: () => void;
 };
@@ -92,6 +94,18 @@ function useDeskController(): DeskApi {
     },
   });
 
+  const savePlays = useMutation({
+    mutationFn: (count: number) => saveDailyPicks({ data: { count } }),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        toast.error(res.error ?? "Could not save daily plays.");
+        return;
+      }
+      if (res.state) qc.setQueryData(["desk"], res.state);
+      toast.success(`Daily card set to ${res.state?.maxDailyPicks ?? ""} plays.`);
+    },
+  });
+
   const unlock = useMutation({
     mutationFn: (pin: string) => unlockDesk({ data: { pin } }),
     onSuccess: (res) => {
@@ -119,6 +133,7 @@ function useDeskController(): DeskApi {
     run: () => run.mutate(),
     push: (input) => push.mutate(input),
     saveHook: (webhookUrl) => saveHook.mutate(webhookUrl),
+    setDailyPicks: (count) => savePlays.mutate(count),
     unlock: (pin) => unlock.mutate(pin),
     lock: () => lock.mutate(),
   };

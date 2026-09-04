@@ -47,7 +47,7 @@ test("non-operators cannot see queued picks, ranks, or logs", () => {
   assert.equal(publicState.picks.length, 1);
   assert.equal(publicState.calibration, null);
   assert.equal(publicState.picks[0]?.id, 2);
-  assert.equal(publicState.picks[0]?.edgePct, 0);
+  assert.equal(publicState.picks[0]?.confidence, 70);
   assert.equal(publicState.picks[0]?.research, null);
   assert.equal(publicState.games[0]?.rank, null);
   assert.equal(publicState.log.length, 0);

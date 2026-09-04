@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bestPerSport, rankGames } from "./rank.ts";
+import { bestPerSport, clampDailyPicks, rankGames, takeTopPlays } from "./rank.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
 
 const odds: OddsSnapshot = {
@@ -87,4 +87,21 @@ test("ESPN odds never become an official pick", () => {
   const nfl = bestPerSport(games, 3, 58, now).find((d) => d.skip.league === "nfl");
   assert.equal(nfl?.skip.skipped, true);
   assert.match(nfl?.skip.skipReason ?? "", /DraftKings/);
+});
+
+test("daily card keeps the top N plays and passes the rest", () => {
+  assert.equal(clampDailyPicks(3), 3);
+  assert.equal(clampDailyPicks(99), 8);
+  const decisions = [
+    { skip: { skipped: false, sport: "NBA" }, pick: { rank: { edgePct: 6 } } },
+    { skip: { skipped: false, sport: "NFL" }, pick: { rank: { edgePct: 4 } } },
+    { skip: { skipped: false, sport: "MLB" }, pick: { rank: { edgePct: 3.5 } } },
+    { skip: { skipped: true, sport: "NHL" }, pick: { rank: { edgePct: 9 } } },
+  ];
+  const { take, rest } = takeTopPlays(decisions, 2);
+  assert.equal(take.length, 2);
+  assert.equal(take[0]?.skip.sport, "NBA");
+  assert.equal(take[1]?.skip.sport, "NFL");
+  assert.equal(rest.length, 1);
+  assert.equal(rest[0]?.skip.sport, "MLB");
 });

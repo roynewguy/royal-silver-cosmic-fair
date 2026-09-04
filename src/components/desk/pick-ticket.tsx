@@ -54,8 +54,8 @@ export function PickTicket({
           <span>Kick {formatKick(pick.startAt)}</span>
           <span>Post {relativeTo(pick.postAt)}</span>
           <span>{pick.units}u</span>
-          <span>Conf {pick.confidence}</span>
-          {pick.modelVersion ? <span>{pick.modelVersion}</span> : null}
+          <span>Favored {Math.round(pick.modelProbability != null ? pick.modelProbability * 100 : pick.confidence)}%</span>
+          <span>{formatAmerican(pick.lockedOdds)}</span>
         </div>
       </div>
       <div className="px-3 pt-3 pb-2">
