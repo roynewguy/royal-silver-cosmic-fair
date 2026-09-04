@@ -17,16 +17,28 @@ Every ~10 minutes the worker:
 
 MLS/EPL stay dark until 3-way soccer markets exist.
 
-## Secrets (never GitHub)
+## 24/7 on Vercel
+
+Vercel **Hobby** cron can only run **once per day**. A `*/10 * * * *` expression fails the deploy.
+
+| Host | What actually ticks the desk |
+| --- | --- |
+| Vercel Hobby | Daily Vercel cron at 16:00 UTC (backup) **plus** GitHub Action every 10 minutes |
+| Vercel Pro | You can change `vercel.json` to `*/10 * * * *` |
+| GitHub Action | `.github/workflows/boatboyz-tick.yml` POSTs `/api/cron/tick` |
+
+Set GitHub repo secrets: `APP_URL` (your Vercel URL) and `CRON_SECRET` (same value as Vercel env).
+
+## Secrets (never GitHub files)
 
 Set these on the host, not in the repo:
 
 | Var | Purpose |
 | --- | --- |
 | `DISCORD_WEBHOOK_URL` | Auto-post + recaps |
-| `BOATBOYZ_PIN` | Operator PIN (preview default `boatboyz` if unset) |
-| `CRON_SECRET` | Protect `/api/cron/tick` |
+| `BOATBOYZ_PIN` | **Required on Vercel.** No default PIN in production. |
+| `CRON_SECRET` | Required. Tick endpoint only accepts `Authorization: Bearer $CRON_SECRET` |
 | `ODDS_API_KEY` | The Odds API, `bookmakers=draftkings` |
 | `XAI_API_KEY` | Injected by Grok for research |
 
-Vercel cron hits `/api/cron/tick` every 10 minutes (`vercel.json`).
+`/api/cron/tick` does **not** trust `x-vercel-cron` alone. If `CRON_SECRET` is missing, the tick returns 401.

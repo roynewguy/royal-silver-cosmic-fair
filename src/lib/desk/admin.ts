@@ -1,23 +1,32 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server";
 import { getSql } from "@/lib/db";
+import { cronAuthorized } from "./cron-auth";
+
+export { cronAuthorized };
 
 const COOKIE = "boatboyz_op";
-const DEFAULT_DEV_PIN = "boatboyz";
+const LOCAL_ONLY_PIN = "boatboyz";
 
 function hashPin(pin: string): string {
   return createHash("sha256").update(`boatboyz:${pin.trim()}`).digest("hex");
 }
 
-async function pinHash(): Promise<string> {
+function onVercel(): boolean {
+  return Boolean(process.env.VERCEL);
+}
+
+async function configuredPinHash(): Promise<string | null> {
   const env = process.env.BOATBOYZ_PIN?.trim();
   if (env) return hashPin(env);
   const sql = await getSql();
-  const rows = await sql<{ operator_pin_hash: string | null }>`select operator_pin_hash from desk_meta where id = 1`;
+  const rows = await sql<{ operator_pin_hash: string | null }>`
+    select operator_pin_hash from desk_meta where id = 1
+  `;
   if (rows[0]?.operator_pin_hash) return rows[0].operator_pin_hash;
-  const fallback = hashPin(DEFAULT_DEV_PIN);
-  await sql`update desk_meta set operator_pin_hash = ${fallback} where id = 1 and operator_pin_hash is null`;
-  return fallback;
+  // Local / Grok preview only. Never write this into the database, never use it on Vercel.
+  if (!onVercel()) return hashPin(LOCAL_ONLY_PIN);
+  return null;
 }
 
 export async function isOperator(): Promise<boolean> {
@@ -36,7 +45,11 @@ export async function requireOperator(): Promise<{ ok: true } | { ok: false; err
 }
 
 export async function loginWithPin(pin: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const expected = Buffer.from(await pinHash(), "hex");
+  const expectedHex = await configuredPinHash();
+  if (!expectedHex) {
+    return { ok: false, error: "BOATBOYZ_PIN is not set. Add it in hosting secrets." };
+  }
+  const expected = Buffer.from(expectedHex, "hex");
   const got = Buffer.from(hashPin(pin), "hex");
   if (expected.length !== got.length || !timingSafeEqual(expected, got)) {
     return { ok: false, error: "Wrong PIN." };
@@ -68,15 +81,4 @@ export async function changePin(next: string): Promise<{ ok: true } | { ok: fals
   const sql = await getSql();
   await sql`update desk_meta set operator_pin_hash = ${hashPin(next)}, updated_at = now() where id = 1`;
   return { ok: true };
-}
-
-export function cronAuthorized(request: Request): boolean {
-  if (request.headers.get("x-vercel-cron") === "1") return true;
-  const secret = process.env.CRON_SECRET?.trim();
-  if (secret) {
-    const auth = request.headers.get("authorization") ?? "";
-    const hdr = request.headers.get("x-cron-secret") ?? "";
-    return auth === `Bearer ${secret}` || hdr === secret;
-  }
-  return process.env.NODE_ENV !== "production";
 }
