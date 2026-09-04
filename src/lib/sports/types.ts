@@ -175,6 +175,31 @@ export type DeskLog = {
   createdAt: string;
 };
 
+export type CalibrationSlice = {
+  key: string;
+  bets: number;
+  decided: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  voids: number;
+  actualWinRate: number | null;
+  expectedWinRate: number | null;
+  delta: number | null;
+  roi: number | null;
+  units: number;
+  avgClv: number | null;
+  enough: boolean;
+};
+
+export type CalibrationReport = {
+  buckets: CalibrationSlice[];
+  models: CalibrationSlice[];
+  official: number;
+  decided: number;
+  note: string;
+};
+
 export type DeskState = {
   record: DeskRecord;
   games: GameCard[];
@@ -191,4 +216,5 @@ export type DeskState = {
   operator: boolean;
   soccerDesk: "off";
   pinFromEnv: boolean;
+  calibration: CalibrationReport | null;
 };

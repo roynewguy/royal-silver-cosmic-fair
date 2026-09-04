@@ -22,6 +22,7 @@ const empty: DeskState = {
   operator: false,
   soccerDesk: "off",
   pinFromEnv: false,
+  calibration: null,
 };
 
 type DeskApi = {

@@ -10,7 +10,7 @@ import { PickTicket } from "@/components/desk/pick-ticket";
 import { SportRail } from "@/components/desk/sport-rail";
 import { useDesk } from "@/lib/desk/use-desk";
 import { formatKick, relativeTo } from "@/lib/utils";
-import type { GameCard } from "@/lib/sports/types";
+import type { CalibrationReport, GameCard } from "@/lib/sports/types";
 
 export function DeskHq() {
   const desk = useDesk();
@@ -114,6 +114,7 @@ export function DeskHq() {
           )}
 
           <Upcoming games={desk.data.games} />
+          {op && desk.data.calibration ? <CalibrationPanel report={desk.data.calibration} /> : null}
         </div>
 
         <div className="min-w-0 space-y-4">
@@ -184,6 +185,76 @@ function Upcoming({ games }: { games: GameCard[] }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+function pct(n: number | null): string {
+  if (n == null) return "—";
+  return `${(n * 100).toFixed(1)}%`;
+}
+
+function CalibrationPanel({ report }: { report: CalibrationReport }) {
+  return (
+    <section>
+      <h2 className="mb-3 font-display text-sm tracking-[0.18em] text-muted uppercase">Calibration</h2>
+      <div className="rounded-xl bg-surface p-4 shadow-border">
+        <p className="text-xs leading-relaxed text-subtle">{report.note}</p>
+        <table className="mt-3 w-full text-left font-mono text-[11px] tabular-nums text-muted">
+          <thead>
+            <tr className="text-subtle">
+              <th className="pb-2 font-medium">Bucket</th>
+              <th>n</th>
+              <th>W-L-P</th>
+              <th>Actual</th>
+              <th>Expect</th>
+              <th>Δ</th>
+              <th>u</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.buckets.map((b) => (
+              <tr key={b.key} className="border-t border-border">
+                <td className="py-1.5 text-fg">{b.key}%</td>
+                <td>{b.decided}</td>
+                <td>
+                  {b.wins}-{b.losses}-{b.pushes}
+                </td>
+                <td>{pct(b.actualWinRate)}</td>
+                <td>{pct(b.expectedWinRate)}</td>
+                <td>{b.delta == null ? "—" : `${b.delta >= 0 ? "+" : ""}${(b.delta * 100).toFixed(1)}`}</td>
+                <td>{b.units.toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {report.models.length ? (
+          <table className="mt-4 w-full text-left font-mono text-[11px] tabular-nums text-muted">
+            <thead>
+              <tr className="text-subtle">
+                <th className="pb-2 font-medium">Model</th>
+                <th>n</th>
+                <th>Hit</th>
+                <th>Expect</th>
+                <th>CLV</th>
+                <th>u</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.models.map((m) => (
+                <tr key={m.key} className="border-t border-border">
+                  <td className="py-1.5 text-fg">{m.key}</td>
+                  <td>{m.decided}</td>
+                  <td>{pct(m.actualWinRate)}</td>
+                  <td>{pct(m.expectedWinRate)}</td>
+                  <td>{m.avgClv == null ? "—" : m.avgClv.toFixed(3)}</td>
+                  <td>{m.units.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null}
+      </div>
     </section>
   );
 }

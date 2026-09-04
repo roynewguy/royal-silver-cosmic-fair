@@ -1,5 +1,6 @@
 import { resolveWebhook } from "@/lib/sports/discord";
 import { getSql } from "@/lib/db";
+import { buildCalibration } from "@/lib/sports/calibration";
 import { applyModelInputs, packModelInputs } from "@/lib/sports/model-inputs";
 import type {
   DeskLog,
@@ -284,7 +285,7 @@ export async function loadPicks(): Promise<PickRow[]> {
     from picks p
     left join games g on g.id = p.game_id
     order by p.created_at desc
-    limit 80
+    limit 500
   `;
   return rows.map(pickFromRow);
 }
@@ -444,6 +445,7 @@ export async function readDesk(): Promise<DeskState> {
     operator: false,
     soccerDesk: "off",
     pinFromEnv: Boolean(process.env.BOATBOYZ_PIN?.trim()),
+    calibration: buildCalibration(picks),
   };
 }
 

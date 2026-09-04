@@ -49,5 +49,6 @@ export function redactDesk(state: DeskState, operator: boolean): DeskState {
     minEdgePct: 0,
     minConfidence: 0,
     lastDeskAt: null,
+    calibration: null,
   };
 }

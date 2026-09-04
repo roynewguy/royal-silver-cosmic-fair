@@ -41,9 +41,11 @@ test("non-operators cannot see queued picks, ranks, or logs", () => {
     minEdgePct: 3,
     minConfidence: 58,
     lastDeskAt: "now",
+    calibration: { buckets: [], models: [], official: 1, decided: 1, note: "secret" },
   } as unknown as DeskState;
   const publicState = redactDesk(state, false);
   assert.equal(publicState.picks.length, 1);
+  assert.equal(publicState.calibration, null);
   assert.equal(publicState.picks[0]?.id, 2);
   assert.equal(publicState.picks[0]?.edgePct, 0);
   assert.equal(publicState.picks[0]?.research, null);
