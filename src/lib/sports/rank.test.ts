@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bestPerSport, clampDailyPicks, rankGames, takeTopPlays } from "./rank.ts";
+import { bestOnSlate, bestPerSport, clampDailyPicks, dailyPickTarget, rankGames, takeTopPlays } from "./rank.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
 
 const odds: OddsSnapshot = {
@@ -104,4 +104,63 @@ test("daily card keeps the top N plays and passes the rest", () => {
   assert.equal(take[1]?.skip.sport, "NFL");
   assert.equal(rest.length, 1);
   assert.equal(rest[0]?.skip.sport, "MLB");
+});
+
+test("bestOnSlate ranks the whole board, not one per sport", () => {
+  const now = new Date();
+  const kick = new Date(now.getTime() + 5 * 3600_000).toISOString();
+  const nbaA = card({
+    id: "nba:1",
+    league: "nba",
+    sport: "NBA",
+    startAt: kick,
+    rank: { edgePct: 8, confidence: 70, market: "moneyline", side: "home", selection: "Lakers ML", line: null, price: -135, probability: 0.6, why: "home", model: "v2-nba" },
+  });
+  const nbaB = card({
+    id: "nba:2",
+    league: "nba",
+    sport: "NBA",
+    startAt: kick,
+    rank: { edgePct: 6, confidence: 66, market: "spread", side: "home", selection: "LAL -3", line: -3, price: -110, probability: 0.58, why: "home", model: "v2-nba" },
+  });
+  const nhl = card({
+    id: "nhl:1",
+    league: "nhl",
+    sport: "NHL",
+    startAt: kick,
+    home: { name: "Kings", abbr: "LAK", logo: null, score: null, record: "10-6", homeSplit: "6-2", roadSplit: "4-4", starter: null },
+    away: { name: "Ducks", abbr: "ANA", logo: null, score: null, record: "8-8", homeSplit: "5-3", roadSplit: "3-5", starter: null },
+    rank: { edgePct: 3.2, confidence: 60, market: "moneyline", side: "home", selection: "Kings ML", line: null, price: -120, probability: 0.55, why: "home ice", model: "v2-nhl" },
+  });
+  const ranked = bestOnSlate([nbaA, nbaB, nhl], 3, 58, now);
+  assert.equal(ranked.length, 3);
+  assert.deepEqual(ranked.map((g) => g.id), ["nba:1", "nba:2", "nhl:1"]);
+  assert.equal(ranked.slice(0, 2).every((g) => g.sport === "NBA"), true);
+});
+
+test("bestOnSlate posts fewer than target when few qualify, and none if none qualify", () => {
+  const now = new Date();
+  const kick = new Date(now.getTime() + 5 * 3600_000).toISOString();
+  const one = card({
+    startAt: kick,
+    rank: { edgePct: 5, confidence: 62, market: "spread", side: "home", selection: "SEA -3", line: -3, price: -110, probability: 0.57, why: "home", model: "v2-nfl" },
+  });
+  const weak = card({
+    id: "nfl:2",
+    startAt: kick,
+    rank: { edgePct: 1, confidence: 52, market: "spread", side: "away", selection: "DEN +3", line: 3, price: -110, probability: 0.51, why: "no", model: "v2-nfl" },
+  });
+  assert.equal(bestOnSlate([one, weak], 3, 58, now).length, 1);
+  assert.equal(bestOnSlate([weak], 3, 58, now).length, 0);
+  const started = card({
+    startAt: new Date(now.getTime() - 60_000).toISOString(),
+    status: "in_progress",
+    rank: { edgePct: 9, confidence: 80, market: "spread", side: "home", selection: "SEA -3", line: -3, price: -110, probability: 0.7, why: "live", model: "v2-nfl" },
+  });
+  assert.equal(bestOnSlate([started], 3, 58, now).length, 0);
+});
+
+test("DAILY_PICK_TARGET env wins over desk setting", () => {
+  assert.equal(dailyPickTarget(5, { DAILY_PICK_TARGET: "3" }), 3);
+  assert.equal(dailyPickTarget(2, {}), 2);
 });

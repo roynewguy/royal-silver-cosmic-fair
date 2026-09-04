@@ -1,4 +1,5 @@
 import { formatAmerican, formatKick, formatUnits } from "../utils.ts";
+import { impliedFromAmerican } from "./odds.ts";
 import type { DeskRecord, GameCard, PickResult, PickRow } from "./types.ts";
 
 export function discordWebhookOk(url: string): boolean {
@@ -107,20 +108,70 @@ export function currentLine(pick: PickRow): string {
   return `${book} ${odds}${line}`;
 }
 
+export function sportEmoji(sport: string): string {
+  const s = sport.toUpperCase();
+  if (s === "NBA" || s === "WNBA" || s === "NCAAB") return "🏀";
+  if (s === "NFL" || s === "NCAAF") return "🏈";
+  if (s === "MLB") return "⚾";
+  if (s === "NHL") return "🏒";
+  if (s === "UFC") return "🥊";
+  if (s === "MLS" || s === "EPL") return "⚽";
+  return "🌊";
+}
+
+export function vsLine(pick: PickRow, game?: GameCard | null): string {
+  if (pick.side === "home") return `vs ${game?.away.name ?? pick.matchup.split("@")[0]?.trim() ?? "opponent"}`;
+  if (pick.side === "away") return `at ${game?.home.name ?? pick.matchup.split("@")[1]?.trim() ?? "opponent"}`;
+  return pick.matchup;
+}
+
 export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): string {
   const kick = formatKick(pick.startAt, "America/Los_Angeles");
+  const modelPct = Math.round((pick.modelProbability ?? pick.confidence / 100) * 100);
+  const marketPct = Math.round(impliedFromAmerican(pick.lockedOdds) * 100);
+  const edge = pick.modelEdge ?? pick.edgePct;
+  const edgeStr = `${edge >= 0 ? "+" : ""}${edge.toFixed(1)}%`;
+  const book = isDkBook(pick) ? "DraftKings" : pick.lockedOddsJson.book || "book";
+  const reasons = pick.reason.includes("Why BoatBoyz")
+    ? pick.reason
+    : `Why BoatBoyz likes it:\n${pick.reason
+        .split(/[.;\n]/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 4)
+        .map((s) => `* ${s}`)
+        .join("\n")}`;
   return [
-    `**${pick.sport} · OFFICIAL PLAY**`,
+    "🌊 BOATBOYZ OFFICIAL PICK",
+    "",
+    `${sportEmoji(pick.sport)} ${pick.sport}`,
+    "",
     pick.selection,
-    `${pick.matchup} · ${kick} PT`,
-    scoreLine(game),
-    favoredLine(pick),
-    currentLine(pick),
+    vsLine(pick, game),
     "",
-    pick.reason,
+    `${book}: ${formatAmerican(pick.lockedOdds)}${pick.lockedLine != null ? ` · ${pick.lockedLine}` : ""}`,
     "",
-    `_id ${pick.id}_`,
+    `BoatBoyz Probability: ${modelPct}%`,
+    `Market Probability: ${marketPct}%`,
+    `Model Edge: ${edgeStr}`,
+    "",
+    `Confidence: ${Math.round(pick.confidence)}/100`,
+    `Units: ${Number(pick.units).toFixed(1)}U`,
+    "",
+    reasons,
+    "",
+    "Game:",
+    kick,
+    "",
+    "Line verified:",
+    isDkBook(pick) ? "DraftKings" : book,
   ].join("\n");
+}
+
+function isDkBook(pick: PickRow): boolean {
+  const book = pick.lockedOddsJson.book ?? "";
+  const source = pick.lockedOddsJson.source;
+  return source === "odds-api" && /draft\s*kings/i.test(book);
 }
 
 export function buildRecapMessage(

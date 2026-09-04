@@ -122,6 +122,35 @@ export function clampDailyPicks(n: number): number {
   return Math.min(8, Math.max(1, Math.round(n)));
 }
 
+export function dailyPickTarget(deskMax: number, env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.DAILY_PICK_TARGET?.trim();
+  if (raw) {
+    const n = Number(raw);
+    if (Number.isFinite(n)) return clampDailyPicks(n);
+  }
+  return clampDailyPicks(deskMax);
+}
+
+/** Rank every qualifying game on today's card. Not one-per-sport. */
+export function bestOnSlate(
+  games: GameCard[],
+  minEdge = 3,
+  minConf = 58,
+  now = new Date(),
+): GameCard[] {
+  return games
+    .filter((g) => {
+      const league = LEAGUE_BY_ID[g.league];
+      if (!league?.official) return false;
+      if (g.status !== "scheduled") return false;
+      if (!isOfficialDay(g.startAt, now)) return false;
+      const start = new Date(g.startAt).getTime();
+      if (!Number.isFinite(start) || start <= now.getTime()) return false;
+      return Boolean(g.rank && g.rank.edgePct >= minEdge && g.rank.confidence >= minConf);
+    })
+    .sort((a, b) => (b.rank?.edgePct ?? 0) - (a.rank?.edgePct ?? 0));
+}
+
 export function takeTopPlays<T extends { skip: { skipped: boolean }; pick: { rank?: { edgePct: number } | null } }>(
   decisions: T[],
   maxPicks = 3,

@@ -28,28 +28,34 @@ test("play card has pick, favored %, units, score, and line", () => {
     id: 9,
     sport: "NBA",
     selection: "Lakers ML",
-    matchup: "MIN @ LAL",
+    matchup: "GSW @ LAL",
     market: "moneyline",
-    lockedOdds: -185,
+    side: "home",
+    lockedOdds: -135,
     lockedLine: null,
     units: 1,
-    confidence: 62,
-    modelProbability: 0.62,
-    reason: "Lakers are favored at home (7-1 home split).",
+    confidence: 67,
+    modelProbability: 0.6,
+    modelEdge: 3,
+    edgePct: 3,
+    reason: "Why BoatBoyz likes it:\n* Lakers are playing at home\n* key starter is available",
     startAt: new Date("2026-09-04T02:30:00Z").toISOString(),
-    lockedOddsJson: { book: "DraftKings" },
+    lockedOddsJson: { book: "DraftKings", source: "odds-api" },
   } as PickRow;
   const game = {
     status: "scheduled",
-    away: { abbr: "MIN", score: null },
-    home: { abbr: "LAL", score: null },
+    away: { name: "Warriors", abbr: "GSW", score: null },
+    home: { name: "Lakers", abbr: "LAL", score: null },
   } as GameCard;
   const msg = buildDiscordMessage(pick, game);
+  assert.match(msg, /BOATBOYZ OFFICIAL PICK/);
   assert.match(msg, /Lakers ML/);
-  assert.match(msg, /Favored 62% · 1 units/);
-  assert.match(msg, /Score: not started/);
-  assert.match(msg, /DraftKings -185/);
-  assert.match(msg, /favored at home/);
-  assert.equal(favoredLine(pick), "Favored 62% · 1 units");
-  assert.equal(scoreLine(game), "Score: not started");
+  assert.match(msg, /vs Warriors/);
+  assert.match(msg, /BoatBoyz Probability: 60%/);
+  assert.match(msg, /Market Probability:/);
+  assert.match(msg, /Model Edge: \+3/);
+  assert.match(msg, /Confidence: 67\/100/);
+  assert.match(msg, /Units: 1\.0U/);
+  assert.match(msg, /DraftKings/);
+  assert.doesNotMatch(msg, /ESPN/);
 });

@@ -13,7 +13,8 @@ import { buildFreezeSnapshot } from "@/lib/sports/freeze";
 import { impliedFromAmerican, lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import { isFreeBetaMode, oddsBudget } from "@/lib/sports/free-beta";
 import { mergeDraftKingsOdds } from "@/lib/sports/odds-api";
-import { bestPerSport, rankGame, rankGames, takeTopPlays, unitsFor } from "@/lib/sports/rank";
+import { bestOnSlate, dailyPickTarget, rankGame, rankGames, unitsFor } from "@/lib/sports/rank";
+import { formatWhy } from "@/lib/sports/why";
 import {
   fingerprintResearch,
   loadCachedResearch,
@@ -29,7 +30,7 @@ import type { GameCard, PickRow } from "@/lib/sports/types";
 import {
   addLog,
   clearWorkerLock,
-  livePickForSport,
+  loadOpenOfficial,
   loadRecord,
   pickByGame,
   readDesk,
@@ -489,25 +490,35 @@ export async function selectOfficialCard(
   allowResearch: boolean,
   maxDailyPicks = 3,
 ): Promise<number> {
-  const decisions = bestPerSport(games, minEdge, minConf);
-  const { take, rest } = takeTopPlays(decisions, maxDailyPicks);
-  for (const decision of decisions) {
-    if (decision.skip.skipped) {
-      await addLog("skip", `${decision.skip.sport}: ${decision.skip.skipReason}`, decision.skip.sport);
-    }
+  const target = dailyPickTarget(maxDailyPicks);
+  const ranked = bestOnSlate(games, minEdge, minConf);
+  const open = await loadOpenOfficial();
+  const frozen = open.filter((p) => p.status === "posted" || p.status === "posting");
+  const queuedNow = open.filter((p) => p.status === "queued");
+  const frozenIds = new Set(frozen.map((p) => p.gameId));
+  const slots = Math.max(0, target - frozen.length);
+  const wanted = ranked.filter((g) => !frozenIds.has(g.id)).slice(0, slots);
+  const wantedIds = new Set(wanted.map((g) => g.id));
+
+  if (ranked.length === 0 && frozen.length === 0 && queuedNow.length === 0) {
+    await addLog("skip", `PASS: no qualifying bets on today's slate (target ${target}).`);
   }
-  for (const extra of rest) {
-    await addLog(
-      "skip",
-      `${extra.skip.sport}: Daily card is full (${maxDailyPicks} plays). Raise Daily plays if you want more.`,
-      extra.skip.sport,
-    );
+
+  const sql = await getSql();
+  for (const ticket of queuedNow) {
+    if (wantedIds.has(ticket.gameId)) continue;
+    await sql`
+      update picks
+      set status = 'skipped', skip_reason = ${"Rotated off the daily card — stronger plays ranked higher."}
+      where id = ${ticket.id} and status = 'queued' and freeze_json is null
+    `;
+    await addLog("skip", `${ticket.sport} ${ticket.selection} rotated off the daily card.`, ticket.sport);
   }
-  const candidates = take.map((d) => d.pick);
+
   const aiPlays: AiPlay[] = [];
-  if (allowResearch && candidates.length) {
+  if (allowResearch && wanted.length) {
     const need: GameCard[] = [];
-    for (const game of candidates) {
+    for (const game of wanted) {
       const fp = fingerprintResearch(game);
       const cached = await loadCachedResearch(game.id);
       const hours = (new Date(game.startAt).getTime() - Date.now()) / 3_600_000;
@@ -538,47 +549,35 @@ export async function selectOfficialCard(
       }
     }
   }
-  const sql = await getSql();
+
   let queued = 0;
-  for (const decision of take) {
-    if (decision.skip.skipped) {
-      await addLog("skip", `${decision.skip.sport}: ${decision.skip.skipReason}`, decision.skip.sport);
-      continue;
-    }
-    const game = decision.pick;
+  for (const game of wanted) {
     const rank = game.rank;
     if (!rank) continue;
+    if (game.status !== "scheduled") continue;
     const existing = await pickByGame(game.id);
     if (existing && (existing.status === "posted" || existing.status === "graded" || existing.status === "posting")) continue;
-    const live = await livePickForSport(game.sport);
-    if (live && (live.status === "posted" || live.status === "posting")) continue;
-    if (live && live.status === "queued" && live.gameId !== game.id) {
-      await addLog(
-        "skip",
-        `${game.sport}: already queued ${live.matchup}. Not swapping onto ${game.away.abbr} @ ${game.home.abbr}.`,
-        game.sport,
-      );
-      continue;
-    }
 
     const aiPlay = aiPlays.find((p) => p.gameId === game.id);
     if (aiPlay?.skip) {
       await addLog("skip", `${game.sport}: ${aiPlay.skipReason ?? "Desk passed."}`, game.sport);
-      if (live && live.status === "queued") {
-        await sql`update picks set status = 'skipped', skip_reason = ${aiPlay.skipReason ?? "Desk passed."} where id = ${live.id}`;
+      if (existing && existing.status === "queued") {
+        await sql`update picks set status = 'skipped', skip_reason = ${aiPlay.skipReason ?? "Desk passed."} where id = ${existing.id}`;
       }
       continue;
     }
-    const reason = (aiPlay?.reason ?? rank.why).trim().slice(0, 420);
+    const reason = (aiPlay?.reason ?? formatWhy(game, rank)).trim().slice(0, 520);
     const confidence = Math.round(rank.confidence);
     const units = unitsFor(confidence);
     const postAt = postAtFor(game.startAt, leadMinutes);
     const matchup = `${game.away.abbr} @ ${game.home.abbr}`;
     const key = officialKey(game.league, game.id);
     const snapshot = JSON.stringify(game.odds);
-    if (live && live.status === "queued") {
+    if (existing && (existing.status === "queued" || existing.status === "skipped") && !existing.freezeJson) {
       await sql`
         update picks set
+          status = 'queued',
+          skip_reason = null,
           game_id = ${game.id},
           league = ${game.league},
           matchup = ${matchup},
@@ -599,7 +598,7 @@ export async function selectOfficialCard(
           start_at = ${game.startAt},
           post_at = ${postAt},
           official_key = ${key}
-        where id = ${live.id} and status = 'queued' and freeze_json is null
+        where id = ${existing.id} and status in ('queued','skipped') and freeze_json is null
       `;
     } else {
       try {
@@ -647,7 +646,7 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
       meta.minConfidence,
       meta.postLeadMinutes,
       research,
-      meta.maxDailyPicks,
+      dailyPickTarget(meta.maxDailyPicks),
     );
     const posted = await flushDuePosts(games, meta.minEdgePct, meta.minConfidence);
     await addLog("scan", `Tick ${source}: ${games.length} games · queued ${queued} · posted ${posted} · graded ${graded}`);

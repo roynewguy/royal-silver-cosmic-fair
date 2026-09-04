@@ -461,6 +461,16 @@ export async function readDesk(): Promise<DeskState> {
   };
 }
 
+export async function loadOpenOfficial(): Promise<PickRow[]> {
+  const sql = await getSql();
+  const rows = await sql<PickDb>`
+    select * from picks
+    where status in ('queued','posting','posted') and result is null
+    order by created_at asc
+  `;
+  return rows.map(pickFromRow);
+}
+
 export async function livePickForSport(sport: string): Promise<PickRow | null> {
   const sql = await getSql();
   const rows = await sql<PickDb>`
@@ -476,7 +486,7 @@ export async function pickByGame(gameId: string): Promise<PickRow | null> {
   const sql = await getSql();
   const rows = await sql<PickDb>`
     select * from picks
-    where game_id = ${gameId} and status in ('queued','posting','posted','graded')
+    where game_id = ${gameId} and status in ('queued','posting','posted','skipped','graded')
     order by created_at desc
     limit 1
   `;

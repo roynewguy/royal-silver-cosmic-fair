@@ -28,7 +28,7 @@ export function DeskHq() {
           <p className="text-xs tracking-[0.22em] text-accent uppercase">Command desk</p>
           <h1 className="mt-1 font-display text-4xl tracking-wide text-fg sm:text-5xl">Today's board</h1>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
-          Official card is today in PT, up to {desk.data.maxDailyPicks || 3} plays, DraftKings on the freeze. Worker posts after Discord confirms, then grades.
+          Official card is today in PT: the best {desk.data.maxDailyPicks || 3} qualifying bets on the whole slate, DraftKings on the freeze. Weak games PASS. Worker posts ~2–3h pre-kick, then grades.
           </p>
         </div>
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">

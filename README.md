@@ -58,6 +58,7 @@ Project → **Settings** → **Environment Variables** (Production):
 | Name | Value |
 | --- | --- |
 | `FREE_BETA_MODE` | `true` |
+| `DAILY_PICK_TARGET` | `3` (best N bets on the whole slate; desk can still change 1–6) |
 | `CRON_SECRET` | the random string from step 5 |
 | `ODDS_API_KEY` | Odds API key |
 | `DISCORD_WEBHOOK_URL` | Discord webhook URL |
