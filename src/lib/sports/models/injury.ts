@@ -1,5 +1,5 @@
 import { clamp } from "../odds.ts";
-import type { GameCard, Injury, InjuryStatus } from "../types.ts";
+import type { GameCard, InjuryStatus } from "../types.ts";
 
 export function parseInjuryStatus(raw: string | undefined): InjuryStatus {
   const s = (raw ?? "").toLowerCase();

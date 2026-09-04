@@ -22,7 +22,7 @@ import {
   type AiPlay,
 } from "@/lib/sports/research";
 import { gradeDisposition, UNPOSTED_SKIP } from "./posting";
-import { sendOnce, type ClaimStore, type CompletePayload } from "./post-pipeline";
+import { sendOnce, type ClaimStore, type CompletePayload, newPostingToken } from "./post-pipeline";
 import type { GameCard, PickRow } from "@/lib/sports/types";
 import {
   addLog,
@@ -44,27 +44,30 @@ function postAtFor(startAt: string, leadMinutes: number): string {
 function sqlLocker(sql: Awaited<ReturnType<typeof getSql>>): ClaimStore {
   return {
     async claim(id) {
-      const rows = await sql<{ id: number }>`
+      const token = newPostingToken();
+      const rows = await sql<{ posting_token: string }>`
         update picks
-        set status = 'posting', posting_at = now()
+        set status = 'posting', posting_started_at = now(), posting_at = now(), posting_token = ${token}
         where id = ${id} and status = 'queued' and freeze_json is null
-        returning id
+        returning posting_token
       `;
-      return rows.length > 0;
+      return rows[0]?.posting_token ?? null;
     },
-    async release(id) {
+    async release(id, token) {
       await sql`
         update picks
-        set status = 'queued', posting_at = null
-        where id = ${id} and status = 'posting' and freeze_json is null
+        set status = 'queued', posting_started_at = null, posting_at = null, posting_token = null
+        where id = ${id} and status = 'posting' and freeze_json is null and posting_token = ${token}
       `;
     },
-    async complete(id, payload: CompletePayload) {
+    async complete(id, token, payload: CompletePayload) {
       const rows = await sql<{ id: number }>`
         update picks set
           status = 'posted',
           posted_at = now(),
           posting_at = null,
+          posting_started_at = null,
+          posting_token = null,
           selection = ${payload.selection},
           market = ${payload.market},
           side = ${payload.side},
@@ -82,7 +85,7 @@ function sqlLocker(sql: Awaited<ReturnType<typeof getSql>>): ClaimStore {
           freeze_json = ${payload.freezeJson},
           discord_message = ${payload.discordMessage},
           discord_message_id = ${payload.discordMessageId}
-        where id = ${id} and status = 'posting' and freeze_json is null
+        where id = ${id} and status = 'posting' and freeze_json is null and posting_token = ${token}
         returning id
       `;
       return rows.length > 0;
@@ -288,9 +291,10 @@ export async function postPickById(
     games = await refreshSlate();
   }
   await sql`
-    update picks set status = 'queued', posting_at = null
+    update picks set status = 'queued', posting_at = null, posting_started_at = null, posting_token = null
     where id = ${pickId} and status = 'posting' and posted_at is null and freeze_json is null
-      and (posting_at is null or posting_at < now() - interval '3 minutes')
+      and posting_started_at is not null
+      and posting_started_at < now() - interval '4 minutes'
   `;
   const windowed = opts.ignoreWindow
     ? await sql<{ id: number; game_id: string; selected_odds: number | null }>`

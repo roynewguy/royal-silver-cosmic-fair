@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createMemoryLocker, sendOnce, type CompletePayload } from "./post-pipeline.ts";
+import {
+  STALE_POSTING_MS,
+  createMemoryLocker,
+  sendOnce,
+  shouldRecoverStuckPost,
+  type CompletePayload,
+} from "./post-pipeline.ts";
 
 function payload(): Omit<CompletePayload, "discordMessageId"> {
   return {
@@ -22,6 +28,43 @@ function payload(): Omit<CompletePayload, "discordMessageId"> {
     selectedOdds: -110,
   };
 }
+
+test("old pick that starts posting now is not unlocked", async () => {
+  const startedNow = new Date().toISOString();
+  assert.equal(
+    shouldRecoverStuckPost({ status: "posting", postingStartedAt: startedNow }),
+    false,
+  );
+  const locker = createMemoryLocker([
+    { id: 1, status: "queued", createdAt: Date.now() - 8 * 3600_000 },
+  ]);
+  const token = await locker.claim(1);
+  assert.ok(token);
+  assert.equal(locker.recoverStale(), 0);
+  assert.equal(locker.rows.get(1)?.status, "posting");
+});
+
+test("stale posting older than 4 minutes does recover", () => {
+  const started = Date.now() - STALE_POSTING_MS - 1000;
+  assert.equal(
+    shouldRecoverStuckPost({
+      status: "posting",
+      postingStartedAt: new Date(started).toISOString(),
+    }),
+    true,
+  );
+  const locker = createMemoryLocker([
+    {
+      id: 2,
+      status: "posting",
+      createdAt: Date.now() - 8 * 3600_000,
+      postingStartedAt: started,
+    },
+  ]);
+  assert.equal(locker.recoverStale(), 1);
+  assert.equal(locker.rows.get(2)?.status, "queued");
+  assert.equal(locker.rows.get(2)?.token, null);
+});
 
 test("two simultaneous posts send Discord once", async () => {
   const locker = createMemoryLocker([{ id: 7, status: "queued" }]);
@@ -46,20 +89,18 @@ test("two simultaneous posts send Discord once", async () => {
   assert.equal(locker.rows.get(7)?.discordId, "msg-1");
 });
 
-test("worker and manual Post Now share the claim so only one send happens", async () => {
-  const locker = createMemoryLocker([{ id: 3, status: "queued" }]);
-  let sends = 0;
-  const send = async () => {
-    sends += 1;
-    return { ok: true, id: "one" };
-  };
-  const worker = sendOnce(3, locker, send, payload());
-  const manual = sendOnce(3, locker, send, payload());
-  const results = await Promise.all([worker, manual]);
-  assert.equal(results.filter((r) => r.sent).length, 1);
-  assert.equal(results.filter((r) => r.claimed).length, 1);
-  assert.equal(sends, 1);
-  assert.equal(locker.rows.get(3)?.status, "posted");
+test("wrong posting token cannot release or freeze the ticket", async () => {
+  const locker = createMemoryLocker([{ id: 4, status: "queued" }]);
+  const token = await locker.claim(4);
+  assert.ok(token);
+  await locker.release(4, "not-the-token");
+  assert.equal(locker.rows.get(4)?.status, "posting");
+  const frozen = await locker.complete(4, "not-the-token", {
+    ...payload(),
+    discordMessageId: "x",
+  });
+  assert.equal(frozen, false);
+  assert.equal(locker.rows.get(4)?.status, "posting");
 });
 
 test("Discord failure returns posting to queued and allows retry", async () => {

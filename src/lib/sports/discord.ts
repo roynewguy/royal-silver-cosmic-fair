@@ -76,7 +76,7 @@ export async function postWebhook(
   return { ok: false, error: last };
 }
 
-export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): string {
+export function buildDiscordMessage(pick: PickRow, _game?: GameCard | null): string {
   const odds = pick.lockedOddsJson;
   const kick = formatKick(pick.startAt, "America/Los_Angeles");
   return [
