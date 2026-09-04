@@ -1,5 +1,6 @@
 import { resolveWebhook } from "@/lib/sports/discord";
 import { getSql } from "@/lib/db";
+import { applyModelInputs, packModelInputs } from "@/lib/sports/model-inputs";
 import type {
   DeskLog,
   DeskRecord,
@@ -67,6 +68,7 @@ type GameRow = {
   venue: string | null;
   odds_json: string;
   rank_json: string | null;
+  model_inputs_json?: string | null;
 };
 
 type PickDb = {
@@ -101,6 +103,10 @@ type PickDb = {
   model_probability?: unknown;
   model_edge?: unknown;
   freeze_json?: string | null;
+  selected_odds?: unknown;
+  posted_odds?: unknown;
+  closing_odds?: unknown;
+  clv?: unknown;
   created_at: unknown;
   home_logo?: string | null;
   away_logo?: string | null;
@@ -112,7 +118,7 @@ type PickDb = {
 };
 
 export function gameFromRow(row: GameRow): GameCard {
-  return {
+  const base: GameCard = {
     id: row.id,
     espnId: row.espn_id,
     sport: row.sport,
@@ -163,6 +169,7 @@ export function gameFromRow(row: GameRow): GameCard {
     injuries: [],
     weather: null,
   };
+  return applyModelInputs(base, jsonParse(row.model_inputs_json ?? null, null));
 }
 
 export function pickFromRow(row: PickDb): PickRow {
@@ -215,6 +222,10 @@ export function pickFromRow(row: PickDb): PickRow {
     modelProbability: numOrNull(row.model_probability),
     modelEdge: numOrNull(row.model_edge),
     freezeJson: row.freeze_json ?? null,
+    selectedOdds: numOrNull(row.selected_odds),
+    postedOdds: numOrNull(row.posted_odds),
+    closingOdds: numOrNull(row.closing_odds),
+    clv: numOrNull(row.clv),
     createdAt: iso(row.created_at),
     homeLogo: row.home_logo ?? null,
     awayLogo: row.away_logo ?? null,
@@ -233,12 +244,12 @@ export async function upsertGames(games: GameCard[]): Promise<void> {
       insert into games (
         id, espn_id, sport, league, start_at, status,
         home_team, away_team, home_abbr, away_abbr, home_logo, away_logo,
-        home_score, away_score, home_record, away_record, venue, odds_json, rank_json, updated_at
+        home_score, away_score, home_record, away_record, venue, odds_json, rank_json, model_inputs_json, updated_at
       ) values (
         ${g.id}, ${g.espnId}, ${g.sport}, ${g.league}, ${g.startAt}, ${g.status},
         ${g.home.name}, ${g.away.name}, ${g.home.abbr}, ${g.away.abbr}, ${g.home.logo}, ${g.away.logo},
         ${g.home.score}, ${g.away.score}, ${g.home.record}, ${g.away.record}, ${g.venue},
-        ${JSON.stringify(g.odds)}, ${g.rank ? JSON.stringify(g.rank) : null}, now()
+        ${JSON.stringify(g.odds)}, ${g.rank ? JSON.stringify(g.rank) : null}, ${JSON.stringify(packModelInputs(g))}, now()
       )
       on conflict (id) do update set
         status = excluded.status,
@@ -248,6 +259,7 @@ export async function upsertGames(games: GameCard[]): Promise<void> {
         away_record = excluded.away_record,
         odds_json = excluded.odds_json,
         rank_json = excluded.rank_json,
+        model_inputs_json = excluded.model_inputs_json,
         venue = excluded.venue,
         updated_at = now()
     `;
@@ -287,11 +299,11 @@ export async function loadRecord(): Promise<DeskRecord> {
     pending: unknown;
   }>`
     select
-      count(*) filter (where result = 'WIN') as wins,
-      count(*) filter (where result = 'LOSS') as losses,
-      count(*) filter (where result = 'PUSH') as pushes,
-      coalesce(sum(profit_units) filter (where result is not null), 0) as units,
-      count(*) filter (where status in ('queued','posted') and result is null) as pending
+      count(*) filter (where result = 'WIN' and status = 'graded') as wins,
+      count(*) filter (where result = 'LOSS' and status = 'graded') as losses,
+      count(*) filter (where result = 'PUSH' and status = 'graded') as pushes,
+      coalesce(sum(profit_units) filter (where status = 'graded' and result is not null), 0) as units,
+      count(*) filter (where status = 'posted' and result is null) as pending
     from picks
   `;
   const r = rows[0];
@@ -372,7 +384,7 @@ export function scansFrom(games: GameCard[], picks: PickRow[]): SportScan[] {
   return LEAGUES.map((league) => {
     const slate = games.filter((g) => g.league === league.id);
     const live = picks.find(
-      (p) => p.sport === league.sport && (p.status === "queued" || p.status === "posted") && !p.result,
+      (p) => p.sport === league.sport && (p.status === "queued" || p.status === "posting" || p.status === "posted") && !p.result,
     );
     const scheduled = slate.filter((g) => g.status === "scheduled");
     if (live) {
@@ -431,6 +443,7 @@ export async function readDesk(): Promise<DeskState> {
     webhookSource: hook.source,
     operator: false,
     soccerDesk: "off",
+    pinFromEnv: Boolean(process.env.BOATBOYZ_PIN?.trim()),
   };
 }
 
@@ -438,7 +451,7 @@ export async function livePickForSport(sport: string): Promise<PickRow | null> {
   const sql = await getSql();
   const rows = await sql<PickDb>`
     select * from picks
-    where sport = ${sport} and status in ('queued','posted') and result is null
+    where sport = ${sport} and status in ('queued','posting','posted') and result is null
     order by created_at desc
     limit 1
   `;
@@ -449,7 +462,7 @@ export async function pickByGame(gameId: string): Promise<PickRow | null> {
   const sql = await getSql();
   const rows = await sql<PickDb>`
     select * from picks
-    where game_id = ${gameId} and status in ('queued','posted','graded')
+    where game_id = ${gameId} and status in ('queued','posting','posted','graded')
     order by created_at desc
     limit 1
   `;

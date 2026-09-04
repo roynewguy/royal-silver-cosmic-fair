@@ -12,10 +12,12 @@ import {
 export { cronAuthorized };
 
 const COOKIE = "boatboyz_op";
-const LOCK_AFTER = 8;
-const LOCK_MINUTES = 15;
 const IP_FAILS = 5;
 const WINDOW_MINUTES = 15;
+
+export function pinFromEnv(): boolean {
+  return Boolean(process.env.BOATBOYZ_PIN?.trim());
+}
 
 function clientIp(): string {
   try {
@@ -36,31 +38,10 @@ async function recordAttempt(ip: string, ok: boolean): Promise<void> {
   const hash = ipHash(ip);
   await sql`insert into operator_attempts (ip_hash, ok) values (${hash}, ${ok})`;
   await sql`delete from operator_attempts where attempted_at < now() - interval '2 days'`;
-  if (ok) {
-    await sql`update desk_meta set auth_fail_count = 0, auth_locked_until = null, updated_at = now() where id = 1`;
-    return;
-  }
-  await sql`
-    update desk_meta
-    set auth_fail_count = auth_fail_count + 1,
-        auth_locked_until = case
-          when auth_fail_count + 1 >= ${LOCK_AFTER} then now() + (${LOCK_MINUTES} * interval '1 minute')
-          else auth_locked_until
-        end,
-        updated_at = now()
-    where id = 1
-  `;
 }
 
 async function unlockBlocked(ip: string): Promise<string | null> {
   const sql = await getSql();
-  const meta = await sql<{ auth_locked_until: unknown }>`
-    select auth_locked_until from desk_meta where id = 1
-  `;
-  const until = meta[0]?.auth_locked_until ? new Date(String(meta[0].auth_locked_until)) : null;
-  if (until && until.getTime() > Date.now()) {
-    return "Desk locked after too many failed unlocks. Try later.";
-  }
   const hash = ipHash(ip);
   const fails = await sql<{ n: unknown }>`
     select count(*) as n from operator_attempts
@@ -144,6 +125,9 @@ export async function logoutOperator(): Promise<void> {
 }
 
 export async function changePin(next: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (pinFromEnv()) {
+    return { ok: false, error: "BOATBOYZ_PIN is set in hosting secrets. Change it there." };
+  }
   if (secretTooShort(next)) return { ok: false, error: "Operator secret must be at least 8 characters." };
   const sql = await getSql();
   await sql`update desk_meta set operator_pin_hash = ${hashOperatorSecret(next.trim())}, updated_at = now() where id = 1`;

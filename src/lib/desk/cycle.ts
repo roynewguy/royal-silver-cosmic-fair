@@ -10,10 +10,18 @@ import { fetchAllSlates, inWindow } from "@/lib/sports/espn";
 import { gradePick, settle } from "@/lib/sports/grade";
 import { LEAGUE_BY_ID } from "@/lib/sports/leagues";
 import { buildFreezeSnapshot } from "@/lib/sports/freeze";
-import { lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
+import { impliedFromAmerican, lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import { mergeDraftKingsOdds } from "@/lib/sports/odds-api";
 import { bestPerSport, rankGame, rankGames, unitsFor } from "@/lib/sports/rank";
-import { researchPlays } from "@/lib/sports/research";
+import {
+  fingerprintResearch,
+  loadCachedResearch,
+  researchPlays,
+  saveCachedResearch,
+  shouldRefreshResearch,
+  type AiPlay,
+} from "@/lib/sports/research";
+import { gradeDisposition, UNPOSTED_SKIP } from "./posting";
 import type { GameCard, PickRow } from "@/lib/sports/types";
 import {
   addLog,
@@ -48,6 +56,10 @@ function asPickRow(partial: Partial<PickRow> & Pick<PickRow, "id" | "gameId" | "
     modelProbability: null,
     modelEdge: null,
     freezeJson: null,
+    selectedOdds: null,
+    postedOdds: null,
+    closingOdds: null,
+    clv: null,
     homeLogo: null,
     awayLogo: null,
     homeAbbr: null,
@@ -86,11 +98,21 @@ export async function voidDeadGames(games: GameCard[]): Promise<number> {
   );
   let n = 0;
   for (const game of dead) {
-    const open = await sql<{ id: number; sport: string; selection: string }>`
-      select id, sport, selection from picks
-      where game_id = ${game.id} and status in ('queued','posted') and result is null
+    const open = await sql<{ id: number; sport: string; selection: string; status: string }>`
+      select id, sport, selection, status from picks
+      where game_id = ${game.id} and status in ('queued','posting','posted') and result is null
     `;
     for (const row of open) {
+      if (row.status !== "posted") {
+        await sql`
+          update picks
+          set status = 'skipped', skip_reason = ${UNPOSTED_SKIP}
+          where id = ${row.id}
+        `;
+        await addLog("skip", `${row.selection} skipped — ${UNPOSTED_SKIP}`, row.sport);
+        n += 1;
+        continue;
+      }
       await sql`
         update picks
         set status = 'graded', result = 'VOID', profit_units = 0, graded_at = now(),
@@ -125,9 +147,10 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
     edge_pct: number;
     start_at: string;
     post_at: string;
+    posted_odds: number | null;
   }>`
     select * from picks
-    where result is null and status in ('queued','posted')
+    where result is null and status in ('queued','posting','posted')
   `;
   const byId = new Map(games.map((g) => [g.id, g]));
   let graded = 0;
@@ -135,14 +158,18 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
   for (const row of open) {
     const game = byId.get(row.game_id);
     if (!game) continue;
-    if (row.status === "queued" && new Date(game.startAt).getTime() <= Date.now() && game.status === "scheduled") {
+    const started = new Date(game.startAt).getTime() <= Date.now();
+    const disp = gradeDisposition(row.status as PickRow["status"], started, game.status);
+    if (disp === "skip-unposted") {
       await sql`
-        update picks set status = 'skipped', skip_reason = 'Game started before the post window.'
-        where id = ${row.id}
+        update picks set status = 'skipped', skip_reason = ${UNPOSTED_SKIP}, result = null, profit_units = null
+        where id = ${row.id} and status in ('queued','posting')
       `;
-      await addLog("skip", "Missed the post window — game already underway.", game.sport);
+      await addLog("skip", UNPOSTED_SKIP, game.sport);
       continue;
     }
+    if (disp !== "grade" && disp !== "void") continue;
+    if (row.status !== "posted") continue;
     const fake = asPickRow({
       id: row.id,
       gameId: row.game_id,
@@ -164,13 +191,20 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
       postAt: String(row.post_at),
       createdAt: new Date().toISOString(),
     });
-    const result = gradePick(fake, game);
+    const result = disp === "void" ? "VOID" : gradePick(fake, game);
     if (!result) continue;
     const { profit } = settle(fake, result);
+    const closing = priceFor(game.odds, fake.market, fake.side);
+    const postedOdds = row.posted_odds ?? row.locked_odds;
+    const clv =
+      closing != null && postedOdds != null
+        ? impliedFromAmerican(closing) - impliedFromAmerican(postedOdds)
+        : null;
     await sql`
       update picks
-      set status = 'graded', result = ${result}, profit_units = ${profit}, graded_at = now()
-      where id = ${row.id}
+      set status = 'graded', result = ${result}, profit_units = ${profit}, graded_at = now(),
+          closing_odds = ${closing}, clv = ${clv}
+      where id = ${row.id} and status = 'posted'
     `;
     const record = await loadRecord();
     await addLog(
@@ -178,7 +212,7 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
       `${fake.matchup} ${result} ${profit >= 0 ? "+" : ""}${profit.toFixed(2)}u`,
       game.sport,
     );
-    if (hook && fake.status) {
+    if (hook) {
       const recap = buildRecapMessage({ ...fake, result, profitUnits: profit }, game, result, profit, record);
       const sent = await postWebhook(hook, recap);
       if (!sent.ok) await addLog("post", `Recap failed: ${sent.error}`, game.sport);
@@ -188,139 +222,175 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
   return graded;
 }
 
-export async function postQueuedPick(
+export async function postPickById(
   pickId: number,
   games: GameCard[],
   minEdge: number,
   minConf: number,
-  opts: { ignoreWindow?: boolean } = {},
-): Promise<{ ok: boolean; posted: boolean; error?: string }> {
+  opts: { ignoreWindow?: boolean; refresh?: boolean } = {},
+): Promise<{ ok: boolean; posted: boolean; error?: string; pickId: number }> {
   const sql = await getSql();
-  const rows = opts.ignoreWindow
-    ? await sql<{ id: number; game_id: string }>`
-        select id, game_id from picks where id = ${pickId} and status = 'queued'
-      `
-    : await sql<{ id: number; game_id: string }>`
-        select id, game_id from picks
-        where id = ${pickId} and status = 'queued' and post_at <= now() and start_at > now()
-      `;
-  const row = rows[0];
-  if (!row) return { ok: true, posted: false };
-
-  const game = games.find((g) => g.id === row.game_id);
-  if (!game) return { ok: false, posted: false, error: "Game not on the slate." };
-  if (game.status !== "scheduled") {
-    await sql`update picks set status = 'skipped', skip_reason = ${`Game ${game.status}.`} where id = ${row.id} and status = 'queued'`;
-    return { ok: true, posted: false };
-  }
-  const freshRank = rankGame(game);
-  if (!freshRank || freshRank.edgePct < minEdge || freshRank.confidence < minConf) {
-    await sql`
-      update picks
-      set status = 'skipped',
-          skip_reason = ${`Line moved. Edge ${freshRank?.edgePct.toFixed(1) ?? "n/a"}% no longer clears.`}
-      where id = ${row.id} and status = 'queued'
-    `;
-    await addLog("skip", `${game.sport} PASS at post time — edge gone.`, game.sport);
-    return { ok: true, posted: false };
-  }
-  const lockedOdds = priceFor(game.odds, freshRank.market, freshRank.side) ?? freshRank.price;
-  const lockedLine = lineFor(game.odds, freshRank.market, freshRank.side);
-  const selection = selectionLabel({
-    market: freshRank.market,
-    side: freshRank.side,
-    homeAbbr: game.home.abbr,
-    awayAbbr: game.away.abbr,
-    line: lockedLine,
-    price: lockedOdds,
-  });
-  const full = await sql<{
-    id: number;
-    sport: string;
-    league: string;
-    matchup: string;
-    reason: string;
-    units: number;
-    start_at: string;
-    post_at: string;
-    created_at: string;
-    freeze_json: string | null;
-  }>`select * from picks where id = ${row.id}`;
-  const pick = full[0];
-  if (!pick) return { ok: false, posted: false, error: "Pick vanished." };
-  if (pick.freeze_json) return { ok: true, posted: false };
-
-  const units = unitsFor(freshRank.confidence);
-  const freeze = buildFreezeSnapshot({
-    rank: freshRank,
-    units,
-    lockedOdds,
-    lockedLine,
-    selection,
-    gameId: row.game_id,
-    odds: game.odds,
-  });
-  const asRow = asPickRow({
-    id: pick.id,
-    gameId: row.game_id,
-    sport: pick.sport,
-    league: pick.league,
-    matchup: pick.matchup,
-    market: freshRank.market,
-    selection,
-    side: freshRank.side,
-    lockedLine,
-    lockedOdds,
-    lockedOddsJson: game.odds,
-    reason: pick.reason,
-    confidence: freshRank.confidence,
-    edgePct: freshRank.edgePct,
-    units,
-    status: "queued",
-    startAt: String(pick.start_at),
-    postAt: String(pick.post_at),
-    createdAt: String(pick.created_at),
-    homeAbbr: game.home.abbr,
-    awayAbbr: game.away.abbr,
-    modelVersion: freshRank.model,
-    modelProbability: freshRank.probability,
-    modelEdge: freshRank.edgePct,
-  });
-  const message = buildDiscordMessage(asRow, game);
-  const hook = await webhookUrl();
-  if (!hook) {
-    await addLog("post", "Due pick waiting — no DISCORD_WEBHOOK_URL.", pick.sport);
-    return { ok: false, posted: false, error: "No Discord webhook configured." };
-  }
-  const sent = await postWebhook(hook, message);
-  if (!sent.ok) {
-    await addLog("post", `Discord failed, still queued: ${sent.error}`, pick.sport);
-    return { ok: false, posted: false, error: sent.error };
+  if (opts.refresh) {
+    games = await refreshSlate();
   }
   await sql`
-    update picks set
-      status = 'posted',
-      posted_at = now(),
-      selection = ${selection},
-      market = ${freshRank.market},
-      side = ${freshRank.side},
-      locked_odds = ${lockedOdds},
-      locked_line = ${lockedLine},
-      locked_odds_json = ${JSON.stringify(game.odds)},
-      edge_pct = ${freshRank.edgePct},
-      confidence = ${freshRank.confidence},
-      units = ${units},
-      model_version = ${freshRank.model},
-      model_probability = ${freshRank.probability},
-      model_edge = ${freshRank.edgePct},
-      freeze_json = ${JSON.stringify(freeze)},
-      discord_message = ${message},
-      discord_message_id = ${sent.id ?? null}
-    where id = ${pick.id} and status = 'queued' and freeze_json is null
+    update picks set status = 'queued'
+    where id = ${pickId} and status = 'posting' and posted_at is null
+      and created_at < now() - interval '4 minutes'
   `;
-  await addLog("post", `Discord confirmed ${selection} · ${pick.matchup} · ${freshRank.model}`, pick.sport);
-  return { ok: true, posted: true };
+  const windowed = opts.ignoreWindow
+    ? await sql<{ id: number; game_id: string; selected_odds: number | null }>`
+        select id, game_id, selected_odds from picks where id = ${pickId} and status = 'queued'
+      `
+    : await sql<{ id: number; game_id: string; selected_odds: number | null }>`
+        select id, game_id, selected_odds from picks
+        where id = ${pickId} and status = 'queued' and post_at <= now() and start_at > now()
+      `;
+  const row = windowed[0];
+  if (!row) return { ok: true, posted: false, pickId };
+
+  const claimed = await sql<{ id: number }>`
+    update picks set status = 'posting' where id = ${row.id} and status = 'queued' returning id
+  `;
+  if (!claimed[0]) return { ok: true, posted: false, pickId, error: "Pick is already posting." };
+
+  const release = async () => {
+    await sql`update picks set status = 'queued' where id = ${row.id} and status = 'posting'`;
+  };
+
+  try {
+    const game = games.find((g) => g.id === row.game_id);
+    if (!game) {
+      await release();
+      return { ok: false, posted: false, pickId, error: "Game not on the slate." };
+    }
+    if (game.status !== "scheduled") {
+      await sql`update picks set status = 'skipped', skip_reason = ${`Game ${game.status}.`} where id = ${row.id} and status = 'posting'`;
+      return { ok: true, posted: false, pickId };
+    }
+    const freshRank = rankGame(game);
+    if (!freshRank || freshRank.edgePct < minEdge || freshRank.confidence < minConf) {
+      await sql`
+        update picks
+        set status = 'skipped',
+            skip_reason = ${`Line moved. Edge ${freshRank?.edgePct.toFixed(1) ?? "n/a"}% no longer clears.`}
+        where id = ${row.id} and status = 'posting'
+      `;
+      await addLog("skip", `${game.sport} PASS at post time — edge gone.`, game.sport);
+      return { ok: true, posted: false, pickId };
+    }
+    const lockedOdds = priceFor(game.odds, freshRank.market, freshRank.side) ?? freshRank.price;
+    const lockedLine = lineFor(game.odds, freshRank.market, freshRank.side);
+    const selection = selectionLabel({
+      market: freshRank.market,
+      side: freshRank.side,
+      homeAbbr: game.home.abbr,
+      awayAbbr: game.away.abbr,
+      line: lockedLine,
+      price: lockedOdds,
+    });
+    const full = await sql<{
+      id: number;
+      sport: string;
+      league: string;
+      matchup: string;
+      reason: string;
+      start_at: string;
+      post_at: string;
+      created_at: string;
+      freeze_json: string | null;
+      selected_odds: number | null;
+    }>`select * from picks where id = ${row.id}`;
+    const pick = full[0];
+    if (!pick) {
+      await release();
+      return { ok: false, posted: false, pickId, error: "Pick vanished." };
+    }
+    if (pick.freeze_json) {
+      await sql`update picks set status = 'posted' where id = ${row.id} and status = 'posting'`;
+      return { ok: true, posted: false, pickId };
+    }
+    const units = unitsFor(freshRank.confidence);
+    const freeze = buildFreezeSnapshot({
+      rank: freshRank,
+      units,
+      lockedOdds,
+      lockedLine,
+      selection,
+      gameId: row.game_id,
+      odds: game.odds,
+    });
+    const asRow = asPickRow({
+      id: pick.id,
+      gameId: row.game_id,
+      sport: pick.sport,
+      league: pick.league,
+      matchup: pick.matchup,
+      market: freshRank.market,
+      selection,
+      side: freshRank.side,
+      lockedLine,
+      lockedOdds,
+      lockedOddsJson: game.odds,
+      reason: pick.reason,
+      confidence: freshRank.confidence,
+      edgePct: freshRank.edgePct,
+      units,
+      status: "posting",
+      startAt: String(pick.start_at),
+      postAt: String(pick.post_at),
+      createdAt: String(pick.created_at),
+      homeAbbr: game.home.abbr,
+      awayAbbr: game.away.abbr,
+      modelVersion: freshRank.model,
+      modelProbability: freshRank.probability,
+      modelEdge: freshRank.edgePct,
+    });
+    const message = buildDiscordMessage(asRow, game);
+    const hook = await webhookUrl();
+    if (!hook) {
+      await release();
+      await addLog("post", "Due pick waiting — no DISCORD_WEBHOOK_URL.", pick.sport);
+      return { ok: false, posted: false, pickId, error: "No Discord webhook configured." };
+    }
+    const sent = await postWebhook(hook, message);
+    if (!sent.ok) {
+      await release();
+      await addLog("post", `Discord failed, still queued: ${sent.error}`, pick.sport);
+      return { ok: false, posted: false, pickId, error: sent.error };
+    }
+    await sql`
+      update picks set
+        status = 'posted',
+        posted_at = now(),
+        selection = ${selection},
+        market = ${freshRank.market},
+        side = ${freshRank.side},
+        locked_odds = ${lockedOdds},
+        locked_line = ${lockedLine},
+        locked_odds_json = ${JSON.stringify(game.odds)},
+        edge_pct = ${freshRank.edgePct},
+        confidence = ${freshRank.confidence},
+        units = ${units},
+        model_version = ${freshRank.model},
+        model_probability = ${freshRank.probability},
+        model_edge = ${freshRank.edgePct},
+        posted_odds = ${lockedOdds},
+        selected_odds = ${pick.selected_odds ?? lockedOdds},
+        freeze_json = ${JSON.stringify(freeze)},
+        discord_message = ${message},
+        discord_message_id = ${sent.id ?? null}
+      where id = ${pick.id} and status = 'posting' and freeze_json is null
+    `;
+    await addLog("post", `Discord confirmed ${selection} · ${pick.matchup} · ${freshRank.model}`, pick.sport);
+    return { ok: true, posted: true, pickId };
+  } catch (err) {
+    await release();
+    return { ok: false, posted: false, pickId, error: err instanceof Error ? err.message : "Post failed." };
+  }
 }
+
+export const postQueuedPick = postPickById;
 
 export async function flushDuePosts(games: GameCard[], minEdge: number, minConf: number): Promise<number> {
   const sql = await getSql();
@@ -330,8 +400,8 @@ export async function flushDuePosts(games: GameCard[], minEdge: number, minConf:
   `;
   let posted = 0;
   for (const row of due) {
-    const result = await postQueuedPick(row.id, games, minEdge, minConf);
-    if (result.posted) posted += 1;
+    const result = await postPickById(row.id, games, minEdge, minConf);
+    if (result.posted && result.pickId === row.id) posted += 1;
   }
   return posted;
 }
@@ -345,8 +415,40 @@ export async function selectOfficialCard(
 ): Promise<number> {
   const decisions = bestPerSport(games, minEdge, minConf);
   const candidates = decisions.filter((d) => !d.skip.skipped && d.pick.rank).map((d) => d.pick);
-  const ai =
-    allowResearch && candidates.length ? await researchPlays(candidates) : null;
+  const aiPlays: AiPlay[] = [];
+  if (allowResearch && candidates.length) {
+    const need: GameCard[] = [];
+    for (const game of candidates) {
+      const fp = fingerprintResearch(game);
+      const cached = await loadCachedResearch(game.id);
+      const hours = (new Date(game.startAt).getTime() - Date.now()) / 3_600_000;
+      const refresh = shouldRefreshResearch({
+        cachedFingerprint: cached?.fingerprint ?? null,
+        currentFingerprint: fp,
+        cacheAgeMs: cached?.ageMs ?? 0,
+        hoursToKick: hours,
+        postLeadHours: leadMinutes / 60,
+      });
+      if (cached && !refresh) {
+        aiPlays.push({
+          gameId: game.id,
+          skip: cached.skip,
+          reason: cached.reason,
+          skipReason: cached.skipReason ?? undefined,
+        });
+        continue;
+      }
+      need.push(game);
+    }
+    const fresh = need.length ? await researchPlays(need) : null;
+    if (fresh) {
+      for (const play of fresh) {
+        const game = need.find((g) => g.id === play.gameId);
+        if (game) await saveCachedResearch(game.id, fingerprintResearch(game), play);
+        aiPlays.push(play);
+      }
+    }
+  }
   const sql = await getSql();
   let queued = 0;
   for (const decision of decisions) {
@@ -358,9 +460,9 @@ export async function selectOfficialCard(
     const rank = game.rank;
     if (!rank) continue;
     const existing = await pickByGame(game.id);
-    if (existing && (existing.status === "posted" || existing.status === "graded")) continue;
+    if (existing && (existing.status === "posted" || existing.status === "graded" || existing.status === "posting")) continue;
     const live = await livePickForSport(game.sport);
-    if (live && live.status === "posted") continue;
+    if (live && (live.status === "posted" || live.status === "posting")) continue;
     if (live && live.status === "queued" && live.gameId !== game.id) {
       await addLog(
         "skip",
@@ -370,7 +472,7 @@ export async function selectOfficialCard(
       continue;
     }
 
-    const aiPlay = ai?.find((p) => p.gameId === game.id || p.sport === game.sport);
+    const aiPlay = aiPlays.find((p) => p.gameId === game.id);
     if (aiPlay?.skip) {
       await addLog("skip", `${game.sport}: ${aiPlay.skipReason ?? "Desk passed."}`, game.sport);
       if (live && live.status === "queued") {
@@ -398,7 +500,7 @@ export async function selectOfficialCard(
           locked_odds = ${rank.price},
           locked_odds_json = ${snapshot},
           reason = ${reason},
-          research = ${ai ? reason : null},
+          research = ${aiPlay ? reason : null},
           confidence = ${confidence},
           edge_pct = ${rank.edgePct},
           units = ${units},
@@ -417,12 +519,12 @@ export async function selectOfficialCard(
             game_id, sport, league, matchup, market, selection, side,
             locked_line, locked_odds, locked_odds_json, reason, research,
             confidence, edge_pct, units, status, start_at, post_at, official_key,
-            model_version, model_probability, model_edge
+            model_version, model_probability, model_edge, selected_odds, selected_at
           ) values (
             ${game.id}, ${game.sport}, ${game.league}, ${matchup}, ${rank.market}, ${rank.selection}, ${rank.side},
-            ${rank.line}, ${rank.price}, ${snapshot}, ${reason}, ${ai ? reason : null},
+            ${rank.line}, ${rank.price}, ${snapshot}, ${reason}, ${aiPlay ? reason : null},
             ${confidence}, ${rank.edgePct}, ${units}, 'queued', ${game.startAt}, ${postAt}, ${key},
-            ${rank.model}, ${rank.probability}, ${rank.edgePct}
+            ${rank.model}, ${rank.probability}, ${rank.edgePct}, ${rank.price}, now()
           )
         `;
       } catch {

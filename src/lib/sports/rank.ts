@@ -5,8 +5,11 @@ import { isDraftKingsLine } from "./odds-api.ts";
 import { rankGeneric } from "./models/generic.ts";
 import { rankMlb } from "./models/mlb.ts";
 import { rankNba } from "./models/nba.ts";
+import { rankNcaaf } from "./models/ncaaf.ts";
 import { rankNfl } from "./models/nfl.ts";
 import { rankNhl } from "./models/nhl.ts";
+import { rankUfc } from "./models/ufc.ts";
+import { rankWnba } from "./models/wnba.ts";
 import type { GameCard, RankPick, SportScan } from "./types.ts";
 
 export function rankGame(game: GameCard): RankPick | null {
@@ -21,6 +24,12 @@ export function rankGame(game: GameCard): RankPick | null {
       return rankNfl(game);
     case "nhl":
       return rankNhl(game);
+    case "ncaaf":
+      return rankNcaaf(game);
+    case "wnba":
+      return rankWnba(game);
+    case "ufc":
+      return rankUfc(game);
     default:
       return rankGeneric(game, league);
   }

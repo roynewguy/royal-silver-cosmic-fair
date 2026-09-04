@@ -1,3 +1,4 @@
+import { applyDraftKingsSnapshot, nearestKickHours, shouldFetchLeagueOdds } from "./dk-open.ts";
 import { LEAGUES } from "./leagues.ts";
 import { parseAmerican, parseLine } from "./odds.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
@@ -14,8 +15,7 @@ export type OddsApiGame = {
   bookmakers?: { key?: string; title?: string; markets?: OddsApiMarket[] }[];
 };
 
-const cache: { at: number; byLeague: Map<string, OddsApiGame[]> } = {
-  at: 0,
+const cache: { byLeague: Map<string, { at: number; rows: OddsApiGame[] }> } = {
   byLeague: new Map(),
 };
 
@@ -120,47 +120,52 @@ export async function mergeDraftKingsOdds(games: GameCard[]): Promise<GameCard[]
   const apiKey = process.env.ODDS_API_KEY?.trim();
   if (!apiKey) return games;
   const now = Date.now();
-  if (now - cache.at > 8 * 60_000) {
-    cache.byLeague = new Map();
-    cache.at = now;
-  }
   const byId = new Map(games.map((g) => [g.id, { ...g }]));
   const needed = LEAGUES.filter((l) => l.official && l.oddsApiKey);
   await Promise.allSettled(
     needed.map(async (league) => {
       if (!league.oddsApiKey) return;
-      let rows = cache.byLeague.get(league.id);
-      if (!rows) {
-        rows = await fetchLeagueOdds(league.oddsApiKey, apiKey);
-        cache.byLeague.set(league.id, rows);
-      }
-      const leagueGames = games.filter((g) => g.league === league.id);
-      const pairs = pairOddsEvents(
-        leagueGames.map((g) => ({
-          id: g.id,
-          home: g.home.name,
-          away: g.away.name,
-          startAt: g.startAt,
-        })),
-        rows,
+      const leagueGames = games.filter((g) => g.league === league.id && g.status === "scheduled");
+      if (leagueGames.length === 0) return;
+      const cached = cache.byLeague.get(league.id);
+      const hours = nearestKickHours(
+        leagueGames.map((g) => g.startAt),
+        now,
       );
-      for (const [gameId, eventIndex] of pairs) {
-        const hit = rows[eventIndex];
-        const cur = byId.get(gameId);
-        if (!hit || !cur) continue;
-        const snap = snapshotFromApi(hit, cur.home.name, cur.away.name);
-        if (!snap) continue;
-        byId.set(gameId, {
-          ...cur,
-          odds: {
-            ...snap,
-            openHomeSpread: cur.odds.openHomeSpread,
-            openHomeMl: cur.odds.openHomeMl,
-            openTotal: cur.odds.openTotal,
-          },
-        });
+      const lastAge = cached ? now - cached.at : Number.POSITIVE_INFINITY;
+      const needFetch = shouldFetchLeagueOdds({
+        scheduledCount: leagueGames.length,
+        hoursToKick: hours,
+        lastFetchAgeMs: lastAge,
+      });
+      if (!needFetch && cached) {
+        applyPairs(leagueGames, cached.rows, byId);
+        return;
       }
+      const rows = await fetchLeagueOdds(league.oddsApiKey, apiKey);
+      cache.byLeague.set(league.id, { at: now, rows });
+      applyPairs(leagueGames, rows, byId);
     }),
   );
   return [...byId.values()];
+}
+
+function applyPairs(leagueGames: GameCard[], rows: OddsApiGame[], byId: Map<string, GameCard>) {
+  const pairs = pairOddsEvents(
+    leagueGames.map((g) => ({
+      id: g.id,
+      home: g.home.name,
+      away: g.away.name,
+      startAt: g.startAt,
+    })),
+    rows,
+  );
+  for (const [gameId, eventIndex] of pairs) {
+    const hit = rows[eventIndex];
+    const cur = byId.get(gameId);
+    if (!hit || !cur) continue;
+    const snap = snapshotFromApi(hit, cur.home.name, cur.away.name);
+    if (!snap) continue;
+    byId.set(gameId, { ...cur, odds: applyDraftKingsSnapshot(cur.odds, snap) });
+  }
 }

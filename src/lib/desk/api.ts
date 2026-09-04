@@ -1,8 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
 import { discordWebhookOk, resolveWebhook } from "@/lib/sports/discord";
-import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, requireOperator } from "./admin";
-import { postQueuedPick, refreshSlate, runTick } from "./cycle";
+import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
+import { postPickById, refreshSlate, runTick } from "./cycle";
+import { redactDesk } from "./redact";
 import { addLog, loadGames, loadMeta, readDesk, writeWebhook } from "./store";
 
 const g = globalThis as typeof globalThis & {
@@ -32,7 +33,8 @@ export async function tickDesk(source: string, research = true) {
 
 async function deskForClient() {
   const state = await readDesk();
-  return { ...state, operator: await isOperator() };
+  const operator = await isOperator();
+  return redactDesk({ ...state, operator, pinFromEnv: pinFromEnv() }, operator);
 }
 
 export const getDesk = createServerFn({ method: "GET" }).handler(async () => {
@@ -82,17 +84,18 @@ export const pushPick = createServerFn({ method: "POST" })
     }
     const resolved = resolveWebhook(data.webhookUrl || (await (await import("./store")).readWebhook()));
     if (!resolved.url) return { ok: false as const, error: "No Discord webhook configured." };
-    if (pick.status === "queued") {
+    if (pick.status === "queued" || pick.status === "posting") {
       const meta = await loadMeta();
-      const result = await postQueuedPick(
+      const result = await postPickById(
         pick.id,
         await loadGames(),
         meta.minEdgePct,
         meta.minConfidence,
-        { ignoreWindow: true },
+        { ignoreWindow: true, refresh: true },
       );
+      if (result.pickId !== pick.id) return { ok: false as const, error: "Wrong pick." };
       if (!result.ok) return { ok: false as const, error: result.error ?? "Post failed." };
-      if (!result.posted) return { ok: true as const, state: await deskForClient() };
+      if (!result.posted) return { ok: false as const, error: result.error ?? "Pick was not posted." };
     }
     return { ok: true as const, state: await deskForClient() };
   });
@@ -134,6 +137,7 @@ export const rotatePin = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const gate = await requireOperator();
     if (!gate.ok) return { ok: false as const, error: gate.error };
+    if (pinFromEnv()) return { ok: false as const, error: "BOATBOYZ_PIN is set in hosting secrets. Change it there." };
     const res = await changePin(data.pin);
     if (!res.ok) return res;
     await addLog("auth", "Operator PIN rotated");

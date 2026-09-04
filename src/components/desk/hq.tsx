@@ -18,7 +18,7 @@ export function DeskHq() {
   const [pin, setPin] = useState("");
   const op = desk.data.operator;
 
-  const queued = desk.data.picks.filter((p) => p.status === "queued" || p.status === "posted");
+  const queued = desk.data.picks.filter((p) => p.status === "queued" || p.status === "posting" || p.status === "posted");
   const busy = desk.scanning || desk.running;
 
   return (
@@ -95,7 +95,7 @@ export function DeskHq() {
           <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">Best plays</h2>
           {queued.length === 0 ? (
             <div className="rounded-xl bg-surface px-5 py-8 shadow-border">
-              <p className="font-display text-xl text-fg">No locks queued</p>
+              <p className="font-display text-xl text-fg">{op ? "No locks queued" : "No posted plays yet"}</p>
               <p className="mt-2 text-sm text-muted">
                 Hit Run the desk. Sports without a real edge stay dark.
               </p>

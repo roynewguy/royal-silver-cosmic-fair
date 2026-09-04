@@ -2,19 +2,7 @@ import { clamp } from "../odds.ts";
 import type { GameCard, RankPick } from "../types.ts";
 import { gate, mlPlay, pickBest, sitePct, spreadPlay, totalPlay } from "./common.ts";
 import { injuryDelta, injuryNotes } from "./injury.ts";
-
-function weatherLean(weather: string | null): { under: number; note: string } {
-  if (!weather) return { under: 0, note: "" };
-  const w = weather.toLowerCase();
-  const temp = Number((w.match(/(-?\d+)\s*°/) ?? [])[1]);
-  const windy = /wind|gust/.test(w);
-  const wet = /rain|snow|shower/.test(w);
-  let under = 0;
-  if (Number.isFinite(temp) && temp <= 32) under += 0.04;
-  if (windy) under += 0.03;
-  if (wet) under += 0.03;
-  return { under, note: under ? ` Weather: ${weather}.` : "" };
-}
+import { windUnderLean } from "./weather.ts";
 
 export function rankNfl(game: GameCard): RankPick | null {
   if (!gate(game)) return null;
@@ -22,11 +10,8 @@ export function rankNfl(game: GameCard): RankPick | null {
   if (splits.home == null || splits.away == null) return null;
   let p = clamp(0.5 + (splits.home - splits.away) * 0.34 + 0.028, 0.22, 0.78);
   p = clamp(p + injuryDelta(game, "nfl"), 0.18, 0.82);
-  const wx = weatherLean(game.weather);
-  const qb = [
-    ...injuryNotes(game, "home"),
-    ...injuryNotes(game, "away"),
-  ];
+  const wx = windUnderLean(game.weather);
+  const qb = [...injuryNotes(game, "home"), ...injuryNotes(game, "away")];
   const why = `${game.home.abbr} home split ${game.home.homeSplit ?? game.home.record} vs ${game.away.abbr} road ${game.away.roadSplit ?? game.away.record}.${qb.length ? ` ${qb.join(", ")}.` : ""}${wx.note}`;
 
   const cands: RankPick[] = [];

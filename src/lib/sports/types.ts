@@ -23,7 +23,7 @@ export type Market = "spread" | "moneyline" | "total";
 
 export type Side = "home" | "away" | "over" | "under";
 
-export type PickStatus = "queued" | "posted" | "skipped" | "graded";
+export type PickStatus = "queued" | "posting" | "posted" | "skipped" | "graded";
 
 export type PickResult = "WIN" | "LOSS" | "PUSH" | "VOID";
 
@@ -145,6 +145,10 @@ export type PickRow = {
   modelProbability: number | null;
   modelEdge: number | null;
   freezeJson: string | null;
+  selectedOdds: number | null;
+  postedOdds: number | null;
+  closingOdds: number | null;
+  clv: number | null;
   createdAt: string;
   homeLogo: string | null;
   awayLogo: string | null;
@@ -186,4 +190,5 @@ export type DeskState = {
   webhookSource: "env" | "desk" | "none";
   operator: boolean;
   soccerDesk: "off";
+  pinFromEnv: boolean;
 };

@@ -9,7 +9,7 @@ export function SportRail({ scans, picks }: { scans: SportScan[]; picks: PickRow
     <div className="flex w-full min-w-0 max-w-full gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:overflow-visible lg:flex lg:flex-col">
       {scans.map((scan) => {
         const live = picks.find(
-          (p) => p.sport === scan.sport && (p.status === "queued" || p.status === "posted") && !p.result,
+          (p) => p.sport === scan.sport && (p.status === "queued" || p.status === "posting" || p.status === "posted") && !p.result,
         );
         return (
           <div

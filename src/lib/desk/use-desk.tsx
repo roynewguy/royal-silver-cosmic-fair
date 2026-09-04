@@ -21,6 +21,7 @@ const empty: DeskState = {
   webhookSource: "none",
   operator: false,
   soccerDesk: "off",
+  pinFromEnv: false,
 };
 
 type DeskApi = {

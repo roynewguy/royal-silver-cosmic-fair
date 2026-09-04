@@ -1,5 +1,9 @@
 # 24/7 tick for Vercel Hobby (native Vercel cron is once/day).
-# Repo secrets: APP_URL (https://your-app.vercel.app) and CRON_SECRET (same as Vercel env).
+# Required GitHub repo secrets (Settings → Secrets and variables → Actions):
+#   APP_URL      = https://your-app.vercel.app   (no trailing slash)
+#   CRON_SECRET  = same value as CRON_SECRET on the host
+# The deployed app must also have CRON_SECRET. The tick endpoint only
+# accepts Authorization: Bearer $CRON_SECRET.
 name: BoatBoyz tick
 on:
   schedule:
@@ -17,8 +21,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
-            echo "Set repo secrets APP_URL and CRON_SECRET."
-            exit 1
+            echo "::notice::Set GitHub repo secrets APP_URL and CRON_SECRET (same CRON_SECRET as the host) to enable 24/7 ticks. Skipping this run."
+            exit 0
           fi
           curl -fsS -X POST "${APP_URL%/}/api/cron/tick" \
             -H "Authorization: Bearer ${CRON_SECRET}" \

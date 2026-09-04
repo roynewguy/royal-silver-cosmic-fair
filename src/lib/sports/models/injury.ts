@@ -20,7 +20,7 @@ function statusWeight(status: InjuryStatus): number {
 
 function positionWeight(sport: string, position: string | null): number {
   const p = (position ?? "").toUpperCase();
-  if (sport === "nfl") {
+  if (sport === "nfl" || sport === "ncaaf") {
     if (p === "QB") return 0.085;
     if (p === "WR" || p === "RB" || p === "TE") return 0.02;
     if (p === "LT" || p === "RT" || p === "OL" || p === "G" || p === "C") return 0.012;
