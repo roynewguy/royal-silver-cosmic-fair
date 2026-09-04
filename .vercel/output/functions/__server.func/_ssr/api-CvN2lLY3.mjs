@@ -1,6 +1,6 @@
 import { n as TSS_SERVER_FUNCTION, t as createServerFn } from "./ssr.mjs";
 import { a as formatLine, i as formatKick, n as formatAmerican, s as profitFromOdds } from "./utils-WDQvgBy0.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/api-GEsvREdG.js
+//#region node_modules/.nitro/vite/services/ssr/assets/api-CvN2lLY3.js
 var createServerRpc = (serverFnMeta, splitImportFn) => {
 	const url = "/_serverFn/" + serverFnMeta.id;
 	return Object.assign(splitImportFn, {
@@ -190,7 +190,7 @@ var LEAGUES = [
 		homeAdv: .03,
 		ptsPerWin: 28,
 		daily: false,
-		lookAheadDays: 8,
+		lookAheadDays: 12,
 		avgTotal: 44.5
 	},
 	{
@@ -202,7 +202,7 @@ var LEAGUES = [
 		homeAdv: .035,
 		ptsPerWin: 32,
 		daily: false,
-		lookAheadDays: 5,
+		lookAheadDays: 7,
 		avgTotal: 52
 	},
 	{
@@ -472,10 +472,7 @@ async function fetchJson(url) {
 	try {
 		const res = await fetch(url, {
 			signal: ctrl.signal,
-			headers: {
-				Accept: "application/json",
-				"User-Agent": "PicksBoatBoyzDesk/1.0"
-			}
+			headers: { Accept: "application/json" }
 		});
 		if (!res.ok) throw new Error(`ESPN ${res.status}`);
 		return await res.json();
@@ -520,9 +517,8 @@ var MIN_CONF = 58;
 function modelHomeWin(game, league) {
 	const hw = parseWinPct(game.home.record);
 	const aw = parseWinPct(game.away.record);
-	let p = .5 + league.homeAdv;
-	if (hw != null && aw != null) p = .5 + (hw - aw) * .38 + league.homeAdv;
-	return clamp(p, .18, .82);
+	if (hw == null || aw == null) return null;
+	return clamp(.5 + (hw - aw) * .38 + league.homeAdv, .18, .82);
 }
 function juiceImbalance(a, b) {
 	if (a == null || b == null) return 0;
@@ -541,9 +537,8 @@ function rankOne(game, league) {
 	if (Number.isNaN(start) || start < Date.now() - 3e5) return null;
 	const candidates = [];
 	const modelHome = modelHomeWin(game, league);
-	const modelAway = 1 - modelHome;
-	const expectedMargin = (modelHome - .5) * league.ptsPerWin;
-	if (game.odds.homeMl != null && game.odds.awayMl != null) {
+	if (modelHome != null && game.odds.homeMl != null && game.odds.awayMl != null) {
+		const modelAway = 1 - modelHome;
 		const [fairHome] = devig(game.odds.homeMl, game.odds.awayMl);
 		const edgeHome = modelHome - fairHome;
 		const edgeAway = modelAway - (1 - fairHome);
@@ -551,7 +546,9 @@ function rankOne(game, league) {
 		const edge = pickHome ? edgeHome : edgeAway;
 		const side = pickHome ? "home" : "away";
 		const price = pickHome ? game.odds.homeMl : game.odds.awayMl;
-		if (!(Math.abs(price) >= 380 && league.kind === "moneyline") && Math.abs(price) < 900) candidates.push({
+		const tooChalky = Math.abs(price) >= 380 && league.kind === "moneyline";
+		const dogTooLong = price >= (league.id === "mlb" ? 180 : 165);
+		if (!tooChalky && !dogTooLong && Math.abs(price) < 900) candidates.push({
 			market: "moneyline",
 			side,
 			selection: selectionLabel({
@@ -571,34 +568,38 @@ function rankOne(game, league) {
 	}
 	if (league.kind === "spread" && game.odds.homeSpread != null && (game.odds.homeSpreadOdds != null || game.odds.awaySpreadOdds != null)) {
 		const line = game.odds.homeSpread;
-		if (Math.abs(line) <= 28) {
-			const coverHome = expectedMargin - line;
-			const homeDog = line > 0;
+		const maxSpread = league.id === "ncaaf" ? 16.5 : league.id === "nfl" ? 7.5 : 14.5;
+		if (Math.abs(line) <= maxSpread) {
 			const move = spreadMoveBonus(game);
-			const juice = juiceImbalance(game.odds.homeSpreadOdds, game.odds.awaySpreadOdds) * .4;
-			const edgeHome = coverHome / Math.max(8, league.ptsPerWin * .45) + move + juice + (homeDog ? .012 : 0);
-			const pickHome = edgeHome >= 0;
-			const edge = Math.abs(edgeHome);
-			const side = pickHome ? "home" : "away";
-			const price = (pickHome ? game.odds.homeSpreadOdds : game.odds.awaySpreadOdds) ?? -110;
-			const playLine = pickHome ? game.odds.homeSpread : game.odds.awaySpread;
-			candidates.push({
-				market: "spread",
-				side,
-				selection: selectionLabel({
+			const juice = juiceImbalance(game.odds.homeSpreadOdds, game.odds.awaySpreadOdds) * .5;
+			const expectedMargin = modelHome != null ? (modelHome - .5) * league.ptsPerWin : 0;
+			const coverHome = modelHome != null ? expectedMargin + line : 0;
+			const homeDog = line > 0;
+			const edgeHome = (modelHome != null ? coverHome / Math.max(16, league.ptsPerWin) : 0) + move + juice + (homeDog ? .01 : 0);
+			if (Math.abs(edgeHome) >= .025) {
+				const pickHome = edgeHome >= 0;
+				const edge = Math.abs(edgeHome);
+				const side = pickHome ? "home" : "away";
+				const price = (pickHome ? game.odds.homeSpreadOdds : game.odds.awaySpreadOdds) ?? -110;
+				const playLine = pickHome ? game.odds.homeSpread : game.odds.awaySpread;
+				candidates.push({
 					market: "spread",
 					side,
-					homeAbbr: game.home.abbr,
-					awayAbbr: game.away.abbr,
+					selection: selectionLabel({
+						market: "spread",
+						side,
+						homeAbbr: game.home.abbr,
+						awayAbbr: game.away.abbr,
+						line: playLine,
+						price
+					}),
 					line: playLine,
-					price
-				}),
-				line: playLine,
-				price,
-				edgePct: edge * 100,
-				confidence: 0,
-				why: pickHome ? `${game.home.abbr} ${playLine} is a softer number than the projected margin.` : `${game.away.abbr} ${playLine} catches a line the model does not fully respect.`
-			});
+					price,
+					edgePct: edge * 100,
+					confidence: 0,
+					why: pickHome ? `${game.home.abbr} ${playLine} is a softer number than the projected margin.` : `${game.away.abbr} ${playLine} catches a line the model does not fully respect.`
+				});
+			}
 		}
 	}
 	if (league.avgTotal != null && game.odds.total != null && game.odds.overOdds != null && game.odds.underOdds != null) {
@@ -635,7 +636,7 @@ function rankOne(game, league) {
 	});
 	const best = candidates[0];
 	if (!best) return null;
-	const conf = clamp(50 + best.edgePct * 4.2 + (parseWinPct(game.home.record) ? 4 : 0), 48, 88);
+	const conf = clamp(52 + best.edgePct * 2.1 + (parseWinPct(game.home.record) ? 4 : 0), 52, 78);
 	if (best.edgePct < MIN_EDGE * 100 || conf < MIN_CONF) return null;
 	return {
 		...best,
@@ -794,29 +795,30 @@ async function researchPlays(candidates) {
 		odds: g.odds,
 		ranked: g.rank
 	}));
-	const res = await fetch("https://api.x.ai/v1/chat/completions", {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${apiKey}`
-		},
-		body: JSON.stringify({
-			model: "grok-4.5",
-			temperature: .3,
-			max_tokens: 900,
-			messages: [{
-				role: "system",
-				content: "You are the senior handicapper for Picks Boat Boyz, a sharp sports betting Discord. One best play per sport, or skip. No guarantees, no hype, no parlays. Reasons are 1-2 sentences, desk tone."
-			}, {
-				role: "user",
-				content: `Ranked candidates (JSON). For each sport, keep the ranked play, slightly rewrite the reason, or skip if the edge looks thin/public/trap. Return JSON only: {"plays":[{"sport":"NFL","gameId":"...","market":"spread","selection":"SEA -3.5 (-105)","side":"home","skip":false,"reason":"...","confidence":70}]}\n\n${JSON.stringify(payload)}`
-			}]
-		})
-	});
-	if (!res.ok) return null;
-	const match = ((await res.json()).choices?.[0]?.message?.content ?? "").match(/\{[\s\S]*\}/);
-	if (!match) return null;
 	try {
+		const res = await fetch("https://api.x.ai/v1/chat/completions", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${apiKey}`
+			},
+			signal: AbortSignal.timeout(14e3),
+			body: JSON.stringify({
+				model: "grok-4.5",
+				temperature: .3,
+				max_tokens: 900,
+				messages: [{
+					role: "system",
+					content: "You are the senior handicapper for Picks Boat Boyz, a sharp sports betting Discord. One best play per sport, or skip. No guarantees, no hype, no parlays. Reasons are 1-2 sentences, desk tone."
+				}, {
+					role: "user",
+					content: `Ranked candidates (JSON). For each sport, keep the ranked play, slightly rewrite the reason, or skip if the edge looks thin/public/trap. Return JSON only: {"plays":[{"sport":"NFL","gameId":"...","market":"spread","selection":"SEA -3.5 (-105)","side":"home","skip":false,"reason":"...","confidence":70}]}\n\n${JSON.stringify(payload)}`
+				}]
+			})
+		});
+		if (!res.ok) return null;
+		const match = ((await res.json()).choices?.[0]?.message?.content ?? "").match(/\{[\s\S]*\}/);
+		if (!match) return null;
 		const parsed = JSON.parse(match[0]);
 		return Array.isArray(parsed.plays) ? parsed.plays : null;
 	} catch {
@@ -1278,7 +1280,7 @@ async function refreshInternal() {
 	await (await getSql())`delete from games where start_at < now() - interval '14 days'`;
 	await touchScan("scan");
 	const games = await loadGames();
-	await flushDuePosts(games, (await (await import("./store-CHv-TSu1.mjs")).loadMeta()).postLeadMinutes);
+	await flushDuePosts(games, (await (await import("./store-DMv8WYzm.mjs")).loadMeta()).postLeadMinutes);
 	await gradeOpenPicks(games);
 	await addLog("scan", `Scanned ${ranked.length} games across the board.`);
 	return games;
@@ -1297,7 +1299,12 @@ var refreshBoard_createServerFn_handler = createServerRpc({
 	filename: "src/lib/desk/api.ts"
 }, (opts) => refreshBoard.__executeServer(opts));
 var refreshBoard = createServerFn({ method: "POST" }).handler(refreshBoard_createServerFn_handler, async () => {
-	await refreshInternal();
+	try {
+		await refreshInternal();
+	} catch (err) {
+		await addLog("scan", `Scan error: ${err instanceof Error ? err.message : "Scan failed"}`);
+		throw err;
+	}
 	return readDesk();
 });
 var runDesk_createServerFn_handler = createServerRpc({
@@ -1307,7 +1314,7 @@ var runDesk_createServerFn_handler = createServerRpc({
 }, (opts) => runDesk.__executeServer(opts));
 var runDesk = createServerFn({ method: "POST" }).handler(runDesk_createServerFn_handler, async () => {
 	const games = await refreshInternal();
-	const meta = await (await import("./store-CHv-TSu1.mjs")).loadMeta();
+	const meta = await (await import("./store-DMv8WYzm.mjs")).loadMeta();
 	const decisions = bestPerSport(games, meta.minEdgePct, meta.minConfidence);
 	const candidates = decisions.filter((d) => !d.skip.skipped && d.pick.rank).map((d) => d.pick);
 	const ai = candidates.length ? await researchPlays(candidates) : null;
@@ -1315,6 +1322,12 @@ var runDesk = createServerFn({ method: "POST" }).handler(runDesk_createServerFn_
 	for (const decision of decisions) {
 		if (decision.skip.skipped) {
 			await addLog("skip", `${decision.skip.sport}: ${decision.skip.skipReason}`, decision.skip.sport);
+			const liveSkip = await livePickForSport(decision.skip.sport);
+			if (liveSkip && liveSkip.status === "queued") await sql`
+          update picks
+          set status = 'skipped', skip_reason = ${decision.skip.skipReason ?? "No strong play."}
+          where id = ${liveSkip.id}
+        `;
 			continue;
 		}
 		const game = decision.pick;

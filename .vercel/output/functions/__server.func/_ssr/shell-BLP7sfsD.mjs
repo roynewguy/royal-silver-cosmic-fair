@@ -7,7 +7,7 @@ import { t as cva } from "../_libs/class-variance-authority+clsx.mjs";
 import { o as formatUnits, t as cn } from "./utils-WDQvgBy0.mjs";
 import { d as BookOpen, f as Anchor, i as Radio, s as LayoutGrid } from "../_libs/lucide-react.mjs";
 import { n as toast } from "../_libs/sonner.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/shell-AbXw1nMH.js
+//#region node_modules/.nitro/vite/services/ssr/assets/shell-BLP7sfsD.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var badgeVariants = cva("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium tracking-wide", {
@@ -162,16 +162,16 @@ function DeskShellInner({ children }) {
 	const pathname = useRouterState({ select: (s) => s.location.pathname });
 	const recordLine = `${record.wins}-${record.losses}-${record.pushes}`;
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-		className: "harbor-grid min-h-dvh bg-bg text-fg",
+		className: "harbor-grid min-h-dvh overflow-x-hidden bg-bg text-fg",
 		children: [
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("header", {
 				className: "sticky top-0 z-30 border-b border-border bg-bg/90 backdrop-blur-sm",
 				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6",
+					className: "mx-auto flex max-w-7xl min-w-0 items-center gap-3 px-4 py-3 sm:px-6",
 					children: [
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Link, {
 							to: "/",
-							className: "flex min-w-0 items-center gap-2.5",
+							className: "flex min-w-0 flex-1 items-center gap-2.5 sm:flex-none",
 							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 								className: "flex size-10 items-center justify-center rounded-md bg-accent text-accent-fg",
 								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Anchor, {
@@ -181,7 +181,7 @@ function DeskShellInner({ children }) {
 							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
 								className: "min-w-0",
 								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-									className: "block font-display text-lg leading-tight tracking-wide text-fg",
+									className: "block truncate font-display text-lg leading-tight tracking-wide text-fg",
 									children: "PICKS BOAT BOYZ"
 								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 									className: "block text-xs tracking-[0.18em] text-muted uppercase",
@@ -202,7 +202,7 @@ function DeskShellInner({ children }) {
 							})
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "ml-auto flex items-center gap-2 sm:ml-4",
+							className: "flex shrink-0 items-center gap-2",
 							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								className: "rounded-md bg-surface px-3 py-2 shadow-border",
 								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {

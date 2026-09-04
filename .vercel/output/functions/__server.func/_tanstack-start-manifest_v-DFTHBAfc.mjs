@@ -1,4 +1,4 @@
-//#region node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-Crbcswmu.js
+//#region node_modules/.nitro/vite/services/ssr/assets/_tanstack-start-manifest_v-DFTHBAfc.js
 var tsrStartManifest = () => ({ routes: {
 	__root__: {
 		filePath: "/workspace/src/routes/__root.tsx",
@@ -7,35 +7,35 @@ var tsrStartManifest = () => ({ routes: {
 			"/ledger",
 			"/slate"
 		],
-		preloads: ["/assets/index-Cg0W4tNX.js"],
+		preloads: ["/assets/index-J-j3UE8N.js"],
 		scripts: [{ attrs: {
 			type: "module",
 			async: !0,
-			src: "/assets/index-Cg0W4tNX.js"
+			src: "/assets/index-J-j3UE8N.js"
 		} }]
 	},
 	"/": {
 		filePath: "/workspace/src/routes/index.tsx",
 		children: void 0,
 		preloads: [
-			"/assets/routes-DMv3pM01.js",
-			"/assets/shell-LorcH8tQ.js",
-			"/assets/pick-ticket-DM5Kg2yb.js"
+			"/assets/routes-BTKxfWJ7.js",
+			"/assets/shell-BQETvSUq.js",
+			"/assets/pick-ticket-DtFHauES.js"
 		]
 	},
 	"/ledger": {
 		filePath: "/workspace/src/routes/ledger.tsx",
 		children: void 0,
 		preloads: [
-			"/assets/ledger-DH_0hn6L.js",
-			"/assets/shell-LorcH8tQ.js",
-			"/assets/pick-ticket-DM5Kg2yb.js"
+			"/assets/ledger-CetBy9we.js",
+			"/assets/shell-BQETvSUq.js",
+			"/assets/pick-ticket-DtFHauES.js"
 		]
 	},
 	"/slate": {
 		filePath: "/workspace/src/routes/slate.tsx",
 		children: void 0,
-		preloads: ["/assets/slate-TsCW9QLa.js", "/assets/shell-LorcH8tQ.js"]
+		preloads: ["/assets/slate-BX9pipXT.js", "/assets/shell-BQETvSUq.js"]
 	}
 } });
 //#endregion

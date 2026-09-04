@@ -3,9 +3,9 @@ import { t as cva } from "../_libs/class-variance-authority+clsx.mjs";
 import { a as formatLine, c as relativeTo, i as formatKick, n as formatAmerican, t as cn } from "./utils-WDQvgBy0.mjs";
 import { l as Copy, r as Send, u as Clock3 } from "../_libs/lucide-react.mjs";
 import { n as toast } from "../_libs/sonner.mjs";
-import { t as Badge } from "./shell-AbXw1nMH.mjs";
+import { t as Badge } from "./shell-BLP7sfsD.mjs";
 import { t as Slot } from "../_libs/radix-ui__react-slot.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/pick-ticket-DxqAr9pp.js
+//#region node_modules/.nitro/vite/services/ssr/assets/pick-ticket-BmbaZp6u.js
 var import_jsx_runtime = require_jsx_runtime();
 var buttonVariants = cva("inline-flex items-center justify-center gap-2 font-medium transition-[opacity,transform,background-color,color] duration-150 ease-out enabled:active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-bg", {
 	variants: {
@@ -97,7 +97,7 @@ function PickTicket({ pick, onPost, posting }) {
 					className: "mt-3 flex flex-wrap items-center gap-2 text-xs text-subtle",
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Clock3, { className: "size-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
 						"Locked ",
-						formatLine(pick.lockedLine),
+						pick.market === "total" ? String(pick.lockedLine ?? "—") : formatLine(pick.lockedLine),
 						" ",
 						formatAmerican(pick.lockedOdds),
 						" · ",

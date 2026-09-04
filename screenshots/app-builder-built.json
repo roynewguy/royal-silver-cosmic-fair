@@ -1,0 +1,41 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Picks Boat Boyz",
+      "hasCanvas": false,
+      "bodyTextLen": 628,
+      "bodyTextHash": "ec5a89da6ae48cfbce324d0f8b675b36bd525cae5377c814a41b6d2281c61a6f",
+      "bodyTextPrefix": "PICKS BOAT BOYZ #1 PICKS Desk Slate Ledger RECORD 0-0-0 UNITS 0.",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Picks Boat Boyz",
+      "hasCanvas": false,
+      "bodyTextLen": 628,
+      "bodyTextHash": "6b5adf45db422982a25d0f281c63f067912c9c4dc731c3f706254c1c4ed6bf5f",
+      "bodyTextPrefix": "PICKS BOAT BOYZ #1 PICKS RECORD 0-0-0 UNITS 0.00u COMMAND DESK T",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": true,
+  "baselineReasons": [
+    "desktop: body text collapsed (2482 -> 628 chars)",
+    "mobile: body text collapsed (2482 -> 628 chars)"
+  ]
+}

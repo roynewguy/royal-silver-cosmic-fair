@@ -6,8 +6,8 @@ import { t as TriangleAlert } from "../_libs/lucide-react.mjs";
 import { t as QueryClient } from "../_libs/tanstack__query-core.mjs";
 import { t as Toaster } from "../_libs/sonner.mjs";
 import { a as union, i as string, n as number, r as object, t as literal } from "../_libs/zod.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/router-BygLDZ2x.js
-var router_BygLDZ2x_exports = /* @__PURE__ */ __exportAll({ getRouter: () => getRouter });
+//#region node_modules/.nitro/vite/services/ssr/assets/router-Bdl66ETH.js
+var router_Bdl66ETH_exports = /* @__PURE__ */ __exportAll({ getRouter: () => getRouter });
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function AppErrorComponent({ error }) {
@@ -277,7 +277,7 @@ function PreviewHostBridge() {
 	}, [router]);
 	return null;
 }
-var styles_default = "/assets/styles-DSSUQdiO.css";
+var styles_default = "/assets/styles-DNfbgNaj.css";
 var APP_NAME = "Picks Boat Boyz";
 var Route$3 = createRootRoute({
 	head: () => ({
@@ -344,11 +344,11 @@ var Route$3 = createRootRoute({
 		})]
 	})
 });
-var $$splitComponentImporter$2 = () => import("./routes-hOTW35Sk.mjs");
+var $$splitComponentImporter$2 = () => import("./routes-BlktesKW.mjs");
 var Route$2 = createFileRoute("/")({ component: lazyRouteComponent($$splitComponentImporter$2, "component") });
-var $$splitComponentImporter$1 = () => import("./ledger-tfOwSpmp.mjs");
+var $$splitComponentImporter$1 = () => import("./ledger-D7dDZ6r3.mjs");
 var Route$1 = createFileRoute("/ledger")({ component: lazyRouteComponent($$splitComponentImporter$1, "component") });
-var $$splitComponentImporter = () => import("./slate-Wu0JR4B5.mjs");
+var $$splitComponentImporter = () => import("./slate-DYed7VNh.mjs");
 var Route = createFileRoute("/slate")({ component: lazyRouteComponent($$splitComponentImporter, "component") });
 var rootRouteChildren = {
 	IndexRoute: Route$2.update({
@@ -375,4 +375,4 @@ function getRouter() {
 	});
 }
 //#endregion
-export { getRouter, router_BygLDZ2x_exports as t };
+export { getRouter, router_Bdl66ETH_exports as t };

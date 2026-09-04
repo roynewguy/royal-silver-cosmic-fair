@@ -64,7 +64,7 @@ export function DeskHq() {
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Meta label="Last scan" value={desk.data.lastScanAt ? relativeTo(desk.data.lastScanAt) : "—"} />
-        <Meta label="Post window" value={`${desk.data.postLeadMinutes / 60}h before kick`} />
+        <Meta label="Post window" value={`${desk.data.postLeadMinutes / 60}h pre-kick`} />
         <Meta label="Edge floor" value={`${desk.data.minEdgePct}% · conf ${desk.data.minConfidence}`} />
       </div>
 
@@ -132,7 +132,7 @@ function Meta({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg bg-surface px-4 py-3 shadow-border">
       <p className="text-[10px] tracking-[0.16em] text-subtle uppercase">{label}</p>
-      <p className="mt-1 font-mono text-sm tabular-nums text-fg">{value}</p>
+      <p className="mt-1 font-mono text-sm break-words tabular-nums text-fg">{value}</p>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { a as require_jsx_runtime } from "../_libs/react+tanstack__react-query.mjs";
 import { a as formatLine, i as formatKick, n as formatAmerican } from "./utils-WDQvgBy0.mjs";
-import { n as DeskShell, r as useDesk, t as Badge } from "./shell-AbXw1nMH.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/slate-Wu0JR4B5.js
+import { n as DeskShell, r as useDesk, t as Badge } from "./shell-BLP7sfsD.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/slate-DYed7VNh.js
 var import_jsx_runtime = require_jsx_runtime();
 function SlatePage() {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DeskShell, { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SlateBody, {}) });

@@ -1,3 +1,17 @@
+import type { GameCard } from "./types";
+
+type AiPlay = {
+  sport: string;
+  gameId: string;
+  market: "spread" | "moneyline" | "total";
+  selection: string;
+  side: "home" | "away" | "over" | "under";
+  skip: boolean;
+  skipReason?: string;
+  reason: string;
+  confidence?: number;
+};
+
 export async function researchPlays(candidates: GameCard[]): Promise<AiPlay[] | null> {
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return null;

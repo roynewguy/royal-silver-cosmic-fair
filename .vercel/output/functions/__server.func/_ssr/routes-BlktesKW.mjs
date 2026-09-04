@@ -3,9 +3,9 @@ import { n as require_react } from "../_libs/@radix-ui/react-compose-refs+[...].
 import { a as require_jsx_runtime } from "../_libs/react+tanstack__react-query.mjs";
 import { c as relativeTo, i as formatKick, r as formatClock, t as cn } from "./utils-WDQvgBy0.mjs";
 import { a as Radar, c as Hash, n as Ship, o as LoaderCircle } from "../_libs/lucide-react.mjs";
-import { n as DeskShell, r as useDesk, t as Badge } from "./shell-AbXw1nMH.mjs";
-import { n as PickTicket, t as Button } from "./pick-ticket-DxqAr9pp.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-hOTW35Sk.js
+import { n as DeskShell, r as useDesk, t as Badge } from "./shell-BLP7sfsD.mjs";
+import { n as PickTicket, t as Button } from "./pick-ticket-BmbaZp6u.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-BlktesKW.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function Input({ className, ...props }) {
@@ -87,7 +87,7 @@ function ChannelFeed({ picks, log }) {
 }
 function SportRail({ scans, picks }) {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-		className: "flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:overflow-visible lg:flex lg:flex-col",
+		className: "flex w-full min-w-0 max-w-full gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:overflow-visible lg:flex lg:flex-col",
 		children: scans.map((scan) => {
 			const live = picks.find((p) => p.sport === scan.sport && (p.status === "queued" || p.status === "posted") && !p.result);
 			return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
@@ -176,7 +176,7 @@ function DeskHq() {
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Meta, {
 						label: "Post window",
-						value: `${desk.data.postLeadMinutes / 60}h before kick`
+						value: `${desk.data.postLeadMinutes / 60}h pre-kick`
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Meta, {
 						label: "Edge floor",
@@ -189,10 +189,10 @@ function DeskHq() {
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Skeleton, { className: "h-28" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Skeleton, { className: "h-28" })]
 			}) : null,
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)_22rem]",
+				className: "grid min-w-0 gap-6 lg:grid-cols-[16rem_minmax(0,1fr)_22rem]",
 				children: [
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "space-y-3",
+						className: "min-w-0 space-y-3",
 						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
 							className: "font-display text-sm tracking-[0.18em] text-muted uppercase",
 							children: "Sports"
@@ -202,7 +202,7 @@ function DeskHq() {
 						})]
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "space-y-4",
+						className: "min-w-0 space-y-4",
 						children: [
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
 								className: "font-display text-sm tracking-[0.18em] text-muted uppercase",
@@ -232,7 +232,7 @@ function DeskHq() {
 						]
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "space-y-4",
+						className: "min-w-0 space-y-4",
 						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChannelFeed, {
 							picks: desk.data.picks,
 							log: desk.data.log
@@ -270,7 +270,7 @@ function Meta({ label, value }) {
 			className: "text-[10px] tracking-[0.16em] text-subtle uppercase",
 			children: label
 		}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-			className: "mt-1 font-mono text-sm tabular-nums text-fg",
+			className: "mt-1 font-mono text-sm break-words tabular-nums text-fg",
 			children: value
 		})]
 	});
@@ -317,7 +317,7 @@ function Upcoming({ games }) {
 					})]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					className: "font-mono text-xs text-muted tabular-nums",
+					className: "max-w-[9rem] truncate font-mono text-xs text-muted tabular-nums sm:max-w-none",
 					children: g.odds.details ?? "No line"
 				})
 			]
