@@ -8,6 +8,17 @@ Official desk for **#1 Picks Boat Boyz Picks**.
 
 Official card is **today in PT**, **DraftKings only** (The Odds API). No DK line → PASS. Soccer stays dark.
 
+**Model V2** (not one formula in four jerseys):
+
+| Sport | Brain |
+| --- | --- |
+| NBA | Home/road splits + structured injuries + spread-first |
+| MLB | Starter ERA/WHIP first, team W% second, ML-first |
+| NFL | Home/road splits, QB OUT, weather totals, spread cap 7.5 |
+| NHL | Splits + goalie save%, ML-first |
+
+Injuries are `{ team, player, status, position }`. An away OUT cannot haircut the home side.
+
 Every ~10 minutes the worker:
 
 1. Refresh slate (ESPN schedule/scores; DraftKings via The Odds API when `ODDS_API_KEY` is set)

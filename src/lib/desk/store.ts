@@ -121,6 +121,9 @@ export function gameFromRow(row: GameRow): GameCard {
       logo: row.home_logo,
       score: numOrNull(row.home_score),
       record: row.home_record,
+      homeSplit: null,
+      roadSplit: null,
+      starter: null,
     },
     away: {
       name: row.away_team,
@@ -128,6 +131,9 @@ export function gameFromRow(row: GameRow): GameCard {
       logo: row.away_logo,
       score: numOrNull(row.away_score),
       record: row.away_record,
+      homeSplit: null,
+      roadSplit: null,
+      starter: null,
     },
     venue: row.venue,
     odds: jsonParse<OddsSnapshot>(row.odds_json, {

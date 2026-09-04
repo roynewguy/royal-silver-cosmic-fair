@@ -20,7 +20,13 @@ export async function researchPlays(candidates: GameCard[]): Promise<AiPlay[] | 
     sport: g.sport,
     matchup: `${g.away.name} @ ${g.home.name}`,
     kick: g.startAt,
-    records: { home: g.home.record, away: g.away.record },
+    records: {
+      home: g.home.record,
+      away: g.away.record,
+      homeSplit: g.home.homeSplit,
+      awayRoadSplit: g.away.roadSplit,
+    },
+    starters: { home: g.home.starter, away: g.away.starter },
     book: g.odds.book,
     oddsSource: g.odds.source,
     odds: {

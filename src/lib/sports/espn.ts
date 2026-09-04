@@ -1,6 +1,7 @@
-import { LEAGUES, type LeagueConfig } from "./leagues";
-import { parseAmerican, parseLine } from "./odds";
-import type { GameCard, GameStatus, OddsSnapshot, TeamInfo } from "./types";
+import { LEAGUES, type LeagueConfig } from "./leagues.ts";
+import { parseAmerican, parseLine } from "./odds.ts";
+import { parseInjuryStatus } from "./models/injury.ts";
+import type { GameCard, GameStatus, Injury, OddsSnapshot, Starter, TeamInfo } from "./types.ts";
 
 type EspnCompetitor = {
   homeAway?: string;
@@ -16,6 +17,16 @@ type EspnCompetitor = {
     shortName?: string;
     flag?: { href?: string };
   };
+  injuries?: {
+    athlete?: { displayName?: string };
+    status?: string;
+    details?: { type?: string; position?: { abbreviation?: string } };
+  }[];
+  probables?: {
+    displayName?: string;
+    athlete?: { displayName?: string };
+    statistics?: { name?: string; abbreviation?: string; displayValue?: string; value?: number }[];
+  }[];
 };
 
 type EspnOdds = {
@@ -49,10 +60,11 @@ type EspnEvent = {
     competitors?: EspnCompetitor[];
     odds?: EspnOdds[];
     notes?: { headline?: string; text?: string }[];
-    weather?: { displayValue?: string; temperature?: number; conditionId?: string };
+    weather?: { displayValue?: string; temperature?: number; conditionId?: string; gust?: number; windSpeed?: number };
   }[];
   status?: { type?: { name?: string; state?: string; completed?: boolean } };
 };
+
 
 function nyDateKey(offsetDays: number): string {
   const fmt = new Intl.DateTimeFormat("en-CA", {
@@ -135,12 +147,34 @@ function parseOdds(raw: EspnOdds | undefined): OddsSnapshot {
   };
 }
 
+function splitOf(comp: EspnCompetitor | undefined, type: string): string | null {
+  return comp?.records?.find((r) => r.type === type)?.summary ?? null;
+}
+
+function starterFrom(comp: EspnCompetitor | undefined): Starter | null {
+  const p = comp?.probables?.[0];
+  if (!p) return null;
+  const stats = p.statistics ?? [];
+  const num = (names: string[]) => {
+    const hit = stats.find((s) => names.includes((s.name ?? s.abbreviation ?? "").toLowerCase()));
+    if (!hit) return null;
+    const n = typeof hit.value === "number" ? hit.value : Number(hit.displayValue);
+    return Number.isFinite(n) ? n : null;
+  };
+  return {
+    name: p.displayName ?? p.athlete?.displayName ?? "TBD",
+    era: num(["era", "earned run average"]),
+    whip: num(["whip"]),
+    savePct: num(["savepercentage", "sv%", "svpct", "save pct"]),
+    position: null,
+  };
+}
+
 function teamFrom(comp: EspnCompetitor | undefined): TeamInfo {
   const scoreRaw = comp?.score;
-  const score =
-    scoreRaw == null || scoreRaw === "" ? null : Number(scoreRaw);
+  const score = scoreRaw == null || scoreRaw === "" ? null : Number(scoreRaw);
   const record =
-    comp?.records?.find((r) => r.type === "total")?.summary ??
+    splitOf(comp, "total") ??
     comp?.records?.[0]?.summary ??
     null;
   if (comp?.athlete) {
@@ -150,6 +184,9 @@ function teamFrom(comp: EspnCompetitor | undefined): TeamInfo {
       logo: comp.athlete.flag?.href ?? null,
       score: Number.isFinite(score) ? score : null,
       record,
+      homeSplit: null,
+      roadSplit: null,
+      starter: null,
     };
   }
   return {
@@ -158,7 +195,29 @@ function teamFrom(comp: EspnCompetitor | undefined): TeamInfo {
     logo: comp?.team?.logo ?? null,
     score: Number.isFinite(score) ? score : null,
     record,
+    homeSplit: splitOf(comp, "home"),
+    roadSplit: splitOf(comp, "road") ?? splitOf(comp, "away"),
+    starter: starterFrom(comp),
   };
+}
+
+function injuriesFrom(home?: EspnCompetitor, away?: EspnCompetitor): Injury[] {
+  const rows: Injury[] = [];
+  const pull = (c: EspnCompetitor | undefined, team: "home" | "away") => {
+    for (const inj of c?.injuries ?? []) {
+      const player = inj.athlete?.displayName;
+      if (!player) continue;
+      rows.push({
+        team,
+        player,
+        status: parseInjuryStatus(inj.status ?? inj.details?.type),
+        position: inj.details?.position?.abbreviation ?? null,
+      });
+    }
+  };
+  pull(home, "home");
+  pull(away, "away");
+  return rows.slice(0, 16);
 }
 
 function notesFrom(comp: { notes?: { headline?: string; text?: string }[]; headlines?: { description?: string; shortLinkText?: string }[] }, event: EspnEvent): string[] {
@@ -173,25 +232,17 @@ function notesFrom(comp: { notes?: { headline?: string; text?: string }[]; headl
   return out.slice(0, 6);
 }
 
-function injuriesFrom(home?: EspnCompetitor, away?: EspnCompetitor): string[] {
-  const rows: string[] = [];
-  const pull = (c?: EspnCompetitor) => {
-    const list = (c as { injuries?: { athlete?: { displayName?: string }; status?: string; details?: { type?: string } }[] })?.injuries ?? [];
-    for (const inj of list) {
-      const name = inj.athlete?.displayName;
-      if (!name) continue;
-      rows.push(`${name} ${inj.status ?? inj.details?.type ?? "injury"}`.trim());
-    }
-  };
-  pull(home);
-  pull(away);
-  return rows.slice(0, 8);
-}
-
-function weatherFrom(comp: { weather?: { displayValue?: string; temperature?: number; conditionId?: string } }): string | null {
+function weatherFrom(comp: {
+  weather?: { displayValue?: string; temperature?: number; conditionId?: string; gust?: number; windSpeed?: number };
+}): string | null {
   const w = comp.weather;
   if (!w) return null;
-  const bits = [w.displayValue, w.temperature != null ? `${w.temperature}°` : null].filter(Boolean);
+  const bits = [
+    w.displayValue,
+    w.temperature != null ? `${w.temperature}°` : null,
+    w.windSpeed != null ? `wind ${w.windSpeed}` : null,
+    w.gust != null ? `gust ${w.gust}` : null,
+  ].filter(Boolean);
   return bits.length ? bits.join(" · ") : null;
 }
 
@@ -240,6 +291,7 @@ async function fetchJson(url: string): Promise<unknown> {
       signal: ctrl.signal,
       headers: {
         Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; BoatBoyz/2.0)",
       },
     });
     if (!res.ok) throw new Error(`ESPN ${res.status}`);
@@ -273,7 +325,8 @@ export async function fetchLeagueSlate(league: LeagueConfig): Promise<GameCard[]
       }
     }
   }
-  return [...byId.values()];
+  const board = await fetchInjuryBoard(league);
+  return [...byId.values()].map((g) => mergeInjuryBoard(g, board));
 }
 
 export async function fetchAllSlates(): Promise<GameCard[]> {
@@ -283,6 +336,80 @@ export async function fetchAllSlates(): Promise<GameCard[]> {
     if (result.status === "fulfilled") games.push(...result.value);
   });
   return games;
+}
+
+type BoardInj = { abbr: string; player: string; status: string; position: string | null };
+
+const injuryCache = new Map<string, { at: number; rows: BoardInj[] }>();
+
+async function fetchInjuryBoard(league: LeagueConfig): Promise<BoardInj[]> {
+  const hit = injuryCache.get(league.id);
+  if (hit && Date.now() - hit.at < 30 * 60_000) return hit.rows;
+  const url = `https://site.api.espn.com/apis/site/v2/sports/${league.espnSport}/${league.espnLeague}/injuries`;
+  try {
+    const payload = (await fetchJson(url)) as {
+      items?: {
+        id?: string;
+        injuries?: {
+          status?: string;
+          athlete?: { displayName?: string; position?: { abbreviation?: string } };
+          details?: { type?: string };
+        }[];
+      }[];
+      teams?: {
+        team?: { abbreviation?: string };
+        injuries?: {
+          status?: string;
+          athlete?: { displayName?: string; position?: { abbreviation?: string } };
+        }[];
+      }[];
+    };
+    const rows: BoardInj[] = [];
+    for (const team of payload.teams ?? []) {
+      const abbr = team.team?.abbreviation;
+      if (!abbr) continue;
+      for (const inj of team.injuries ?? []) {
+        if (!inj.athlete?.displayName) continue;
+        rows.push({
+          abbr,
+          player: inj.athlete.displayName,
+          status: inj.status ?? "",
+          position: inj.athlete.position?.abbreviation ?? null,
+        });
+      }
+    }
+    injuryCache.set(league.id, { at: Date.now(), rows });
+    return rows;
+  } catch {
+    injuryCache.set(league.id, { at: Date.now(), rows: [] });
+    return [];
+  }
+}
+
+function mergeInjuryBoard(game: GameCard, board: BoardInj[]): GameCard {
+  if (!board.length) return game;
+  const extra: Injury[] = [];
+  for (const row of board) {
+    const team =
+      row.abbr === game.home.abbr ? "home" : row.abbr === game.away.abbr ? "away" : null;
+    if (!team) continue;
+    extra.push({
+      team,
+      player: row.player,
+      status: parseInjuryStatus(row.status),
+      position: row.position,
+    });
+  }
+  if (!extra.length) return game;
+  const seen = new Set(game.injuries.map((i) => `${i.team}:${i.player}`));
+  const merged = [...game.injuries];
+  for (const inj of extra) {
+    const key = `${inj.team}:${inj.player}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(inj);
+  }
+  return { ...game, injuries: merged.slice(0, 20) };
 }
 
 export function inWindow(game: GameCard, days: number, now = Date.now()): boolean {

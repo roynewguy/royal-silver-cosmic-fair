@@ -30,8 +30,8 @@ function game(over: Partial<GameCard> = {}): GameCard {
     league: "nfl",
     startAt: new Date().toISOString(),
     status: "final",
-    home: { name: "Seahawks", abbr: "SEA", logo: null, score: 27, record: "1-0" },
-    away: { name: "Broncos", abbr: "DEN", logo: null, score: 20, record: "0-1" },
+    home: { name: "Seahawks", abbr: "SEA", logo: null, score: 27, record: "1-0", homeSplit: null, roadSplit: null, starter: null },
+    away: { name: "Broncos", abbr: "DEN", logo: null, score: 20, record: "0-1", homeSplit: null, roadSplit: null, starter: null },
     venue: null,
     odds,
     rank: null,
@@ -95,8 +95,8 @@ test("soccer 3-way ML draw is a LOSS not a push", () => {
   const g = game({
     league: "epl",
     sport: "EPL",
-    home: { name: "Arsenal", abbr: "ARS", logo: null, score: 1, record: "8-2-3" },
-    away: { name: "Chelsea", abbr: "CHE", logo: null, score: 1, record: "7-3-3" },
+    home: { name: "Arsenal", abbr: "ARS", logo: null, score: 1, record: "8-2-3", homeSplit: null, roadSplit: null, starter: null },
+    away: { name: "Chelsea", abbr: "CHE", logo: null, score: 1, record: "7-3-3", homeSplit: null, roadSplit: null, starter: null },
   });
   const p = pick({
     league: "epl",
@@ -111,8 +111,8 @@ test("soccer 3-way ML draw is a LOSS not a push", () => {
 
 test("NFL moneyline tie is a push", () => {
   const g = game({
-    home: { name: "Seahawks", abbr: "SEA", logo: null, score: 20, record: "1-0" },
-    away: { name: "Broncos", abbr: "DEN", logo: null, score: 20, record: "0-1" },
+    home: { name: "Seahawks", abbr: "SEA", logo: null, score: 20, record: "1-0", homeSplit: null, roadSplit: null, starter: null },
+    away: { name: "Broncos", abbr: "DEN", logo: null, score: 20, record: "0-1", homeSplit: null, roadSplit: null, starter: null },
   });
   assert.equal(gradePick(pick({ market: "moneyline", side: "home", lockedLine: null }), g), "PUSH");
 });

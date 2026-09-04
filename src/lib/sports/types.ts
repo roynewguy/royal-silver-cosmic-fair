@@ -52,6 +52,26 @@ export type TeamInfo = {
   logo: string | null;
   score: number | null;
   record: string | null;
+  homeSplit: string | null;
+  roadSplit: string | null;
+  starter: Starter | null;
+};
+
+export type InjuryStatus = "out" | "doubtful" | "questionable" | "probable" | "unknown";
+
+export type Injury = {
+  team: "home" | "away";
+  player: string;
+  status: InjuryStatus;
+  position: string | null;
+};
+
+export type Starter = {
+  name: string;
+  era: number | null;
+  whip: number | null;
+  savePct: number | null;
+  position: string | null;
 };
 
 export type RankPick = {
@@ -63,6 +83,7 @@ export type RankPick = {
   edgePct: number;
   confidence: number;
   why: string;
+  model: string;
 };
 
 export type GameCard = {
@@ -78,7 +99,7 @@ export type GameCard = {
   odds: OddsSnapshot;
   rank: RankPick | null;
   notes: string[];
-  injuries: string[];
+  injuries: Injury[];
   weather: string | null;
 };
 
