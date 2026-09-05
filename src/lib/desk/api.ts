@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
-import { discordWebhookOk, resolveWebhook } from "@/lib/sports/discord";
+import { deleteWebhookMessage, discordWebhookOk, resolveWebhook } from "@/lib/sports/discord";
 import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
 import { postPickById, refreshSlate, runTick } from "./cycle";
 import { redactDesk } from "./redact";
@@ -103,6 +103,27 @@ export const pushPick = createServerFn({ method: "POST" })
       if (!result.ok) return { ok: false as const, error: result.error ?? "Post failed." };
       if (!result.posted) return { ok: false as const, error: result.error ?? "Pick was not posted." };
     }
+    return { ok: true as const, state: await deskForClient() };
+  });
+
+export const deleteDiscordPost = createServerFn({ method: "POST" })
+  .validator((input: unknown) => ({ pickId: Number((input as { pickId?: number }).pickId) }))
+  .handler(async ({ data }) => {
+    const gate = await requireOperator();
+    if (!gate.ok) return { ok: false as const, error: gate.error };
+    const sql = await getSql();
+    const rows = await sql<{ id: number; sport: string; selection: string; discord_message_id: string | null }>`
+      select id, sport, selection, discord_message_id from picks where id = ${data.pickId} and status = 'posted'
+    `;
+    const pick = rows[0];
+    if (!pick) return { ok: false as const, error: "Posted pick not found." };
+    if (!pick.discord_message_id) return { ok: false as const, error: "This pick has no Discord message to delete." };
+    const resolved = resolveWebhook(await (await import("./store")).readWebhook());
+    if (!resolved.url) return { ok: false as const, error: "No Discord webhook configured." };
+    const result = await deleteWebhookMessage(resolved.url, pick.discord_message_id);
+    if (!result.ok) return { ok: false as const, error: result.error ?? "Discord delete failed." };
+    await sql`update picks set discord_message_id = null where id = ${pick.id} and status = 'posted'`;
+    await addLog("post", `Discord post deleted · ${pick.selection}`, pick.sport);
     return { ok: true as const, state: await deskForClient() };
   });
 

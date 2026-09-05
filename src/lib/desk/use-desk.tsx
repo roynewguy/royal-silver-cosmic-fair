@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, type ReactNode } from "react";
 import { toast } from "sonner";
-import { getDesk, lockDesk, pushPick, refreshBoard, runDesk, saveDailyPicks, saveWebhook, unlockDesk } from "@/lib/desk/api";
+import { deleteDiscordPost, getDesk, lockDesk, pushPick, refreshBoard, runDesk, saveDailyPicks, saveWebhook, unlockDesk } from "@/lib/desk/api";
 import type { DeskState } from "@/lib/sports/types";
 
 const empty: DeskState = {
@@ -35,6 +35,7 @@ type DeskApi = {
   refresh: () => void;
   run: () => void;
   push: (input: { pickId: number; webhookUrl?: string }) => void;
+  deletePost: (pickId: number) => void;
   saveHook: (webhookUrl: string) => void;
   setDailyPicks: (count: number) => void;
   unlock: (pin: string) => void;
@@ -95,6 +96,19 @@ function useDeskController(): DeskApi {
     onError: () => toast.error("Post failed."),
   });
 
+  const deletePost = useMutation({
+    mutationFn: (pickId: number) => deleteDiscordPost({ data: { pickId } }),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        toast.error(res.error ?? "Delete failed.");
+        return;
+      }
+      if (res.state) qc.setQueryData(["desk"], res.state);
+      toast.success("Discord post deleted. The record was kept.");
+    },
+    onError: () => toast.error("Delete failed."),
+  });
+
   const saveHook = useMutation({
     mutationFn: (webhookUrl: string) => saveWebhook({ data: { webhookUrl } }),
     onSuccess: (res) => {
@@ -146,6 +160,7 @@ function useDeskController(): DeskApi {
     refresh: () => refresh.mutate(),
     run: () => run.mutate(),
     push: (input) => push.mutate(input),
+    deletePost: (pickId) => deletePost.mutate(pickId),
     saveHook: (webhookUrl) => saveHook.mutate(webhookUrl),
     setDailyPicks: (count) => savePlays.mutate(count),
     unlock: (pin) => unlock.mutate(pin),
