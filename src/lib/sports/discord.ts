@@ -76,6 +76,25 @@ export async function postWebhook(
   return { ok: false, error: last };
 }
 
+export async function deleteWebhookMessage(
+  url: string,
+  messageId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!discordWebhookOk(url)) return { ok: false, error: "Webhook URL is not a Discord webhook." };
+  if (!messageId) return { ok: false, error: "Discord message ID is missing." };
+  try {
+    const res = await fetch(`${url}/messages/${encodeURIComponent(messageId)}`, {
+      method: "DELETE",
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (res.ok || res.status === 404) return { ok: true };
+    const text = await res.text().catch(() => "");
+    return { ok: false, error: `Discord ${res.status}${text ? `: ${text.slice(0, 120)}` : ""}` };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Discord delete failed." };
+  }
+}
+
 export function scoreLine(game?: GameCard | null): string {
   if (!game) return "Score: —";
   const away = `${game.away.abbr} ${game.away.score ?? "—"}`;
