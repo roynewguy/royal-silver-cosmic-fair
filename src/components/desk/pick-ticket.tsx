@@ -17,10 +17,12 @@ function resultTone(result: PickRow["result"]): "win" | "loss" | "push" | "muted
 export function PickTicket({
   pick,
   onPost,
+  onDelete,
   posting,
 }: {
   pick: PickRow;
   onPost?: () => void;
+  onDelete?: () => void;
   posting?: boolean;
 }) {
   const statusLabel =
@@ -82,6 +84,11 @@ export function PickTicket({
             >
               <Send className="size-4" />
               {pick.status === "posted" ? "Send webhook" : "Post now"}
+            </Button>
+          ) : null}
+          {onDelete && pick.status === "posted" && pick.discordMessageId ? (
+            <Button variant="ghost" size="sm" onClick={onDelete} disabled={posting} className="min-h-11 flex-1 sm:flex-none">
+              Delete Discord post
             </Button>
           ) : null}
         </div>

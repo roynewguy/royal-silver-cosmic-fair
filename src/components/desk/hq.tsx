@@ -134,6 +134,7 @@ export function DeskHq() {
                   pick={pick}
                   posting={desk.posting}
                   onPost={() => desk.push({ pickId: pick.id, webhookUrl: webhook || undefined })}
+                  onDelete={() => desk.deletePost(pick.id)}
                 />
               ))}
             </div>
@@ -162,10 +163,7 @@ export function DeskHq() {
                 placeholder="https://discord.com/api/webhooks/…"
                 value={webhook}
                 onChange={(e) => setWebhook(e.target.value)}
-                onBlur={() => {
-                  const value = webhook.trim();
-                  if (value) desk.saveHook(value);
-                }}
+                onBlur={() => desk.saveHook(webhook)}
               />
             ) : null}
           </div>
