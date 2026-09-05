@@ -33,9 +33,10 @@ test("PT scan dates keep today's card after NY midnight", () => {
   assert.equal(isOfficialDay("2026-09-05T02:00:00.000Z", midnight), false);
 });
 
-test("daily leagues skip tomorrow on the scoreboard plan", () => {
+test("daily leagues load tomorrow for operator picks; official card stays today", () => {
   const now = new Date("2026-09-04T19:00:00-07:00");
-  assert.deepEqual(scanDateKeysForLeague(true, now).sort(), ["20260903", "20260904"]);
-  assert.deepEqual(scanDateKeysForLeague(false, now).sort(), ["20260903", "20260904", "20260905"]);
-  assert.deepEqual(extraScanDateKeys(false, 0, now), ["20260903"]);
+  assert.deepEqual(scanDateKeysForLeague(true, now).sort(), ["20260903", "20260904", "20260905"]);
+  assert.deepEqual(scanDateKeysForLeague(false, now).sort(), ["20260903", "20260904", "20260905", "20260906"]);
+  assert.ok(extraScanDateKeys(true, 8, now).includes("20260905"));
+  assert.equal(isOfficialDay("2026-09-05T18:00:00-07:00", now), false);
 });

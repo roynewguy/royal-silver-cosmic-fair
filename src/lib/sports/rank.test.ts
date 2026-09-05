@@ -77,9 +77,9 @@ test("soccer leagues are never official picks", () => {
 });
 
 test("official card ignores tomorrow even if the edge is bigger", () => {
-  const now = new Date();
-  const tonight = new Date(now.getTime() + 4 * 3600_000).toISOString();
-  const tomorrow = new Date(now.getTime() + 30 * 3600_000).toISOString();
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  const tonight = new Date("2026-09-04T19:00:00-07:00").toISOString();
+  const tomorrow = new Date("2026-09-05T19:00:00-07:00").toISOString();
   const games = rankGames([
     card({ id: "nfl:today", startAt: tonight, home: { name: "Seahawks", abbr: "SEA", logo: null, score: null, record: "11-5", homeSplit: "7-1", roadSplit: "4-4", starter: null }, away: { name: "Rams", abbr: "LAR", logo: null, score: null, record: "9-7", homeSplit: "5-3", roadSplit: "4-4", starter: null } }),
     card({ id: "nfl:tmw", startAt: tomorrow, home: { name: "Chiefs", abbr: "KC", logo: null, score: null, record: "14-2", homeSplit: "8-0", roadSplit: "6-2", starter: null }, away: { name: "Raiders", abbr: "LV", logo: null, score: null, record: "4-12", homeSplit: "3-5", roadSplit: "1-7", starter: null } }),
@@ -91,8 +91,8 @@ test("official card ignores tomorrow even if the edge is bigger", () => {
 });
 
 test("ESPN odds never become an official pick", () => {
-  const now = new Date();
-  const kick = new Date(now.getTime() + 20 * 60_000).toISOString();
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  const kick = new Date("2026-09-04T15:20:00-07:00").toISOString();
   const games = rankGames([
     card({
       startAt: kick,
@@ -123,8 +123,8 @@ test("daily card keeps the top N plays and passes the rest", () => {
 });
 
 test("bestOnSlate ranks the whole board, not one per sport", () => {
-  const now = new Date();
-  const kick = new Date(now.getTime() + 5 * 3600_000).toISOString();
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
   const nbaA = card({
     id: "nba:1",
     league: "nba",
@@ -155,8 +155,8 @@ test("bestOnSlate ranks the whole board, not one per sport", () => {
 });
 
 test("bestOnSlate posts fewer than target when few qualify, and none if none qualify", () => {
-  const now = new Date();
-  const kick = new Date(now.getTime() + 5 * 3600_000).toISOString();
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
   const one = card({
     startAt: kick,
     rank: { edgePct: 5, confidence: 62, market: "spread", side: "home", selection: "SEA -3", line: -3, price: -110, probability: 0.57, why: "home", model: "v2-nfl" },

@@ -115,8 +115,15 @@ export const postTestPreview = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const gate = await requireOperator();
     if (!gate.ok) return { ok: false as const, error: gate.error };
-    const game = (await loadGames()).find((item) => item.id === data.gameId);
+    let game = (await loadGames()).find((item) => item.id === data.gameId);
+    if (!game) {
+      const fresh = await refreshSlate();
+      game = fresh.find((item) => item.id === data.gameId);
+    }
     if (!game) return { ok: false as const, error: "Game not found on the current slate." };
+    if (game.status === "final" || game.status === "cancelled" || game.status === "postponed") {
+      return { ok: false as const, error: `This game is ${game.status} and cannot be previewed.` };
+    }
     const hook = resolveWebhook(await (await import("./store")).readWebhook()).url;
     if (!hook) return { ok: false as const, error: "No Discord webhook configured." };
     const result = await postWebhook(hook, buildTestPreviewMessage(game));
@@ -149,7 +156,7 @@ export const postManualPick = createServerFn({ method: "POST" })
     const games = await refreshSlate();
     const game = games.find((item) => item.id === data.gameId);
     if (!game) return { ok: false as const, error: "Game not found. Scan odds and try again." };
-    if (game.status !== "scheduled" && game.status !== "in_progress") {
+    if (game.status === "final" || game.status === "cancelled" || game.status === "postponed") {
       return { ok: false as const, error: `This game is ${game.status} and cannot be posted.` };
     }
     const price = priceFor(game.odds, data.market, data.side);

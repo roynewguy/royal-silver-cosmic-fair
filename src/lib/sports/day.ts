@@ -42,24 +42,24 @@ export function scanDateKeys(now = new Date()): string[] {
 
 /**
  * Scoreboard dates for one league on a normal tick.
- * Daily sports: yesterday (grade) + today (official card).
- * Weekly sports: those plus tomorrow for near-future prep.
+ * Yesterday grades, today is the official card, tomorrow is for operator
+ * manual posts. Weekly sports also load +2 so Sunday NFL exists on Friday.
  */
 export function scanDateKeysForLeague(daily: boolean, now = new Date()): string[] {
   const today = ptYmd(now);
-  const keys = [ymdToEspn(today), ymdToEspn(addYmd(today, -1))];
-  if (!daily) keys.push(ymdToEspn(addYmd(today, 1)));
+  const keys = [ymdToEspn(today), ymdToEspn(addYmd(today, -1)), ymdToEspn(addYmd(today, 1))];
+  if (!daily) keys.push(ymdToEspn(addYmd(today, 2)));
   return [...new Set(keys)];
 }
 
-/** After today's board is in, which extra dates to fetch. Empty weekly slates skip tomorrow. */
+/** After today's board is in, which extra dates to fetch. */
 export function extraScanDateKeys(
-  daily: boolean,
-  todayGameCount: number,
+  _daily: boolean,
+  _todayGameCount: number,
   now = new Date(),
 ): string[] {
   const today = ptYmd(now);
-  const extra = [ymdToEspn(addYmd(today, -1))];
-  if (!daily && todayGameCount > 0) extra.push(ymdToEspn(addYmd(today, 1)));
+  const extra = [ymdToEspn(addYmd(today, -1)), ymdToEspn(addYmd(today, 1))];
+  if (!_daily) extra.push(ymdToEspn(addYmd(today, 2)));
   return extra;
 }

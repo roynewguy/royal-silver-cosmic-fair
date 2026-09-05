@@ -136,7 +136,7 @@ export async function refreshSlate(): Promise<GameCard[]> {
   const raw = await fetchAllSlates();
   const merged = await mergeDraftKingsOdds(raw);
   const windowed = merged.filter((g) => {
-    const days = Math.min(LEAGUE_BY_ID[g.league]?.lookAheadDays ?? 3, 2);
+    const days = LEAGUE_BY_ID[g.league]?.lookAheadDays ?? 3;
     return inWindow(g, days);
   });
   const ranked = rankGames(windowed);

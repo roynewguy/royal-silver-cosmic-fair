@@ -239,14 +239,14 @@ function Upcoming({
   onManualPost: (input: { gameId: string; market: Market; side: Side }) => void;
 }) {
   const upcoming = games
-    .filter((g) => g.status === "scheduled")
+    .filter((g) => g.status === "scheduled" || g.status === "delayed")
     .slice()
-    .sort((a, b) => +new Date(a.startAt) - +new Date(b.startAt))
-    .slice(0, 40);
+    .sort((a, b) => +new Date(a.startAt) - +new Date(b.startAt));
   if (upcoming.length === 0) return null;
   return (
     <section>
       <h2 className="mb-3 font-display text-sm tracking-[0.18em] text-muted uppercase">Next kickoffs</h2>
+      <p className="mb-2 text-xs text-subtle">Today, tomorrow, and the next couple of days. Choose any line and post it — this is not the official auto-card.</p>
       <ul className="divide-y divide-border overflow-hidden rounded-xl bg-surface shadow-border">
         {upcoming.map((g) => (
           <UpcomingRow key={g.id} game={g} operator={operator} onTestPost={onTestPost} onManualPost={onManualPost} />
@@ -280,7 +280,7 @@ function UpcomingRow({
             {game.away.abbr} @ {game.home.abbr}
           </p>
           <p className="text-xs text-subtle">
-            {game.sport} · {formatKick(game.startAt)}
+            {game.sport} · {formatKick(game.startAt, "America/Los_Angeles")} PT
           </p>
         </div>
         <div className="flex items-center gap-2">

@@ -476,7 +476,8 @@ function mergeInjuryBoard(game: GameCard, board: BoardInj[]): GameCard {
 export function inWindow(game: GameCard, days: number, now = Date.now()): boolean {
   const t = new Date(game.startAt).getTime();
   if (Number.isNaN(t)) return false;
-  const horizon = now + Math.min(days, 2) * 86_400_000;
+  const horizonDays = Math.min(Math.max(days, 2), 3);
+  const horizon = now + horizonDays * 86_400_000;
   const floor = now - 20 * 3_600_000;
   return t <= horizon && (t >= floor || game.status !== "scheduled");
 }
