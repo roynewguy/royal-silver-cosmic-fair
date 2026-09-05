@@ -107,6 +107,23 @@ export function buildTestPreviewMessage(game: GameCard): string {
   ].join("\n");
 }
 
+export function buildManualPickMessage(pick: PickRow, game?: GameCard | null): string {
+  const book = pick.lockedOddsJson.book || "Current market";
+  const line = pick.lockedLine == null ? "" : ` · ${pick.lockedLine > 0 ? `+${pick.lockedLine}` : pick.lockedLine}`;
+  return [
+    "🌊 BOATBOYZ MANUAL PICK",
+    "",
+    `${pick.sport} · ${pick.selection}`,
+    `Selection mode: Operator choice`,
+    `${book} current line: ${formatAmerican(pick.lockedOdds)}${line}`,
+    "",
+    "Why: Selected from the current available line on the BoatBoyz desk.",
+    `Game: ${formatKick(pick.startAt, "America/Los_Angeles")}`,
+    scoreLine(game).replace("Score: not started", "Score: Not started"),
+    "This is a manually selected play; the line is recorded at posting.",
+  ].join("\n");
+}
+
 export function scoreLine(game?: GameCard | null): string {
   if (!game) return "Score: —";
   const away = `${game.away.abbr} ${game.away.score ?? "—"}`;
