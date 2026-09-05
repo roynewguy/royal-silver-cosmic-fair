@@ -95,6 +95,18 @@ export async function deleteWebhookMessage(
   }
 }
 
+export function buildTestPreviewMessage(game: GameCard): string {
+  return [
+    "🧪 BOATBOYZ TEST PREVIEW — NOT AN OFFICIAL PICK",
+    "",
+    `${game.sport} · ${game.away.abbr} @ ${game.home.abbr}`,
+    `Current odds: ${game.odds.details ?? "No current line available"}`,
+    `Game: ${formatKick(game.startAt, "America/Los_Angeles")}`,
+    scoreLine(game),
+    "This message only verifies the Discord connection and current odds display.",
+  ].join("\n");
+}
+
 export function scoreLine(game?: GameCard | null): string {
   if (!game) return "Score: —";
   const away = `${game.away.abbr} ${game.away.score ?? "—"}`;
