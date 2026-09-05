@@ -134,13 +134,14 @@ export function DeskHq() {
                   pick={pick}
                   posting={desk.posting}
                   onPost={() => desk.push({ pickId: pick.id, webhookUrl: webhook || undefined })}
+                  onPostLive={() => desk.push({ pickId: pick.id, webhookUrl: webhook || undefined, allowLive: true })}
                   onDelete={() => desk.deletePost(pick.id)}
                 />
               ))}
             </div>
           )}
 
-          <Upcoming games={desk.data.games} />
+          <Upcoming games={desk.data.games} operator={op} onTestPost={(gameId) => desk.testPost(gameId)} />
           {op && desk.data.calibration ? <CalibrationPanel report={desk.data.calibration} /> : null}
         </div>
 
@@ -186,7 +187,7 @@ function Meta({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function Upcoming({ games }: { games: GameCard[] }) {
+function Upcoming({ games, operator, onTestPost }: { games: GameCard[]; operator: boolean; onTestPost: (gameId: string) => void }) {
   const upcoming = games
     .filter((g) => g.status === "scheduled")
     .slice()
@@ -210,9 +211,12 @@ function Upcoming({ games }: { games: GameCard[] }) {
                 {g.sport} · {formatKick(g.startAt)}
               </p>
             </div>
-            <span className="max-w-[9rem] truncate font-mono text-xs text-muted tabular-nums sm:max-w-none">
-              {g.odds.details ?? "No line"}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="max-w-[9rem] truncate font-mono text-xs text-muted tabular-nums sm:max-w-none">
+                {g.odds.details ?? "No line"}
+              </span>
+              {operator ? <Button variant="ghost" size="sm" onClick={() => onTestPost(g.id)}>Test post</Button> : null}
+            </div>
           </li>
         ))}
       </ul>
