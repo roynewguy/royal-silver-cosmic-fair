@@ -78,11 +78,27 @@ export function whyWriteup(game: GameCard, rank: Pick<RankPick, "side"> & Partia
   const home = game.home.name;
   const away = game.away.name;
   const bits: string[] = [];
+  const favorite =
+    game.odds?.homeMl != null && game.odds?.awayMl != null
+      ? game.odds.homeMl <= game.odds.awayMl
+        ? "home"
+        : "away"
+      : side === "away"
+        ? "away"
+        : "home";
 
   if (side === "home") {
-    bits.push(`${home} get the home spot against ${away}.`);
+    bits.push(
+      favorite === "home"
+        ? `${home} are favored to win at home against ${away}.`
+        : `${home} get the home spot as an underdog against ${away}.`,
+    );
   } else if (side === "away") {
-    bits.push(`${away} are on the road at ${home}, but the number still looks like value.`);
+    bits.push(
+      favorite === "away"
+        ? `${away} are favored to win on the road at ${home}.`
+        : `${away} are the road underdog at ${home}, and the number still looks like value.`,
+    );
   } else if (side === "over" || side === "under") {
     bits.push(`This is a ${side} on ${away} at ${home}.`);
   } else {
@@ -98,8 +114,13 @@ export function whyWriteup(game: GameCard, rank: Pick<RankPick, "side"> & Partia
     bits.push(`Opposite side is missing ${oppOut[0].replace(/\s+(OUT|DOUBTFUL)$/i, "")}.`);
   }
 
+  const picked = pickedTeam(game, side);
+  if (picked?.record && opp?.record) {
+    bits.push(`${picked.name} enter at ${picked.record} vs ${opp.record}.`);
+  }
+
   if (game.weather && outdoor(game)) bits.push(`Weather: ${game.weather}.`);
-  else if (!outdoor(game)) bits.push("Indoor spot, so weather is not a factor.");
+  else if (!outdoor(game) && (side === "home" || side === "away")) bits.push("Indoor spot, so weather is not a factor.");
 
   return bits.join(" ").replace(/\s+/g, " ").trim();
 }
@@ -109,6 +130,15 @@ export function formatWhy(game: GameCard, rank: Pick<RankPick, "side"> & Partial
   const lines = whyBullets(game, rank).map((b) => `* ${b}`);
   if (lines.length === 0 && !writeup) return rank.why || "Board notes only.";
   return [writeup, "Why BoatBoyz likes it:", ...lines].filter(Boolean).join("\n");
+}
+
+/** Default Discord writeup for any posted play. Operator notes get appended, never replace facts. */
+export function defaultPlayReason(game: GameCard, side: Side, note?: string | null): string {
+  const generated = formatWhy(game, { side });
+  const extra = (note ?? "").trim();
+  if (!extra) return generated;
+  if (/Why BoatBoyz likes it:/i.test(extra)) return extra;
+  return `${generated}\n* ${extra}`;
 }
 
 /** Matchup notes for a test preview — facts only, no official pick. */

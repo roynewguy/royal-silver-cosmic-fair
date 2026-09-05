@@ -170,9 +170,12 @@ test("missing model probability is not invented on the Discord body", () => {
   } as PickRow;
   const msg = buildManualPickMessage(pick, live);
   assert.match(msg, /LIVE PLAY/);
+  assert.match(msg, /WHY BOATBOYZ LIKES IT/);
+  assert.match(msg, /favored to win at home|playing at home/i);
   assert.doesNotMatch(msg, /BoatBoyz Probability/);
   assert.doesNotMatch(msg, /Model Edge/);
-  assert.match(msg, /not an auto pick/);
+  assert.doesNotMatch(msg, /Operator play/);
+  assert.doesNotMatch(msg, /Manual entry/);
   assert.equal(pick.modelProbability, null);
 });
 
@@ -201,6 +204,78 @@ test("operator can post even with no qualifying feed line", () => {
   const t = resolveManualTicket({ game: blank, market: "moneyline", side: "home" });
   assert.equal(t.odds, -110);
   assert.ok(t.selection.includes("LAL") || t.selection.includes("ML"));
+  assert.match(t.reason, /favored to win at home/i);
+  assert.match(t.reason, /Why BoatBoyz likes it/i);
+});
+
+test("manual Discord writeup matches the pick card and never labels operator entry", () => {
+  const det = game({
+    sport: "MLB",
+    league: "mlb",
+    home: { name: "Cleveland Guardians", abbr: "CLE", logo: null, score: null, record: "70-68", homeSplit: "38-30", roadSplit: "32-38", starter: { name: "Tanner Bibee", era: 3.4, whip: null, savePct: null, position: "P" } },
+    away: { name: "Detroit Tigers", abbr: "DET", logo: null, score: null, record: "78-62", homeSplit: "42-28", roadSplit: "36-34", starter: { name: "Tarik Skubal", era: 2.4, whip: null, savePct: null, position: "P" } },
+    odds: odds({ homeMl: 105, awayMl: -125, details: "DET -125" }),
+    weather: "72° F",
+  });
+  const t = resolveManualTicket({ game: det, market: "moneyline", side: "away" });
+  const pick = {
+    id: 2,
+    gameId: det.id,
+    sport: "MLB",
+    league: "mlb",
+    matchup: "DET @ CLE",
+    market: "moneyline",
+    selection: "DET ML (-110)",
+    side: "away",
+    lockedLine: null,
+    lockedOdds: -110,
+    lockedOddsJson: det.odds,
+    reason: t.reason,
+    research: null,
+    confidence: 0,
+    edgePct: 0,
+    units: 1,
+    status: "posted",
+    result: null,
+    profitUnits: null,
+    startAt: new Date("2026-09-04T18:10:00Z").toISOString(),
+    postAt: new Date().toISOString(),
+    postedAt: new Date().toISOString(),
+    gradedAt: null,
+    discordMessage: null,
+    discordMessageId: null,
+    officialKey: null,
+    skipReason: null,
+    modelVersion: null,
+    modelProbability: null,
+    modelEdge: null,
+    freezeJson: null,
+    selectedOdds: -110,
+    postedOdds: -110,
+    closingOdds: null,
+    clv: null,
+    createdAt: new Date().toISOString(),
+    pickSource: "manual",
+    lineSource: "manual-entry",
+    postedScore: "DET — · CLE —",
+    postedState: null,
+    homeLogo: null,
+    awayLogo: null,
+    homeAbbr: "CLE",
+    awayAbbr: "DET",
+    homeScore: null,
+    awayScore: null,
+    gameStatus: "scheduled",
+  } as PickRow;
+  const msg = buildManualPickMessage(pick, det);
+  assert.match(msg, /BOATBOYZ PLAY/);
+  assert.match(msg, /DET ML/);
+  assert.match(msg, /WHY BOATBOYZ LIKES IT/);
+  assert.match(msg, /favored to win on the road/);
+  assert.match(msg, /Skubal|playing at home|road/i);
+  assert.doesNotMatch(msg, /Operator play/);
+  assert.doesNotMatch(msg, /Manual entry/);
+  assert.doesNotMatch(msg, /not an auto pick/);
 });
 
 test("double tap uses the same request id so only one unique manual_post_id exists", () => {

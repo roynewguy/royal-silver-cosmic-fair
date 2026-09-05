@@ -1,6 +1,6 @@
 import { formatAmerican, formatKick, formatUnits } from "../utils.ts";
 import { impliedFromAmerican } from "./odds.ts";
-import { parseWhy, previewNotes } from "./why.ts";
+import { parseWhy, previewNotes, defaultPlayReason } from "./why.ts";
 import type { DeskRecord, GameCard, PickResult, PickRow } from "./types.ts";
 
 export function discordWebhookOk(url: string): boolean {
@@ -161,22 +161,15 @@ function opponentName(pick: PickRow, game?: GameCard | null): string {
 
 export function buildManualPickMessage(pick: PickRow, game?: GameCard | null): string {
   const live = pick.pickSource === "manual_live" || game?.status === "in_progress";
-  const source =
-    pick.lineSource === "manual-entry"
-      ? "Manual entry"
-      : pick.lineSource === "draftkings"
-        ? "DraftKings"
-        : pick.lineSource === "espn"
-          ? "ESPN"
-          : pick.lockedOddsJson.source === "odds-api"
-            ? "Odds API"
-            : "Manual entry";
   const kick = formatKick(pick.startAt, "America/Los_Angeles");
   const posted = pick.postedAt ? formatKick(pick.postedAt, "America/Los_Angeles") : kick;
   const odds =
     pick.lockedLine != null && Number.isFinite(pick.lockedLine) && pick.market !== "moneyline"
       ? `${formatAmerican(pick.lockedOdds)} · ${pick.lockedLine > 0 ? `+${pick.lockedLine}` : pick.lockedLine}`
       : formatAmerican(pick.lockedOdds);
+  const reason =
+    pick.reason?.trim() ||
+    (game ? defaultPlayReason(game, pick.side) : "");
   const lines = live
     ? [
         "🔴 🌊 BOATBOYZ LIVE PLAY",
@@ -194,7 +187,7 @@ export function buildManualPickMessage(pick: PickRow, game?: GameCard | null): s
         `Posted ${posted} PT`,
       ]
     : [
-        "🌊 BOATBOYZ MANUAL PLAY",
+        "🌊 BOATBOYZ PLAY",
         "",
         `${sportEmoji(pick.sport)} ${pick.sport}`,
         `**${pick.selection}**`,
@@ -205,8 +198,7 @@ export function buildManualPickMessage(pick: PickRow, game?: GameCard | null): s
         "",
         `Game: ${kick} PT`,
       ];
-  if (pick.reason?.trim()) lines.push("", pick.reason.trim());
-  lines.push("", `Operator play · ${source} · not an auto pick`);
+  if (reason) lines.push("", ...whyBlock(reason));
   return lines.filter((line): line is string => line != null && line !== undefined).join("\n");
 }
 

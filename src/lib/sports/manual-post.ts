@@ -1,5 +1,6 @@
 import { isDraftKingsLine } from "./odds-api.ts";
 import { parseAmerican, parseLine, priceFor, lineFor, selectionLabel } from "./odds.ts";
+import { defaultPlayReason } from "./why.ts";
 import type { GameCard, GameStatus, Market, Side } from "./types.ts";
 
 export type PickSource = "auto" | "manual" | "manual_live";
@@ -125,7 +126,7 @@ export function resolveManualTicket(input: {
     lineSource: lineSourceOf(input.game, overridden && (customOdds != null || customLine != null)),
     needsManualGrade,
     pickSource: pickSourceForStatus(input.game.status),
-    reason: (input.note ?? "").trim(),
+    reason: defaultPlayReason(input.game, input.side, input.note),
     postedScore: `${away} · ${home}`,
     postedState: liveStateLabel(input.game),
   };
