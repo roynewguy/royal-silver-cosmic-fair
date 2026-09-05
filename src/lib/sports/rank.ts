@@ -1,4 +1,5 @@
 import { isOfficialDay } from "./day.ts";
+import { isPlayableRank } from "./data-quality.ts";
 import { isFreeBetaMode } from "./free-beta.ts";
 import { LEAGUE_BY_ID } from "./leagues.ts";
 import { hasUsableOdds } from "./odds.ts";
@@ -70,9 +71,7 @@ export function bestPerSport(
       continue;
     }
     const slate = all.filter((g) => g.status === "scheduled" && isOfficialDay(g.startAt, now));
-    const playable = slate.filter(
-      (g) => g.rank && g.rank.edgePct >= minEdge && g.rank.confidence >= minConf,
-    );
+    const playable = slate.filter((g) => isPlayableRank(g.rank, minEdge, minConf));
     playable.sort((a, b) => (b.rank?.edgePct ?? 0) - (a.rank?.edgePct ?? 0));
     const top = playable[0];
     if (!top) {
@@ -229,18 +228,18 @@ export function bestOnSlate(
       if (!isOfficialDay(g.startAt, now)) return false;
       const start = new Date(g.startAt).getTime();
       if (!Number.isFinite(start) || start <= now.getTime()) return false;
-      return Boolean(g.rank && g.rank.edgePct >= minEdge && g.rank.confidence >= minConf);
+      return isPlayableRank(g.rank, minEdge, minConf);
     })
     .sort((a, b) => (b.rank?.edgePct ?? 0) - (a.rank?.edgePct ?? 0));
 }
 
-export function takeTopPlays<T extends { skip: { skipped: boolean }; pick: { rank?: { edgePct: number } | null } }>(
+export function takeTopPlays<T extends { skip: { skipped: boolean }; pick: { rank?: { edgePct: number; passReason?: string | null } | null } }>(
   decisions: T[],
   maxPicks = 3,
 ): { take: T[]; rest: T[] } {
   const cap = clampDailyPicks(maxPicks);
   const playable = decisions
-    .filter((d) => !d.skip.skipped && d.pick.rank)
+    .filter((d) => !d.skip.skipped && isPlayableRank(d.pick.rank ?? null, 3, 58))
     .sort((a, b) => (b.pick.rank?.edgePct ?? 0) - (a.pick.rank?.edgePct ?? 0));
   return { take: playable.slice(0, cap), rest: playable.slice(cap) };
 }

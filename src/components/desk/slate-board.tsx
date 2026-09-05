@@ -86,6 +86,7 @@ export function SlateBoard() {
               <th className="px-3 py-3 font-medium">ML</th>
               <th className="px-3 py-3 font-medium">BoatBoyz</th>
               <th className="px-3 py-3 font-medium">Edge</th>
+              {desk.data.operator ? <th className="px-3 py-3 font-medium">DQ</th> : null}
               <th className="px-3 py-3 font-medium">Status</th>
             </tr>
           </thead>
@@ -108,6 +109,11 @@ export function SlateBoard() {
                   <td className="px-3 py-3 font-mono text-xs">
                     {g.rank ? `${g.rank.edgePct >= 0 ? "+" : ""}${g.rank.edgePct.toFixed(1)}%` : "—"}
                   </td>
+                  {desk.data.operator ? (
+                    <td className="px-3 py-3 font-mono text-xs text-muted">
+                      {g.rank?.dataQuality == null ? "—" : `${g.rank.dataQuality}${g.rank.passReason ? ` · ${g.rank.passReason}` : ""}`}
+                    </td>
+                  ) : null}
                   <td className="px-3 py-3">
                     <Badge tone={label === "official" ? "win" : label === "candidate" || label === "provisional" ? "accent" : "muted"}>
                       {ticketCopy(label)}
@@ -153,6 +159,13 @@ function GameMobile({ game }: { game: GameCard }) {
       ) : (
         <p className="mt-2 text-sm text-subtle">No qualifying play</p>
       )}
+      {desk.data.operator && game.rank ? (
+        <p className="mt-1 text-xs text-subtle">
+          DQ {game.rank.dataQuality ?? "—"}/100 · conf {game.rank.confidence}
+          {game.rank.noVigImplied != null ? ` · no-vig ${(game.rank.noVigImplied * 100).toFixed(1)}%` : ""}
+          {game.rank.passReason ? ` · ${game.rank.passReason}` : ""}
+        </p>
+      ) : null}
     </article>
   );
 }

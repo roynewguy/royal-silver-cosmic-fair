@@ -34,6 +34,39 @@ export function devig(a: number, b: number): [number, number] {
   return [ia / s, ib / s];
 }
 
+export function twoWayMarket(a: number, b: number): {
+  rawA: number;
+  rawB: number;
+  noVigA: number;
+  noVigB: number;
+  hold: number;
+  vigAdjusted: true;
+} {
+  const rawA = impliedFromAmerican(a);
+  const rawB = impliedFromAmerican(b);
+  const [noVigA, noVigB] = devig(a, b);
+  return { rawA, rawB, noVigA, noVigB, hold: rawA + rawB - 1, vigAdjusted: true };
+}
+
+export function oneWayMarket(price: number): {
+  rawA: number;
+  rawB: null;
+  noVigA: null;
+  noVigB: null;
+  hold: null;
+  vigAdjusted: false;
+} {
+  return {
+    rawA: impliedFromAmerican(price),
+    rawB: null,
+    noVigA: null,
+    noVigB: null,
+    hold: null,
+    vigAdjusted: false,
+  };
+}
+
+
 export function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
 }

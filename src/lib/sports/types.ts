@@ -74,6 +74,14 @@ export type Starter = {
   position: string | null;
 };
 
+export type PassReason =
+  | "PASS_MISSING_STARTER"
+  | "PASS_STALE_MARKET"
+  | "PASS_LOW_DATA_QUALITY"
+  | "PASS_EDGE_TOO_SMALL"
+  | "PASS_LOW_CONFIDENCE"
+  | "PASS_EDGE_DIED";
+
 export type RankPick = {
   market: Market;
   side: Side;
@@ -85,6 +93,13 @@ export type RankPick = {
   why: string;
   model: string;
   probability: number;
+  rawImplied?: number | null;
+  noVigImplied?: number | null;
+  marketHold?: number | null;
+  vigAdjusted?: boolean;
+  dataQuality?: number;
+  missingInputs?: string[];
+  passReason?: PassReason | null;
 };
 
 export type GameCard = {

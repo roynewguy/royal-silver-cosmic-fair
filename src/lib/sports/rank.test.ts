@@ -109,10 +109,10 @@ test("daily card keeps the top N plays and passes the rest", () => {
   assert.equal(clampDailyPicks(3), 3);
   assert.equal(clampDailyPicks(99), 6);
   const decisions = [
-    { skip: { skipped: false, sport: "NBA" }, pick: { rank: { edgePct: 6 } } },
-    { skip: { skipped: false, sport: "NFL" }, pick: { rank: { edgePct: 4 } } },
-    { skip: { skipped: false, sport: "MLB" }, pick: { rank: { edgePct: 3.5 } } },
-    { skip: { skipped: true, sport: "NHL" }, pick: { rank: { edgePct: 9 } } },
+    { skip: { skipped: false, sport: "NBA" }, pick: { rank: { edgePct: 6, confidence: 70 } } },
+    { skip: { skipped: false, sport: "NFL" }, pick: { rank: { edgePct: 4, confidence: 64 } } },
+    { skip: { skipped: false, sport: "MLB" }, pick: { rank: { edgePct: 3.5, confidence: 62 } } },
+    { skip: { skipped: true, sport: "NHL" }, pick: { rank: { edgePct: 9, confidence: 80 } } },
   ];
   const { take, rest } = takeTopPlays(decisions, 2);
   assert.equal(take.length, 2);

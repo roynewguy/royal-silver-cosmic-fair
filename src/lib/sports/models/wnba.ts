@@ -21,5 +21,5 @@ export function rankWnba(game: GameCard): RankPick | null {
     const tot = totalPlay(game, modelOver, `WNBA total ${game.odds.total}.`, "v2-wnba");
     if (tot) cands.push(tot);
   }
-  return pickBest(cands, "spread", outs.length ? 1 : 3);
+  return pickBest(game, cands, "spread");
 }

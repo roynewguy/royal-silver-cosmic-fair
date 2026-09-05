@@ -39,5 +39,5 @@ export function rankMlb(game: GameCard): RankPick | null {
     );
     if (tot) cands.push(tot);
   }
-  return pickBest(cands, "moneyline", hs?.era != null && as_?.era != null ? 4 : 0);
+  return pickBest(game, cands, "moneyline");
 }

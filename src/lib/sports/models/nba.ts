@@ -38,5 +38,5 @@ export function rankNba(game: GameCard): RankPick | null {
     const tot = totalPlay(game, modelOver, `NBA scoring vs ${game.odds.total}.${injWhy}`, "v2-nba");
     if (tot) cands.push(tot);
   }
-  return pickBest(cands, "spread", outs.length ? 1 : 3);
+  return pickBest(game, cands, "spread");
 }

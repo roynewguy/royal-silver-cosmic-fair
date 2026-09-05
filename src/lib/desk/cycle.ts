@@ -25,6 +25,7 @@ import {
 } from "@/lib/sports/research";
 import { confirmDraftKings, loadOddsRemaining, pruneFreeBetaCaches } from "./dk-verify";
 import { recordClosingResult, recordPostedPrediction, recordPregameSnapshots } from "./warehouse";
+import { recordV2Candidates } from "@/lib/sports/candidate-log";
 import { recordMlbShadow, gradeShadowPredictions } from "@/lib/models-v3/shadow-store";
 import { gradeDisposition, UNPOSTED_SKIP } from "./posting";
 import { sendOnce, type ClaimStore, type CompletePayload, newPostingToken } from "./post-pipeline";
@@ -146,6 +147,7 @@ export async function refreshSlate(): Promise<GameCard[]> {
   const previous = await loadGames();
   const next = mergeFetchedSlate(ranked, previous);
   await recordPregameSnapshots(next);
+  await recordV2Candidates(next);
   await recordMlbShadow(next);
   await pruneFreeBetaCaches();
   await touchScan("scan");

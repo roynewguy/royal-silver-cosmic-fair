@@ -10,5 +10,5 @@ export function rankUfc(game: GameCard): RankPick | null {
   const p = clamp(0.5 + (hw - aw) * 0.42, 0.28, 0.72);
   const why = `${game.home.abbr} ${game.home.record} vs ${game.away.abbr} ${game.away.record} (UFC ML only).`;
   const ml = mlPlay(game, p, why, "v2-ufc", { maxChalk: 280, maxDog: 180 });
-  return ml ? pickBest([ml], "moneyline", 1) : null;
+  return ml ? pickBest(game, [ml], "moneyline") : null;
 }

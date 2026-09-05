@@ -33,5 +33,5 @@ export function rankNhl(game: GameCard): RankPick | null {
     const tot = totalPlay(game, modelOver, `NHL total ${game.odds.total}.${goalies}`, "v2-nhl");
     if (tot) cands.push(tot);
   }
-  return pickBest(cands, "moneyline", hg != null && ag != null ? 3 : 1);
+  return pickBest(game, cands, "moneyline");
 }

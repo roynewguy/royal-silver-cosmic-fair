@@ -24,5 +24,5 @@ export function rankNcaaf(game: GameCard): RankPick | null {
     const tot = totalPlay(game, modelOver, `NCAAF total ${game.odds.total}.${wx.note}`, "v2-ncaaf");
     if (tot) cands.push(tot);
   }
-  return pickBest(cands, "spread", 2);
+  return pickBest(game, cands, "spread");
 }

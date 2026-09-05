@@ -125,7 +125,7 @@ export function HomeBoard() {
               <div className="space-y-3">
                 <p className="text-xs tracking-[0.16em] text-win uppercase">Official / locked</p>
                 {locked.map((pick) => (
-                  <TicketCard key={pick.id} pick={pick} game={desk.data.games.find((g) => g.id === pick.gameId)} />
+                  <TicketCard key={pick.id} pick={pick} game={desk.data.games.find((g) => g.id === pick.gameId)} operator={desk.data.operator} />
                 ))}
               </div>
             ) : null}
@@ -133,7 +133,7 @@ export function HomeBoard() {
               <div className="space-y-3">
                 <p className="text-xs tracking-[0.16em] text-push uppercase">Provisional — not official</p>
                 {provisional.map((pick) => (
-                  <TicketCard key={pick.id} pick={pick} game={desk.data.games.find((g) => g.id === pick.gameId)} />
+                  <TicketCard key={pick.id} pick={pick} game={desk.data.games.find((g) => g.id === pick.gameId)} operator={desk.data.operator} />
                 ))}
               </div>
             ) : null}

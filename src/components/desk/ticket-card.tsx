@@ -13,10 +13,13 @@ function tone(label: TicketLabel): "accent" | "win" | "loss" | "push" | "muted" 
   return "muted";
 }
 
-export function TicketCard({ pick, game }: { pick: PickRow; game?: GameCard | null }) {
+export function TicketCard({ pick, game, operator = false }: { pick: PickRow; game?: GameCard | null; operator?: boolean }) {
   const label = ticketLabel(pick);
   const locked = label === "official" || label === "win" || label === "loss" || label === "push" || label === "void";
-  const prob = Math.round((pick.modelProbability ?? pick.confidence / 100) * 100);
+  const rank = game?.rank;
+  const prob = Math.round((pick.modelProbability ?? rank?.probability ?? pick.confidence / 100) * 100);
+  const noVig = rank?.noVigImplied;
+  const dq = rank?.dataQuality;
   return (
     <article className="rounded-xl bg-surface p-4 shadow-border">
       <div className="flex items-start justify-between gap-3">
@@ -36,7 +39,29 @@ export function TicketCard({ pick, game }: { pick: PickRow; game?: GameCard | nu
           <dt className="text-[10px] tracking-[0.14em] text-subtle uppercase">{locked ? "DraftKings at posting" : "Current scan line"}</dt>
           <dd className="text-fg">{formatAmerican(pick.postedOdds ?? pick.lockedOdds)}</dd>
         </div>
-        {locked ? (
+        {operator && !locked ? (
+          <>
+            <div>
+              <dt className="text-[10px] tracking-[0.14em] text-subtle uppercase">Market no-vig</dt>
+              <dd className="text-fg">{noVig != null ? `${(noVig * 100).toFixed(1)}%` : "raw"}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] tracking-[0.14em] text-subtle uppercase">Edge</dt>
+              <dd className="text-fg">
+                {(rank?.edgePct ?? pick.edgePct) >= 0 ? "+" : ""}
+                {(rank?.edgePct ?? pick.edgePct).toFixed(1)}%
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] tracking-[0.14em] text-subtle uppercase">Confidence</dt>
+              <dd className="text-fg">{Math.round(rank?.confidence ?? pick.confidence)}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] tracking-[0.14em] text-subtle uppercase">Data quality</dt>
+              <dd className="text-fg">{dq == null ? "—" : `${dq}/100`}</dd>
+            </div>
+          </>
+        ) : locked ? (
           <div>
             <dt className="text-[10px] tracking-[0.14em] text-subtle uppercase">Units</dt>
             <dd className="text-fg">{Number(pick.units).toFixed(1)}U</dd>
@@ -61,6 +86,10 @@ export function TicketCard({ pick, game }: { pick: PickRow; game?: GameCard | nu
           </dd>
         </div>
       </dl>
+      {operator && rank?.passReason ? <p className="mt-2 text-xs text-loss">{rank.passReason}</p> : null}
+      {operator && rank?.missingInputs?.length && !locked ? (
+        <p className="mt-1 text-xs text-subtle">Missing: {rank.missingInputs.slice(0, 4).join(", ")}</p>
+      ) : null}
       <p className="mt-3 text-xs text-subtle">Game {formatKick(pick.startAt, "America/Los_Angeles")} PT</p>
       {locked ? <p className="mt-1 text-xs text-win">Official line frozen.</p> : <p className="mt-1 text-xs text-push">Not official until DraftKings verifies.</p>}
     </article>

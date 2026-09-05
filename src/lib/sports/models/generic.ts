@@ -28,5 +28,5 @@ export function rankGeneric(game: GameCard, league: LeagueConfig): RankPick | nu
     const tot = totalPlay(game, modelOver, `${league.sport} total vs baseline ${league.avgTotal}.`, `v2-${league.id}`);
     if (tot) cands.push(tot);
   }
-  return pickBest(cands, league.kind === "spread" ? "spread" : "moneyline");
+  return pickBest(game, cands, league.kind === "spread" ? "spread" : "moneyline");
 }

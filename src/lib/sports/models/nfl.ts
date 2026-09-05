@@ -27,5 +27,5 @@ export function rankNfl(game: GameCard): RankPick | null {
     const tot = totalPlay(game, modelOver, `NFL total ${game.odds.total}.${wx.note}`, "v2-nfl");
     if (tot) cands.push(tot);
   }
-  return pickBest(cands, "spread", qb.some((s) => s.includes("QB")) ? 2 : 3);
+  return pickBest(game, cands, "spread");
 }

@@ -1,13 +1,7 @@
-import {
-  clamp,
-  devig,
-  hasUsableOdds,
-  impliedFromAmerican,
-  parseWinPct,
-  selectionLabel,
-} from "../odds.ts";
+import { twoWayMarket, clamp, hasUsableOdds, impliedFromAmerican, parseWinPct, selectionLabel } from "../odds.ts";
 import { isFreeBetaMode } from "../free-beta.ts";
 import { isDraftKingsLine } from "../odds-api.ts";
+import { sealRank } from "../data-quality.ts";
 import type { GameCard, RankPick, Side } from "../types.ts";
 
 export const MIN_EDGE = 0.03;
@@ -51,16 +45,17 @@ export function mlPlay(
   opts: { maxChalk: number; maxDog: number },
 ): RankPick | null {
   if (game.odds.homeMl == null || game.odds.awayMl == null) return null;
-  const [fairHome] = devig(game.odds.homeMl, game.odds.awayMl);
-  const edgeHome = modelHome - fairHome;
-  const edgeAway = 1 - modelHome - (1 - fairHome);
+  const mkt = twoWayMarket(game.odds.homeMl, game.odds.awayMl);
+  const edgeHome = modelHome - mkt.noVigA;
+  const edgeAway = 1 - modelHome - mkt.noVigB;
   const pickHome = edgeHome >= edgeAway;
   const edge = pickHome ? edgeHome : edgeAway;
   const price = pickHome ? game.odds.homeMl : game.odds.awayMl;
   if (Math.abs(price) >= opts.maxChalk) return null;
   if (price >= opts.maxDog) return null;
-  if (edge < MIN_EDGE) return null;
   const side: Side = pickHome ? "home" : "away";
+  const noVig = pickHome ? mkt.noVigA : mkt.noVigB;
+  const raw = pickHome ? mkt.rawA : mkt.rawB;
   return {
     market: "moneyline",
     side,
@@ -79,6 +74,10 @@ export function mlPlay(
     why,
     model,
     probability: pickHome ? modelHome : 1 - modelHome,
+    rawImplied: raw,
+    noVigImplied: noVig,
+    marketHold: mkt.hold,
+    vigAdjusted: true,
   };
 }
 
@@ -104,6 +103,10 @@ export function spreadPlay(
   const price = (pickHome ? game.odds.homeSpreadOdds : game.odds.awaySpreadOdds) ?? -110;
   const playLine = pickHome ? game.odds.homeSpread : game.odds.awaySpread;
   const coverProb = clamp(0.5 + coverHome, 0.18, 0.82);
+  const homeJuice = game.odds.homeSpreadOdds;
+  const awayJuice = game.odds.awaySpreadOdds;
+  const mkt = homeJuice != null && awayJuice != null ? twoWayMarket(homeJuice, awayJuice) : null;
+  const noVig = mkt ? (pickHome ? mkt.noVigA : mkt.noVigB) : null;
   return {
     market: "spread",
     side,
@@ -122,6 +125,10 @@ export function spreadPlay(
     why,
     model,
     probability: pickHome ? coverProb : 1 - coverProb,
+    rawImplied: impliedFromAmerican(price),
+    noVigImplied: noVig,
+    marketHold: mkt?.hold ?? null,
+    vigAdjusted: Boolean(mkt),
   };
 }
 
@@ -132,12 +139,13 @@ export function totalPlay(
   model: string,
 ): RankPick | null {
   if (game.odds.total == null || game.odds.overOdds == null || game.odds.underOdds == null) return null;
-  const [fairOver] = devig(game.odds.overOdds, game.odds.underOdds);
-  const adj = modelOver - fairOver - juiceImbalance(game.odds.overOdds, game.odds.underOdds) * 0.2;
+  const mkt = twoWayMarket(game.odds.overOdds, game.odds.underOdds);
+  const adj = modelOver - mkt.noVigA - juiceImbalance(game.odds.overOdds, game.odds.underOdds) * 0.2;
   if (Math.abs(adj) < MIN_EDGE) return null;
   const pickOver = adj > 0;
   const side: Side = pickOver ? "over" : "under";
   const price = pickOver ? game.odds.overOdds : game.odds.underOdds;
+  const noVig = pickOver ? mkt.noVigA : mkt.noVigB;
   return {
     market: "total",
     side,
@@ -156,23 +164,22 @@ export function totalPlay(
     why,
     model,
     probability: pickOver ? modelOver : 1 - modelOver,
+    rawImplied: pickOver ? mkt.rawA : mkt.rawB,
+    noVigImplied: noVig,
+    marketHold: mkt.hold,
+    vigAdjusted: true,
   };
 }
 
 export function pickBest(
+  game: GameCard,
   candidates: RankPick[],
   preferred: RankPick["market"],
-  extraConf = 0,
 ): RankPick | null {
-  const playable = candidates.filter((c) => c.edgePct >= MIN_EDGE * 100);
-  if (!playable.length) return null;
-  playable.sort((a, b) => {
+  if (!candidates.length) return null;
+  const playable = [...candidates].sort((a, b) => {
     const pref = (m: RankPick) => (m.market === preferred ? 1.2 : m.market === "total" ? 0.84 : 1);
     return b.edgePct * pref(b) - a.edgePct * pref(a);
   });
-  const best = playable[0];
-  if (!best) return null;
-  const conf = clamp(52 + best.edgePct * 2.0 + extraConf, 52, 79);
-  if (conf < MIN_CONF) return null;
-  return { ...best, confidence: Math.round(conf) };
+  return sealRank(game, playable[0] ?? null);
 }
