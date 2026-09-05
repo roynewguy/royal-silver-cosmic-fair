@@ -257,7 +257,7 @@ function ManualPick({ games }: { games: GameCard[] }) {
   const [units, setUnits] = useState("1");
   const [note, setNote] = useState("");
   const [preview, setPreview] = useState(false);
-  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
+  const [requestId] = useState(() => crypto.randomUUID());
   const sports = ["ALL", ...new Set(games.map((g) => g.sport))];
   const filtered = games.filter((g) => (sport === "ALL" ? true : g.sport === sport));
   const game = filtered.find((g) => g.id === gameId) ?? filtered[0];
