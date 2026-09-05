@@ -10,7 +10,7 @@ import { PickTicket } from "@/components/desk/pick-ticket";
 import { SportRail } from "@/components/desk/sport-rail";
 import { useDesk } from "@/lib/desk/use-desk";
 import { formatKick, relativeTo } from "@/lib/utils";
-import { lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
+import { canOperatorPost, operatorPostChoices } from "@/lib/sports/post-choices";
 import type { CalibrationReport, GameCard, Market, Side } from "@/lib/sports/types";
 
 export function DeskHq() {
@@ -193,61 +193,6 @@ function Meta({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-type MarketChoice = { market: Market; side: Side; label: string; line: number | null; price: number };
-
-function postChoices(game: GameCard): MarketChoice[] {
-  const real = availableChoices(game);
-  if (real.length) return real;
-  return [
-    {
-      market: "moneyline",
-      side: "home",
-      line: null,
-      price: -110,
-      label: `${game.home.abbr} ML`,
-    },
-    {
-      market: "moneyline",
-      side: "away",
-      line: null,
-      price: -110,
-      label: `${game.away.abbr} ML`,
-    },
-  ];
-}
-
-function availableChoices(game: GameCard): MarketChoice[] {
-  const choices: MarketChoice[] = [];
-  const markets: Array<{ market: Market; sides: Side[] }> = [
-    { market: "moneyline", sides: ["away", "home"] },
-    { market: "spread", sides: ["away", "home"] },
-    { market: "total", sides: ["over", "under"] },
-  ];
-  for (const { market, sides } of markets) {
-    for (const side of sides) {
-      const price = priceFor(game.odds, market, side);
-      const line = lineFor(game.odds, market, side);
-      if (price == null || !Number.isFinite(price)) continue;
-      if (market !== "moneyline" && (line == null || !Number.isFinite(line))) continue;
-      choices.push({
-        market,
-        side,
-        line,
-        price,
-        label: selectionLabel({
-          market,
-          side,
-          homeAbbr: game.home.abbr,
-          awayAbbr: game.away.abbr,
-          line,
-          price,
-        }),
-      });
-    }
-  }
-  return choices;
-}
-
 function Upcoming({
   games,
   operator,
@@ -260,7 +205,7 @@ function Upcoming({
   onManualPost: (input: { gameId: string; market: Market; side: Side }) => void;
 }) {
   const upcoming = games
-    .filter((g) => g.status === "scheduled" || g.status === "delayed" || g.status === "in_progress")
+    .filter((g) => canOperatorPost(g))
     .slice()
     .sort((a, b) => +new Date(a.startAt) - +new Date(b.startAt));
   if (upcoming.length === 0) return null;
@@ -289,7 +234,7 @@ function UpcomingRow({
   onManualPost: (input: { gameId: string; market: Market; side: Side }) => void;
 }) {
   const [choosing, setChoosing] = useState(false);
-  const choices = postChoices(game);
+  const choices = operatorPostChoices(game);
   return (
     <li className="px-4 py-3">
       <div className="flex items-center gap-3">

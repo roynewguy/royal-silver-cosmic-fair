@@ -321,7 +321,7 @@ export async function loadGames(): Promise<GameCard[]> {
   const rows = await sql<GameRow>`
     select * from games
     where start_at > now() - interval '2 days'
-      and start_at < now() + interval '4 days'
+      and start_at < now() + interval '14 days'
     order by start_at asc
   `;
   return rows.map(gameFromRow);

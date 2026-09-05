@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { GamePostPicker } from "@/components/desk/game-post-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDesk } from "@/lib/desk/use-desk";
@@ -11,9 +12,10 @@ import type { GameCard, SportId } from "@/lib/sports/types";
 
 const SPORTS: Array<"ALL" | SportId> = ["ALL", "nfl", "ncaaf", "nba", "ncaab", "wnba", "mlb", "nhl", "ufc", "mls", "epl"];
 
-function dayFilter(game: GameCard, day: "today" | "tomorrow"): boolean {
+function dayFilter(game: GameCard, day: "today" | "tomorrow" | "all"): boolean {
+  if (day === "all") return true;
   const now = new Date();
-  if (day === "today") return isOfficialDay(game.startAt, now);
+  if (day === "today") return isOfficialDay(game.startAt, now) || game.status === "in_progress";
   const tmw = ymdToEspn(addYmd(ptYmd(now), 1));
   const key = ptDayKey(new Date(game.startAt)).replaceAll("-", "");
   return key === tmw;
@@ -21,7 +23,7 @@ function dayFilter(game: GameCard, day: "today" | "tomorrow"): boolean {
 
 export function SlateBoard() {
   const desk = useDesk();
-  const [day, setDay] = useState<"today" | "tomorrow">("today");
+  const [day, setDay] = useState<"today" | "tomorrow" | "all">("today");
   const [sport, setSport] = useState<(typeof SPORTS)[number]>("ALL");
   const [status, setStatus] = useState<"ALL" | "QUALIFIED" | "PASS" | "OFFICIAL">("ALL");
 
@@ -45,14 +47,14 @@ export function SlateBoard() {
         <p className="text-xs tracking-[0.22em] text-accent uppercase">Board</p>
         <h1 className="mt-1 font-display text-4xl tracking-wide">Slate</h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Market numbers used for scanning. Official picks require fresh DraftKings verification before posting.
+          Every sport on the board. Unlock to post any game — moneyline, spread, or total — even if BoatBoyz PASSed it.
         </p>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {(["today", "tomorrow"] as const).map((d) => (
+        {(["today", "tomorrow", "all"] as const).map((d) => (
           <Button key={d} size="sm" variant={day === d ? "primary" : "secondary"} onClick={() => setDay(d)}>
-            {d === "today" ? "Today" : "Tomorrow"}
+            {d === "today" ? "Today" : d === "tomorrow" ? "Tomorrow" : "All games"}
           </Button>
         ))}
       </div>
@@ -88,6 +90,7 @@ export function SlateBoard() {
               <th className="px-3 py-3 font-medium">Edge</th>
               {desk.data.operator ? <th className="px-3 py-3 font-medium">DQ</th> : null}
               <th className="px-3 py-3 font-medium">Status</th>
+              {desk.data.operator ? <th className="px-3 py-3 font-medium">Post</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -119,6 +122,11 @@ export function SlateBoard() {
                       {ticketCopy(label)}
                     </Badge>
                   </td>
+                  {desk.data.operator ? (
+                    <td className="px-3 py-3">
+                      <GamePostPicker game={g} />
+                    </td>
+                  ) : null}
                 </tr>
               );
             })}
@@ -165,6 +173,11 @@ function GameMobile({ game }: { game: GameCard }) {
           {game.rank.noVigImplied != null ? ` · no-vig ${(game.rank.noVigImplied * 100).toFixed(1)}%` : ""}
           {game.rank.passReason ? ` · ${game.rank.passReason}` : ""}
         </p>
+      ) : null}
+      {desk.data.operator ? (
+        <div className="mt-3">
+          <GamePostPicker game={game} />
+        </div>
       ) : null}
     </article>
   );
