@@ -26,6 +26,7 @@ const empty: DeskState = {
   pinFromEnv: false,
   calibration: null,
   health: EMPTY_HEALTH,
+  researchModels: null,
 };
 
 type DeskApi = {

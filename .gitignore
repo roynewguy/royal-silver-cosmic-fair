@@ -12,12 +12,16 @@ coverage/
 *.log
 .DS_Store
 artifacts/
+!src/lib/models-v3/artifacts/
+!src/lib/models-v3/artifacts/**
 screenshots/
 .grok/*.log
 .grok/preview.log
 .data/
 *.db
 *.sqlite
-webhook.local.json
+research/cache/
+research/data/
+
 .project_id
 .github_repo

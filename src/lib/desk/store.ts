@@ -4,6 +4,7 @@ import { buildCalibration } from "@/lib/sports/calibration";
 import { applyModelInputs, packModelInputs } from "@/lib/sports/model-inputs";
 import { isFreeBetaMode } from "@/lib/sports/free-beta";
 import { buildDeskHealth } from "./health.ts";
+import { loadResearchSummary } from "@/lib/models-v3/summary";
 import type {
   DeskLog,
   DeskRecord,
@@ -517,6 +518,7 @@ export async function readDesk(): Promise<DeskState> {
   ]);
   const hook = resolveWebhook(await readWebhook());
   const espnErrors = log.filter((l) => l.kind === "scan" && /error/i.test(l.message)).length;
+  const researchModels = await loadResearchSummary();
   return {
     record,
     games,
@@ -545,6 +547,7 @@ export async function readDesk(): Promise<DeskState> {
       oddsUsed: meta.oddsUsed,
       freeBeta: isFreeBetaMode(),
     }),
+    researchModels,
   };
 }
 

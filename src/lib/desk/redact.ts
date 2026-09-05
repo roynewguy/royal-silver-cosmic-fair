@@ -54,5 +54,6 @@ export function redactDesk(state: DeskState, operator: boolean): DeskState {
     lastDeskAt: null,
     calibration: null,
     health: state.health ?? EMPTY_HEALTH,
+    researchModels: operator ? state.researchModels : null,
   };
 }

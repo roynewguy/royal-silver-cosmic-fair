@@ -239,4 +239,13 @@ export type DeskState = {
   pinFromEnv: boolean;
   calibration: CalibrationReport | null;
   health: DeskHealth;
+  researchModels: {
+    production: string;
+    shadow: string | null;
+    testN: number | null;
+    brier: number | null;
+    logLoss: number | null;
+    roi: number | null;
+    note: string;
+  } | null;
 };
