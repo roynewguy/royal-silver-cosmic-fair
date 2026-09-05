@@ -336,4 +336,15 @@ export const rotatePin = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+export const replayPaperDay = createServerFn({ method: "POST" })
+  .validator((input: unknown) => ({ date: String((input as { date?: string }).date ?? "").trim() }))
+  .handler(async ({ data }) => {
+    const gate = await requireOperator();
+    if (!gate.ok) return { ok: false as const, error: gate.error };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data.date)) return { ok: false as const, error: "Use YYYY-MM-DD." };
+    const { runPaperReplay } = await import("@/lib/sports/replay-store");
+    const report = await runPaperReplay(data.date);
+    return { ok: true as const, report };
+  });
+
 export { cronAuthorized, refreshSlate };

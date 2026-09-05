@@ -100,6 +100,9 @@ export type RankPick = {
   dataQuality?: number;
   missingInputs?: string[];
   passReason?: PassReason | null;
+  freshness?: Record<string, { ageMinutes: number | null; source: string }>;
+  flags?: Array<"UNSTABLE_MODEL_OUTPUT" | "EDGE_OUTLIER">;
+  outlierReason?: string | null;
 };
 
 export type GameCard = {
@@ -165,6 +168,7 @@ export type PickRow = {
   closingOdds: number | null;
   clv: number | null;
   createdAt: string;
+  ledger?: "official" | "paper";
   homeLogo: string | null;
   awayLogo: string | null;
   homeAbbr: string | null;
@@ -280,4 +284,6 @@ export type DeskState = {
     } | null;
     audit?: string[];
   } | null;
+  paperMode?: boolean;
+  paperRecord?: DeskRecord | null;
 };

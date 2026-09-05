@@ -28,7 +28,7 @@ export function TicketCard({ pick, game, operator = false }: { pick: PickRow; ga
           <h3 className="mt-1 font-display text-2xl tracking-wide text-fg">{pick.selection}</h3>
           <p className="mt-0.5 text-sm text-muted">{vsLine(pick, game)}</p>
         </div>
-        <Badge tone={tone(label)}>{ticketCopy(label)}</Badge>
+        <Badge tone={pick.ledger === "paper" ? "push" : tone(label)}>{pick.ledger === "paper" ? "PAPER" : ticketCopy(label)}</Badge>
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 font-mono text-sm tabular-nums">
         <div>

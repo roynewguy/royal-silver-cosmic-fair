@@ -12,6 +12,7 @@ import { gradePick, settle } from "@/lib/sports/grade";
 import { buildFreezeSnapshot } from "@/lib/sports/freeze";
 import { impliedFromAmerican, lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import { isFreeBetaMode, oddsBudget } from "@/lib/sports/free-beta";
+import { isPaperLedger, isPaperMode, paperLockMessage, paperSimulateSend, activeLedger } from "@/lib/sports/paper-mode";
 import { mergeDraftKingsOdds } from "@/lib/sports/odds-api";
 import { bestOnSlate, dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, unitsFor } from "@/lib/sports/rank";
 import { formatWhy } from "@/lib/sports/why";
@@ -126,6 +127,7 @@ function asPickRow(partial: Partial<PickRow> & Pick<PickRow, "id" | "gameId" | "
     postedOdds: null,
     closingOdds: null,
     clv: null,
+    ledger: "official",
     homeLogo: null,
     awayLogo: null,
     homeAbbr: null,
@@ -217,6 +219,7 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
     post_at: string;
     posted_odds: number | null;
     model_version: string | null;
+    ledger: string | null;
   }>`
     select * from picks
     where result is null and status in ('queued','posting','posted')
@@ -289,7 +292,7 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
       `${fake.matchup} ${result} ${profit >= 0 ? "+" : ""}${profit.toFixed(2)}u`,
       game.sport,
     );
-    if (hook) {
+    if (hook && !isPaperLedger(row.ledger)) {
       const recap = buildRecapMessage({ ...fake, result, profitUnits: profit }, game, result, profit, record);
       const sent = await postWebhook(hook, recap);
       if (!sent.ok) await addLog("post", `Recap failed: ${sent.error}`, game.sport);
@@ -334,8 +337,9 @@ export async function postPickById(
     return { ok: true, posted: false, pickId };
   }
 
-  const queuedMeta = await sql<{ market: string }>`select market from picks where id = ${row.id}`;
+  const queuedMeta = await sql<{ market: string; ledger: string | null }>`select market, ledger from picks where id = ${row.id}`;
   const queuedMarket = (queuedMeta[0]?.market ?? "spread") as import("@/lib/sports/types").Market;
+  const paper = isPaperLedger(queuedMeta[0]?.ledger) || isPaperMode();
   const verified = await confirmDraftKings(game, queuedMarket);
   if (!verified.ok) {
     await sql`
@@ -371,6 +375,7 @@ export async function postPickById(
     freeze_json: string | null;
     selected_odds: number | null;
     status: string;
+    ledger: string | null;
   }>`select * from picks where id = ${row.id}`;
   const pick = full[0];
   if (!pick) return { ok: false, posted: false, pickId, error: "Pick vanished." };
@@ -422,9 +427,9 @@ export async function postPickById(
     modelProbability: freshRank.probability,
     modelEdge: freshRank.edgePct,
   });
-  const message = buildDiscordMessage(asRow, liveGame);
+  const message = paper ? paperLockMessage(selection) : buildDiscordMessage(asRow, liveGame);
   const hook = await webhookUrl();
-  if (!hook) {
+  if (!paper && !hook) {
     await addLog("post", "Due pick waiting — no DISCORD_WEBHOOK_URL.", pick.sport);
     return { ok: false, posted: false, pickId, error: "No Discord webhook configured." };
   }
@@ -432,7 +437,7 @@ export async function postPickById(
   const result = await sendOnce(
     pick.id,
     sqlLocker(sql),
-    () => postWebhook(hook, message),
+    paper ? paperSimulateSend : () => postWebhook(hook, message),
     {
       freezeJson: JSON.stringify(freeze),
       discordMessage: message,
@@ -459,8 +464,8 @@ export async function postPickById(
     await addLog("post", `Discord failed, still queued: ${result.error ?? "send failed"}`, pick.sport);
     return { ok: false, posted: false, pickId, error: result.error };
   }
-  await addLog("post", `Discord confirmed ${selection} · ${pick.matchup} · ${freshRank.model}`, pick.sport);
-  await recordPostedPrediction(liveGame, freshRank);
+  await addLog("post", `${paper ? "PAPER lock" : "Discord confirmed"} ${selection} · ${pick.matchup} · ${freshRank.model}`, pick.sport);
+  if (!paper) await recordPostedPrediction(liveGame, freshRank);
   return { ok: true, posted: true, pickId };
 }
 
@@ -618,7 +623,8 @@ export async function selectOfficialCard(
           model_edge = ${rank.edgePct},
           start_at = ${game.startAt},
           post_at = ${postAt},
-          official_key = ${key}
+          official_key = ${key},
+          ledger = ${activeLedger()}
         where id = ${existing.id} and status in ('queued','skipped') and freeze_json is null
       `;
     } else {
@@ -628,12 +634,12 @@ export async function selectOfficialCard(
             game_id, sport, league, matchup, market, selection, side,
             locked_line, locked_odds, locked_odds_json, reason, research,
             confidence, edge_pct, units, status, start_at, post_at, official_key,
-            model_version, model_probability, model_edge, selected_odds, selected_at
+            model_version, model_probability, model_edge, selected_odds, selected_at, ledger
           ) values (
             ${game.id}, ${game.sport}, ${game.league}, ${matchup}, ${rank.market}, ${rank.selection}, ${rank.side},
             ${rank.line}, ${rank.price}, ${snapshot}, ${reason}, ${aiPlay ? reason : null},
             ${confidence}, ${rank.edgePct}, ${units}, 'queued', ${game.startAt}, ${postAt}, ${key},
-            ${rank.model}, ${rank.probability}, ${rank.edgePct}, ${rank.price}, now()
+            ${rank.model}, ${rank.probability}, ${rank.edgePct}, ${rank.price}, now(), ${activeLedger()}
           )
         `;
       } catch {

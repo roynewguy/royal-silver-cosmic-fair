@@ -1,5 +1,6 @@
 import { clamp, impliedFromAmerican, parseWinPct } from "./odds.ts";
 import { isDraftKingsLine } from "./odds-api.ts";
+import { featureFreshness, shouldFlagEdgeOutlier } from "./validation.ts";
 import type { GameCard, PassReason, RankPick } from "./types.ts";
 
 export const STALE_MARKET_MS = 20 * 60_000;
@@ -144,5 +145,8 @@ export function sealRank(game: GameCard, pick: RankPick | null, now = Date.now()
     missingInputs: quality.missing,
   };
   next.passReason = guardrailReason(game, next, quality, now);
+  next.freshness = featureFreshness(game, now);
+  next.flags = shouldFlagEdgeOutlier(game, next.edgePct) ? ["EDGE_OUTLIER"] : [];
+  next.outlierReason = next.flags.includes("EDGE_OUTLIER") ? "EDGE_OUTLIER" : null;
   return next;
 }

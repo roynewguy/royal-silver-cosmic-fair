@@ -27,6 +27,8 @@ const empty: DeskState = {
   calibration: null,
   health: EMPTY_HEALTH,
   researchModels: null,
+  paperMode: false,
+  paperRecord: null,
 };
 
 type DeskApi = {

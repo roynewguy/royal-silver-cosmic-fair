@@ -66,6 +66,7 @@ function accumulate(picks: PickRow[], keyFn: (p: PickRow) => string | null): Cal
     return row;
   };
   for (const pick of picks) {
+    if (pick.ledger === "paper") continue;
     if (pick.status !== "posted" && pick.status !== "graded") continue;
     const key = keyFn(pick);
     if (!key) continue;

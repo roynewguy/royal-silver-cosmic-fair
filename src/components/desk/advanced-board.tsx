@@ -9,6 +9,7 @@ import { lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import { buildTestPreviewMessage } from "@/lib/sports/discord";
 import { DiscordComposer } from "@/components/desk/discord-composer";
 import { formatKick } from "@/lib/utils";
+import { replayPaperDay } from "@/lib/desk/api";
 import type { CalibrationReport, GameCard, Market, Side } from "@/lib/sports/types";
 
 export function AdvancedBoard() {
@@ -89,6 +90,17 @@ export function AdvancedBoard() {
           </Button>
         </div>
         <ManualPick games={upcoming} />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">Paper / replay</h2>
+        <p className="text-sm">{desk.data.paperMode ? "PAPER MODE is on. Locks simulate official tickets and never hit Discord or the public record." : "Live mode. Set PAPER_MODE=true on the host to simulate the full loop without customer posts."}</p>
+        {desk.data.paperRecord ? (
+          <p className="font-mono text-xs text-muted">
+            Paper ledger {desk.data.paperRecord.wins}-{desk.data.paperRecord.losses}-{desk.data.paperRecord.pushes} · {desk.data.paperRecord.units.toFixed(2)}u
+          </p>
+        ) : null}
+        <ReplayBox />
       </section>
 
       <section className="space-y-3">
@@ -306,5 +318,36 @@ function CalibrationPanel({ report }: { report: CalibrationReport }) {
         </table>
       </div>
     </section>
+  );
+}
+
+function ReplayBox() {
+  const [date, setDate] = useState("2026-09-04");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        setBusy(true);
+        void replayPaperDay({ data: { date } })
+          .then((res) => {
+            if (!res.ok) setNote(res.error);
+            else setNote(`${res.report.paperPicks.length} paper locks · ${res.report.ticks.length} ticks · ${res.report.source}`);
+          })
+          .finally(() => setBusy(false));
+      }}
+    >
+      <label className="block text-xs tracking-[0.14em] text-subtle uppercase">Replay PT date</label>
+      <div className="flex flex-wrap gap-2">
+        <Input value={date} onChange={(e) => setDate(e.target.value)} className="max-w-40 font-mono" />
+        <Button type="submit" variant="secondary" disabled={busy}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : null}
+          Run replay
+        </Button>
+      </div>
+      {note ? <p className="text-xs text-muted">{note}</p> : null}
+    </form>
   );
 }

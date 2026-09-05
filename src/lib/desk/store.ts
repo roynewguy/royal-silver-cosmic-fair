@@ -3,6 +3,7 @@ import { getSql, dbSource } from "@/lib/db";
 import { buildCalibration } from "@/lib/sports/calibration";
 import { applyModelInputs, packModelInputs } from "@/lib/sports/model-inputs";
 import { isFreeBetaMode } from "@/lib/sports/free-beta";
+import { activeLedger, isPaperMode } from "@/lib/sports/paper-mode";
 import { buildDeskHealth } from "./health.ts";
 import { loadResearchSummary } from "@/lib/models-v3/summary";
 import type {
@@ -120,6 +121,7 @@ type PickDb = {
   home_score?: number | null;
   away_score?: number | null;
   game_status?: string | null;
+  ledger?: string | null;
 };
 
 export function gameFromRow(row: GameRow): GameCard {
@@ -239,6 +241,7 @@ export function pickFromRow(row: PickDb): PickRow {
     homeScore: numOrNull(row.home_score),
     awayScore: numOrNull(row.away_score),
     gameStatus: (row.game_status as GameStatus | null) ?? null,
+    ledger: row.ledger === "paper" ? "paper" : "official",
   };
 }
 
@@ -343,6 +346,35 @@ export async function loadRecord(): Promise<DeskRecord> {
       coalesce(sum(profit_units) filter (where status = 'graded' and result is not null), 0) as units,
       count(*) filter (where status = 'posted' and result is null) as pending
     from picks
+    where coalesce(ledger, 'official') = 'official'
+  `;
+  const r = rows[0];
+  return {
+    wins: num(r?.wins),
+    losses: num(r?.losses),
+    pushes: num(r?.pushes),
+    units: num(r?.units),
+    pending: num(r?.pending),
+  };
+}
+
+export async function loadPaperRecord(): Promise<DeskRecord> {
+  const sql = await getSql();
+  const rows = await sql<{
+    wins: unknown;
+    losses: unknown;
+    pushes: unknown;
+    units: unknown;
+    pending: unknown;
+  }>`
+    select
+      count(*) filter (where result = 'WIN' and status = 'graded') as wins,
+      count(*) filter (where result = 'LOSS' and status = 'graded') as losses,
+      count(*) filter (where result = 'PUSH' and status = 'graded') as pushes,
+      coalesce(sum(profit_units) filter (where status = 'graded' and result is not null), 0) as units,
+      count(*) filter (where status = 'posted' and result is null) as pending
+    from picks
+    where coalesce(ledger, 'official') = 'paper'
   `;
   const r = rows[0];
   return {
@@ -536,7 +568,7 @@ export async function readDesk(): Promise<DeskState> {
     operator: false,
     soccerDesk: "off",
     pinFromEnv: Boolean(process.env.BOATBOYZ_PIN?.trim()),
-    calibration: buildCalibration(picks),
+    calibration: buildCalibration(picks.filter((p) => p.ledger !== "paper")),
     health: buildDeskHealth({
       lastTickAt: meta.lastTickAt,
       lastScanAt: meta.lastScanAt,
@@ -548,6 +580,8 @@ export async function readDesk(): Promise<DeskState> {
       freeBeta: isFreeBetaMode(),
     }),
     researchModels,
+    paperMode: isPaperMode(),
+    paperRecord: await loadPaperRecord(),
   };
 }
 
@@ -557,6 +591,7 @@ export async function loadTodayOfficial(now = new Date()): Promise<PickRow[]> {
     select * from picks
     where status in ('queued','posting','posted','graded')
       and official_key is not null
+      and coalesce(ledger, 'official') = ${activeLedger()}
       and start_at >= now() - interval '2 days'
       and start_at <= now() + interval '2 days'
     order by created_at asc
