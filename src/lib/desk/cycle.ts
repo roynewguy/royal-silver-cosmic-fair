@@ -653,9 +653,12 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
     );
     const posted = await flushDuePosts(games, meta.minEdgePct, meta.minConfidence);
     const espn = espnScanStats();
+    const espnErrors = espn.espn_error_count
+      ? ` · errors ${espn.espn_error_count}${espn.espn_last_error ? ` (${espn.espn_last_error})` : ""}`
+      : "";
     await addLog(
       "scan",
-      `Tick ${source}: ${games.length} games · espn ${espn.espn_request_count} req · ${espn.scan_duration_ms}ms · queued ${queued} · posted ${posted} · graded ${graded}`,
+      `Tick ${source}: ${games.length} games · espn ${espn.espn_request_count} req · ${espn.scan_duration_ms}ms${espnErrors} · queued ${queued} · posted ${posted} · graded ${graded}`,
     );
     return {
       ok: true as const,
@@ -665,6 +668,8 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
       games_loaded: games.length,
       espn_request_count: espn.espn_request_count,
       scan_duration_ms: espn.scan_duration_ms,
+      espn_error_count: espn.espn_error_count,
+      espn_last_error: espn.espn_last_error,
       queued,
       posted,
       graded,
