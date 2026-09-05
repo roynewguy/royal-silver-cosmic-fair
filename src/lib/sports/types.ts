@@ -134,6 +134,9 @@ export type GameCard = {
   notes: string[];
   injuries: Injury[];
   weather: string | null;
+  clock?: string | null;
+  period?: number | null;
+  shortDetail?: string | null;
 };
 
 export type SportScan = {
@@ -183,6 +186,11 @@ export type PickRow = {
   clv: number | null;
   createdAt: string;
   ledger?: "official" | "paper";
+  pickSource?: "auto" | "manual" | "manual_live";
+  lineSource?: string | null;
+  postedScore?: string | null;
+  postedState?: string | null;
+  needsManualGrade?: boolean;
   homeLogo: string | null;
   awayLogo: string | null;
   homeAbbr: string | null;

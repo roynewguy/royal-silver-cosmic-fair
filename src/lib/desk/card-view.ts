@@ -21,7 +21,11 @@ export function ticketLabel(pick: PickRow): TicketLabel {
   if (pick.result === "PUSH") return "push";
   if (pick.result === "VOID") return "void";
   if (pick.status === "posting") return "verifying";
-  if (pick.status === "posted") return "official";
+  if (pick.status === "posted") {
+    if (pick.pickSource === "manual_live") return "manual";
+    if (pick.pickSource === "manual" || !pick.officialKey) return "manual";
+    return "official";
+  }
   if (pick.status === "queued") return pick.officialKey ? "provisional" : "manual";
   if (pick.status === "skipped") {
     if (pick.skipReason?.includes("Rotated") || pick.skipReason === ROTATE_SKIP_REASON) return "rotated";

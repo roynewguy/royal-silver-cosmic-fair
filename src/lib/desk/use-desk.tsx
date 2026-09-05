@@ -40,7 +40,17 @@ type DeskApi = {
   refresh: () => void;
   run: () => void;
   push: (input: { pickId: number; webhookUrl?: string; allowLive?: boolean }) => void;
-  manualPost: (input: { gameId: string; market: Market; side: Side }) => void;
+  manualPost: (input: {
+    gameId: string;
+    market: Market;
+    side: Side;
+    selection?: string;
+    line?: string;
+    odds?: string;
+    units?: string | number;
+    note?: string;
+    requestId?: string;
+  }) => void;
   testPost: (gameId: string) => void;
   deletePost: (pickId: number) => void;
   saveHook: (webhookUrl: string) => void;
@@ -136,7 +146,17 @@ function useDeskController(): DeskApi {
   });
 
   const manualPost = useMutation({
-    mutationFn: (input: { gameId: string; market: Market; side: Side }) => postManualPick({ data: input }),
+    mutationFn: (input: {
+      gameId: string;
+      market: Market;
+      side: Side;
+      selection?: string;
+      line?: string;
+      odds?: string;
+      units?: string | number;
+      note?: string;
+      requestId?: string;
+    }) => postManualPick({ data: input }),
     onSuccess: (res) => {
       if (!res.ok) {
         toast.error(res.error ?? "Manual post failed.");

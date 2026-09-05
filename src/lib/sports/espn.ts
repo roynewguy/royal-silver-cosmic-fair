@@ -57,13 +57,13 @@ type EspnEvent = {
     id?: string;
     date?: string;
     venue?: { fullName?: string };
-    status?: { type?: { name?: string; state?: string; completed?: boolean } };
+    status?: { type?: { name?: string; state?: string; completed?: boolean; shortDetail?: string; detail?: string }; period?: number; displayClock?: string };
     competitors?: EspnCompetitor[];
     odds?: EspnOdds[];
     notes?: { headline?: string; text?: string }[];
     weather?: { displayValue?: string; temperature?: number; conditionId?: string; gust?: number; windSpeed?: number };
   }[];
-  status?: { type?: { name?: string; state?: string; completed?: boolean } };
+  status?: { type?: { name?: string; state?: string; completed?: boolean; shortDetail?: string; detail?: string }; period?: number; displayClock?: string };
 };
 
 export const INJURY_CACHE_MS = 60 * 60_000;
@@ -76,7 +76,7 @@ function mapStatus(raw?: string, state?: string, completed?: boolean): GameStatu
   if (s.includes("suspend")) return "suspended";
   if (s.includes("delay")) return "delayed";
   if (s.includes("final") || s.includes("complete") || s.includes("status_final")) return "final";
-  if (s.includes("in_progress") || s.includes("in-progress") || state === "in") return "in_progress";
+  if (s.includes("in_progress") || s.includes("in-progress") || s.includes("halftime") || s.includes("end_of") || state === "in") return "in_progress";
   return "scheduled";
 }
 
@@ -268,6 +268,9 @@ function eventToGames(event: EspnEvent, league: LeagueConfig): GameCard[] {
       notes: notesFrom(comp, event),
       injuries: injuriesFrom(home, away),
       weather: weatherFrom(comp),
+      clock: comp.status?.displayClock ?? event.status?.displayClock ?? null,
+      period: comp.status?.period ?? event.status?.period ?? null,
+      shortDetail: comp.status?.type?.shortDetail ?? event.status?.type?.shortDetail ?? null,
     });
   }
   return cards;

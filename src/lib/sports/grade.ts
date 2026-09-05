@@ -23,7 +23,7 @@ export function gradePick(pick: PickRow, game: GameCard): PickResult | null {
 
   if (pick.market === "total") {
     const total = hs + as;
-    const line = pick.lockedLine ?? game.odds.total;
+    const line = pick.lockedLine;
     if (line == null) return null;
     if (total === line) return "PUSH";
     const wentOver = total > line;

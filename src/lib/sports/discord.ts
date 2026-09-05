@@ -148,22 +148,36 @@ export function buildTestPreviewMessage(game: GameCard): string {
 }
 
 export function buildManualPickMessage(pick: PickRow, game?: GameCard | null): string {
-  const book = pick.lockedOddsJson.book || "Current market";
-  const line = pick.lockedLine == null ? "" : ` · ${pick.lockedLine > 0 ? `+${pick.lockedLine}` : pick.lockedLine}`;
-  const reason = pick.reason || "Selected from the current available line on the BoatBoyz desk.";
-  return [
-    "🌊 BOATBOYZ MANUAL PICK",
+  const live = pick.pickSource === "manual_live" || game?.status === "in_progress";
+  const source = pick.lineSource === "manual-entry" ? "Manual Entry" : pick.lineSource === "draftkings" ? "DraftKings" : pick.lineSource === "espn" ? "ESPN" : pick.lockedOddsJson.source === "odds-api" ? "Odds API" : "Manual Entry";
+  const kick = formatKick(pick.startAt, "America/Los_Angeles");
+  const posted = pick.postedAt ? formatKick(pick.postedAt, "America/Los_Angeles") : kick;
+  const oddsLine = live ? `Live Odds: ${formatAmerican(pick.lockedOdds)}` : `Odds: ${formatAmerican(pick.lockedOdds)}`;
+  const header = live ? "🔴 🌊 BOATBOYZ LIVE PLAY" : "🌊 BOATBOYZ MANUAL PLAY";
+  const lines = [
+    header,
     "",
     `${sportEmoji(pick.sport)} ${pick.sport}`,
-    `${pick.selection} ${vsLine(pick, game)}`,
-    `${book} current line: ${formatAmerican(pick.lockedOdds)}${line}`,
     "",
-    ...whyBlock(reason, "WHY THIS HIT THE BOARD"),
+    pick.selection,
+    `vs ${game?.away.name && pick.side === "home" ? game.away.name : game?.home.name ?? pick.matchup}`,
     "",
-    `Game: ${formatKick(pick.startAt, "America/Los_Angeles")} PT`,
-    scoreLine(game).replace("Score: not started", "Score: Not started"),
-    "Manually selected. Line recorded at posting. Not a model-frozen official play.",
-  ].join("\n");
+    oddsLine,
+    `Units: ${formatUnits(pick.units)}`,
+    "",
+  ];
+  if (live) {
+    lines.push("Score at post:", pick.postedScore || scoreLine(game).replace("Score: ", ""), "");
+    if (pick.postedState) lines.push("Game state:", pick.postedState, "");
+    lines.push("MANUAL OPERATOR PLAY", "", `Posted: ${posted} PT`);
+  } else {
+    lines.push("Operator Play", "", `Game: ${kick} PT`);
+  }
+  if (pick.reason?.trim()) lines.push("", pick.reason.trim());
+  lines.push("", `Source: ${source}`);
+  if (source === "Manual Entry") lines.push("Not a verified DraftKings line.");
+  lines.push("Not an automated BoatBoyz official pick.");
+  return lines.filter((l, i, arr) => !(l === "" && arr[i - 1] === "")).join("\n");
 }
 
 export function scoreLine(game?: GameCard | null): string {

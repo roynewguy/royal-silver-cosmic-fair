@@ -1,8 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
 import { buildManualPickMessage, buildOperatorPost, buildTestPreviewMessage, deleteWebhookMessage, discordWebhookOk, postWebhook, resolveWebhook } from "@/lib/sports/discord";
-import { formatWhy } from "@/lib/sports/why";
-import { lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import type { Market, Side } from "@/lib/sports/types";
 import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
 import { postPickById, refreshSlate, runTick } from "./cycle";
@@ -136,18 +134,33 @@ export const postTestPreview = createServerFn({ method: "POST" })
 
 export const postManualPick = createServerFn({ method: "POST" })
   .validator((input: unknown) => {
-    const data = input as { gameId?: string; market?: string; side?: string };
-    const market = data.market as Market;
-    const side = data.side as Side;
+    const data = input as {
+      gameId?: string;
+      market?: string;
+      side?: string;
+      selection?: string;
+      line?: string;
+      odds?: string;
+      units?: string | number;
+      note?: string;
+      requestId?: string;
+    };
     return {
       gameId: String(data.gameId ?? ""),
-      market,
-      side,
+      market: data.market as Market,
+      side: data.side as Side,
+      selection: typeof data.selection === "string" ? data.selection : "",
+      line: typeof data.line === "string" ? data.line : data.line != null ? String(data.line) : "",
+      odds: typeof data.odds === "string" ? data.odds : data.odds != null ? String(data.odds) : "",
+      units: data.units ?? 1,
+      note: typeof data.note === "string" ? data.note : "",
+      requestId: String(data.requestId ?? "").trim(),
     };
   })
   .handler(async ({ data }) => {
     const gate = await requireOperator();
     if (!gate.ok) return { ok: false as const, error: gate.error };
+    const requestId = data.requestId || crypto.randomUUID();
     if (!["spread", "moneyline", "total"].includes(data.market)) {
       return { ok: false as const, error: "Choose a valid market." };
     }
@@ -162,68 +175,94 @@ export const postManualPick = createServerFn({ method: "POST" })
       game = fresh.find((item) => item.id === data.gameId);
     }
     if (!game) return { ok: false as const, error: "Game not found. Scan odds and try again." };
-    if (game.status === "final" || game.status === "cancelled" || game.status === "postponed") {
+    if (game.status === "cancelled" || game.status === "postponed") {
       return { ok: false as const, error: `This game is ${game.status} and cannot be posted.` };
     }
-    const price = priceFor(game.odds, data.market, data.side);
-    const line = lineFor(game.odds, data.market, data.side);
-    if (price == null || !Number.isFinite(price) || (data.market !== "moneyline" && (line == null || !Number.isFinite(line)))) {
-      return { ok: false as const, error: "That market does not have a current line." };
+
+    const { resolveManualTicket } = await import("@/lib/sports/manual-post");
+    let ticket;
+    try {
+      ticket = resolveManualTicket({
+        game,
+        market: data.market,
+        side: data.side,
+        selection: data.selection,
+        line: data.line,
+        odds: data.odds,
+        units: data.units,
+        note: data.note,
+      });
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : "Could not build that play." };
     }
 
     const hook = resolveWebhook(await (await import("./store")).readWebhook()).url;
     if (!hook) return { ok: false as const, error: "No Discord webhook configured." };
 
-    const selection = selectionLabel({
-      market: data.market,
-      side: data.side,
-      homeAbbr: game.home.abbr,
-      awayAbbr: game.away.abbr,
-      line,
-      price,
-    });
     const matchup = `${game.away.name} @ ${game.home.name}`;
-    const reason = formatWhy(game, {
-      side: data.side,
-      market: data.market,
-      why: "Selected from the current available line on the BoatBoyz desk.",
-    });
     const now = new Date().toISOString();
     const sql = await getSql();
-    const inserted = await sql<{ id: number }>`
-      insert into picks (
-        game_id, sport, league, matchup, market, selection, side,
-        locked_line, locked_odds, locked_odds_json, reason, research,
-        confidence, edge_pct, units, status, start_at, post_at,
-        model_version, model_probability, model_edge, selected_odds, selected_at
-      ) values (
-        ${game.id}, ${game.sport}, ${game.league}, ${matchup}, ${data.market}, ${selection}, ${data.side},
-        ${line}, ${price}, ${JSON.stringify(game.odds)}, ${reason}, null,
-        0, 0, 1, 'queued', ${game.startAt}, ${now},
-        'manual', null, 0, ${price}, ${now}
-      )
-      returning id
+    const existing = await sql<{ id: number; status: string }>`
+      select id, status from picks where manual_post_id = ${requestId} limit 1
     `;
-    const id = inserted[0]?.id;
+    if (existing[0]?.status === "posted") {
+      return { ok: true as const, state: await deskForClient(), duplicate: true };
+    }
+
+    let id = existing[0]?.id;
+    if (id && existing[0]?.status === "skipped") {
+      await sql`update picks set status = 'queued', skip_reason = null where id = ${id}`;
+    }
+    if (!id) {
+      try {
+        const inserted = await sql<{ id: number }>`
+          insert into picks (
+            game_id, sport, league, matchup, market, selection, side,
+            locked_line, locked_odds, locked_odds_json, reason, research,
+            confidence, edge_pct, units, status, start_at, post_at,
+            model_version, model_probability, model_edge, selected_odds, selected_at,
+            official_key, ledger, pick_source, line_source, posted_score, posted_state,
+            needs_manual_grade, manual_post_id
+          ) values (
+            ${game.id}, ${game.sport}, ${game.league}, ${matchup}, ${data.market}, ${ticket.selection}, ${data.side},
+            ${ticket.line}, ${ticket.odds}, ${JSON.stringify(game.odds)}, ${ticket.reason || "Operator play."}, null,
+            0, 0, ${ticket.units}, 'queued', ${game.startAt}, ${now},
+            null, null, null, ${ticket.odds}, ${now},
+            null, 'official', ${ticket.pickSource}, ${ticket.lineSource}, ${ticket.postedScore}, ${ticket.postedState},
+            ${ticket.needsManualGrade}, ${requestId}
+          )
+          returning id
+        `;
+        id = inserted[0]?.id;
+      } catch {
+        const again = await sql<{ id: number; status: string }>`select id, status from picks where manual_post_id = ${requestId} limit 1`;
+        if (again[0]?.status === "posted") return { ok: true as const, state: await deskForClient(), duplicate: true };
+        id = again[0]?.id;
+      }
+    }
     if (!id) return { ok: false as const, error: "Could not create the manual pick." };
 
     const rows = await sql`select * from picks where id = ${id}`;
     const row = rows[0];
     if (!row) return { ok: false as const, error: "Manual pick was not created." };
     const pick = pickFromRow(row as never);
-    const message = buildManualPickMessage(pick, game);
+    const message = buildManualPickMessage(
+      { ...pick, postedAt: now, pickSource: ticket.pickSource, lineSource: ticket.lineSource, postedScore: ticket.postedScore, postedState: ticket.postedState, reason: ticket.reason },
+      game,
+    );
     const sent = await postWebhook(hook, message);
     if (!sent.ok) {
-      await sql`update picks set status = 'skipped', skip_reason = ${sent.error ?? "Discord post failed."} where id = ${id}`;
+      await sql`update picks set status = 'skipped', skip_reason = ${sent.error ?? "Discord post failed."} where id = ${id} and status = 'queued'`;
       return { ok: false as const, error: sent.error ?? "Discord post failed." };
     }
     await sql`
       update picks set
-        status = 'posted', posted_at = now(), posted_odds = ${price},
-        discord_message = ${message}, discord_message_id = ${sent.id ?? null}
-      where id = ${id}
+        status = 'posted', posted_at = now(), posted_odds = ${ticket.odds},
+        discord_message = ${message}, discord_message_id = ${sent.id ?? null},
+        model_version = null, model_probability = null, model_edge = null
+      where id = ${id} and status = 'queued'
     `;
-    await addLog("post", `Manual pick posted · ${selection} · ${game.sport}`, game.sport);
+    await addLog("post", `Manual ${ticket.pickSource} posted · ${ticket.selection} · ${game.sport}`, game.sport);
     return { ok: true as const, state: await deskForClient() };
   });
 

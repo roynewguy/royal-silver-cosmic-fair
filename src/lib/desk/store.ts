@@ -122,6 +122,11 @@ type PickDb = {
   away_score?: number | null;
   game_status?: string | null;
   ledger?: string | null;
+  pick_source?: string | null;
+  line_source?: string | null;
+  posted_score?: string | null;
+  posted_state?: string | null;
+  needs_manual_grade?: boolean | null;
 };
 
 export function gameFromRow(row: GameRow): GameCard {
@@ -242,6 +247,11 @@ export function pickFromRow(row: PickDb): PickRow {
     awayScore: numOrNull(row.away_score),
     gameStatus: (row.game_status as GameStatus | null) ?? null,
     ledger: row.ledger === "paper" ? "paper" : "official",
+    pickSource: row.pick_source === "manual_live" ? "manual_live" : row.pick_source === "manual" ? "manual" : "auto",
+    lineSource: row.line_source ?? null,
+    postedScore: row.posted_score ?? null,
+    postedState: row.posted_state ?? null,
+    needsManualGrade: Boolean(row.needs_manual_grade),
   };
 }
 
@@ -347,6 +357,8 @@ export async function loadRecord(): Promise<DeskRecord> {
       count(*) filter (where status = 'posted' and result is null) as pending
     from picks
     where coalesce(ledger, 'official') = 'official'
+      and official_key is not null
+      and coalesce(pick_source, 'auto') = 'auto'
   `;
   const r = rows[0];
   return {

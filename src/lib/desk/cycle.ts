@@ -11,6 +11,7 @@ import { mergeFetchedSlate, inLookahead } from "@/lib/sports/slate-merge";
 import { gradePick, settle } from "@/lib/sports/grade";
 import { impliedFromAmerican, priceFor } from "@/lib/sports/odds";
 import { prePostTruthCheck, gradeTruth, type QueuedContext } from "@/lib/sports/truth-gate";
+import { isManualSource, NEEDS_MANUAL_GRADE } from "@/lib/sports/manual-post";
 import { alertOwner } from "./alerts";
 import { automationStatus } from "./health";
 import { isFreeBetaMode, oddsBudget } from "@/lib/sports/free-beta";
@@ -137,6 +138,7 @@ function asPickRow(partial: Partial<PickRow> & Pick<PickRow, "id" | "gameId" | "
     homeScore: null,
     awayScore: null,
     gameStatus: null,
+    pickSource: "auto",
     ...partial,
   };
 }
@@ -222,6 +224,7 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
     posted_odds: number | null;
     model_version: string | null;
     ledger: string | null;
+    pick_source: string | null;
   }>`
     select * from picks
     where result is null and status in ('queued','posting','posted')
@@ -274,7 +277,16 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
       modelVersion: row.model_version,
     });
     const result = disp === "void" ? "VOID" : gradePick(fake, game);
-    if (!result) continue;
+    if (!result) {
+      if (disp === "grade" && isManualSource(row.pick_source)) {
+        await sql`
+          update picks
+          set needs_manual_grade = true, skip_reason = ${NEEDS_MANUAL_GRADE}
+          where id = ${row.id} and status = 'posted'
+        `;
+      }
+      continue;
+    }
     const { profit } = settle(fake, result);
     const closing = priceFor(game.odds, fake.market, fake.side);
     const postedOdds = row.posted_odds ?? row.locked_odds;

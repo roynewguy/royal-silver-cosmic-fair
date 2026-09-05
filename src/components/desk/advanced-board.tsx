@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,7 @@ export function AdvancedBoard() {
   });
 
   const upcoming = desk.data.games.filter((g) => g.status === "scheduled").slice(0, 30);
+  const manualGames = desk.data.games.filter((g) => g.status !== "cancelled" && g.status !== "postponed");
   const previewGame = desk.data.games.find((g) => g.id === previewId) ?? upcoming[0];
 
   return (
@@ -89,7 +90,7 @@ export function AdvancedBoard() {
             Lock desk
           </Button>
         </div>
-        <ManualPick games={upcoming} />
+        <ManualPick games={manualGames} />
       </section>
 
       <section className="space-y-3">
@@ -246,45 +247,140 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 
 function ManualPick({ games }: { games: GameCard[] }) {
   const desk = useDesk();
+  const [sport, setSport] = useState("ALL");
   const [gameId, setGameId] = useState(games[0]?.id ?? "");
-  const game = games.find((g) => g.id === gameId) ?? games[0];
-  const choices = useMemo(() => {
-    if (!game) return [];
-    const out: Array<{ market: Market; side: Side; label: string }> = [];
-    (["moneyline", "spread", "total"] as Market[]).forEach((market) => {
-      const sides: Side[] = market === "total" ? ["over", "under"] : ["away", "home"];
-      for (const side of sides) {
-        const price = priceFor(game.odds, market, side);
-        const line = lineFor(game.odds, market, side);
-        if (price == null) continue;
-        if (market !== "moneyline" && line == null) continue;
-        out.push({
-          market,
-          side,
-          label: selectionLabel({ market, side, homeAbbr: game.home.abbr, awayAbbr: game.away.abbr, line, price }),
-        });
-      }
-    });
-    return out;
-  }, [game]);
+  const [market, setMarket] = useState<Market>("moneyline");
+  const [side, setSide] = useState<Side>("home");
+  const [selection, setSelection] = useState("");
+  const [line, setLine] = useState("");
+  const [odds, setOdds] = useState("");
+  const [units, setUnits] = useState("1");
+  const [note, setNote] = useState("");
+  const [preview, setPreview] = useState(false);
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
+  const sports = ["ALL", ...new Set(games.map((g) => g.sport))];
+  const filtered = games.filter((g) => (sport === "ALL" ? true : g.sport === sport));
+  const game = filtered.find((g) => g.id === gameId) ?? filtered[0];
+  const live = game?.status === "in_progress" || game?.status === "delayed";
 
-  if (!game) return null;
+  if (!game) return <p className="text-sm text-muted">No games on the board.</p>;
+
+  const feedPrice = priceFor(game.odds, market, side);
+  const feedLine = lineFor(game.odds, market, side);
+  const shownOdds = odds.trim() || (feedPrice != null ? String(feedPrice) : "");
+  const shownLine = line.trim() || (feedLine != null ? String(feedLine) : "");
+  const shownSel =
+    selection.trim() ||
+    selectionLabel({
+      market,
+      side,
+      homeAbbr: game.home.abbr,
+      awayAbbr: game.away.abbr,
+      line: feedLine,
+      price: feedPrice ?? -110,
+    });
+  const source = odds.trim() || line.trim() ? "Manual Entry" : game.odds.source === "odds-api" && /draft/i.test(game.odds.book) ? "DraftKings" : game.odds.source === "espn" ? "ESPN" : "Odds API";
+
   return (
-    <div className="rounded-xl bg-surface p-4 shadow-border">
-      <p className="text-xs tracking-[0.14em] text-push uppercase">Manual / not auto model selection</p>
-      <select className="mt-2 w-full rounded-md bg-surface-2 px-3 py-2 text-sm" value={game.id} onChange={(e) => setGameId(e.target.value)}>
-        {games.map((g) => (
+    <div className="space-y-3 rounded-xl bg-surface p-4 shadow-border">
+      <p className="text-xs tracking-[0.14em] text-push uppercase">Operator override · not auto</p>
+      <div className="flex flex-wrap gap-2">
+        {sports.map((s) => (
+          <Button key={s} size="sm" variant={sport === s ? "primary" : "ghost"} onClick={() => setSport(s)}>
+            {s}
+          </Button>
+        ))}
+      </div>
+      <select
+        className="w-full rounded-md bg-surface-2 px-3 py-3 text-base"
+        value={game.id}
+        onChange={(e) => {
+          setGameId(e.target.value);
+          setPreview(false);
+        }}
+      >
+        {filtered.map((g) => (
           <option key={g.id} value={g.id}>
-            {g.sport} {g.away.abbr} @ {g.home.abbr}
+            {g.status === "in_progress" ? "LIVE · " : ""}
+            {g.sport} {g.away.abbr} @ {g.home.abbr} · {formatKick(g.startAt, "America/Los_Angeles")}
           </option>
         ))}
       </select>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {choices.map((c) => (
-          <Button key={`${c.market}-${c.side}`} size="sm" variant="ghost" onClick={() => desk.manualPost({ gameId: game.id, market: c.market, side: c.side })} disabled={desk.posting}>
-            Post {c.label}
-          </Button>
-        ))}
+      {live ? (
+        <div className="rounded-lg bg-live/15 px-3 py-2 text-sm">
+          <p className="font-display tracking-wide text-live">LIVE · {game.shortDetail || game.clock || "in progress"}</p>
+          <p className="font-mono text-lg">
+            {game.away.abbr} {game.away.score ?? "—"} · {game.home.abbr} {game.home.score ?? "—"}
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-muted">{formatKick(game.startAt, "America/Los_Angeles")} PT · {game.status}</p>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <select className="rounded-md bg-surface-2 px-3 py-3 text-base" value={market} onChange={(e) => setMarket(e.target.value as Market)}>
+          <option value="moneyline">Moneyline</option>
+          <option value="spread">Spread</option>
+          <option value="total">Total</option>
+        </select>
+        <select className="rounded-md bg-surface-2 px-3 py-3 text-base" value={side} onChange={(e) => setSide(e.target.value as Side)}>
+          {market === "total" ? (
+            <>
+              <option value="over">Over</option>
+              <option value="under">Under</option>
+            </>
+          ) : (
+            <>
+              <option value="home">{game.home.abbr}</option>
+              <option value="away">{game.away.abbr}</option>
+            </>
+          )}
+        </select>
+      </div>
+      <Input placeholder="Selection (Lakers +4.5)" value={selection} onChange={(e) => setSelection(e.target.value)} />
+      <div className="grid grid-cols-3 gap-2">
+        <Input placeholder="Line" value={line} onChange={(e) => setLine(e.target.value)} />
+        <Input placeholder="Odds -110" value={odds} onChange={(e) => setOdds(e.target.value)} />
+        <Input placeholder="Units" value={units} onChange={(e) => setUnits(e.target.value)} />
+      </div>
+      <Input placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+      <p className="text-xs text-subtle">Source: {source}{source === "Manual Entry" ? " · not verified DraftKings" : ""}</p>
+      {preview ? (
+        <pre className="whitespace-pre-wrap rounded-lg bg-bg-elevated p-3 font-mono text-xs text-muted">
+          {live ? "🔴 LIVE" : "PREGAME"}
+          {"\n"}
+          {game.sport} · {shownSel}
+          {"\n"}
+          Odds {shownOdds || "—"} · Line {shownLine || "—"} · {units || "1"}U
+          {"\n"}
+          {live ? `Score ${game.away.abbr} ${game.away.score ?? "—"} · ${game.home.abbr} ${game.home.score ?? "—"}\n` : ""}
+          Source: {source}
+        </pre>
+      ) : null}
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="secondary" className="min-h-12" onClick={() => setPreview(true)}>
+          Preview
+        </Button>
+        <Button
+          className="min-h-12"
+          disabled={desk.posting || !shownOdds}
+          onClick={() => {
+            if (desk.posting) return;
+            desk.manualPost({
+              gameId: game.id,
+              market,
+              side,
+              selection,
+              line,
+              odds,
+              units,
+              note,
+              requestId,
+            });
+          }}
+        >
+          {desk.posting ? <Loader2 className="size-4 animate-spin" /> : null}
+          Post to Discord
+        </Button>
       </div>
     </div>
   );

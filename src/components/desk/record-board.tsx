@@ -13,7 +13,14 @@ export function RecordBoard() {
   const desk = useDesk();
   const [sport, setSport] = useState("ALL");
   const [result, setResult] = useState<"ALL" | PickResult>("ALL");
-  const official = desk.data.picks.filter((p) => p.officialKey && (p.status === "posted" || p.status === "graded"));
+  const [source, setSource] = useState<"ALL" | "AUTO" | "MANUAL" | "LIVE">("AUTO");
+  const pool = desk.data.picks.filter((p) => p.status === "posted" || p.status === "graded");
+  const official = pool.filter((p) => {
+    if (source === "AUTO") return Boolean(p.officialKey) && p.pickSource !== "manual" && p.pickSource !== "manual_live";
+    if (source === "MANUAL") return p.pickSource === "manual";
+    if (source === "LIVE") return p.pickSource === "manual_live";
+    return true;
+  });
   const sports = ["ALL", ...new Set(official.map((p) => p.sport))];
   const graded = official.filter((p) => p.result);
   const decided = graded.filter((p) => p.result === "WIN" || p.result === "LOSS");
@@ -44,7 +51,7 @@ export function RecordBoard() {
       <div>
         <p className="text-xs tracking-[0.22em] text-accent uppercase">Book</p>
         <h1 className="mt-1 font-display text-4xl tracking-wide">Record</h1>
-        <p className="mt-2 max-w-xl text-sm text-muted">Official graded tickets only. Losses stay. Nothing here is rewritten.</p>
+        <p className="mt-2 max-w-xl text-sm text-muted">Auto record is separate from operator plays. Losses stay.</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-4">
@@ -82,6 +89,13 @@ export function RecordBoard() {
         )}
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {(["AUTO", "MANUAL", "LIVE", "ALL"] as const).map((s) => (
+          <Button key={s} size="sm" variant={source === s ? "primary" : "ghost"} onClick={() => setSource(s)}>
+            {s}
+          </Button>
+        ))}
+      </div>
       <div className="flex flex-wrap gap-2">
         {sports.map((s) => (
           <Button key={s} size="sm" variant={sport === s ? "primary" : "ghost"} onClick={() => setSport(s)}>
