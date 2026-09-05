@@ -239,20 +239,51 @@ export function pickFromRow(row: PickDb): PickRow {
   };
 }
 
+export const GAME_UPSERT_CHUNK = 25;
+
+function gameUpsertParams(g: GameCard): unknown[] {
+  return [
+    g.id,
+    g.espnId,
+    g.sport,
+    g.league,
+    g.startAt,
+    g.status,
+    g.home.name,
+    g.away.name,
+    g.home.abbr,
+    g.away.abbr,
+    g.home.logo,
+    g.away.logo,
+    g.home.score,
+    g.away.score,
+    g.home.record,
+    g.away.record,
+    g.venue,
+    JSON.stringify(g.odds),
+    g.rank ? JSON.stringify(g.rank) : null,
+    JSON.stringify(packModelInputs(g)),
+  ];
+}
+
 export async function upsertGames(games: GameCard[]): Promise<void> {
+  if (!games.length) return;
   const sql = await getSql();
-  for (const g of games) {
-    await sql`
-      insert into games (
+  for (let i = 0; i < games.length; i += GAME_UPSERT_CHUNK) {
+    const chunk = games.slice(i, i + GAME_UPSERT_CHUNK);
+    const params: unknown[] = [];
+    const values = chunk.map((g, idx) => {
+      const base = idx * 20;
+      params.push(...gameUpsertParams(g));
+      const slots = Array.from({ length: 20 }, (_, n) => `$${base + n + 1}`).join(", ");
+      return `(${slots}, now())`;
+    });
+    await sql.query(
+      `insert into games (
         id, espn_id, sport, league, start_at, status,
         home_team, away_team, home_abbr, away_abbr, home_logo, away_logo,
         home_score, away_score, home_record, away_record, venue, odds_json, rank_json, model_inputs_json, updated_at
-      ) values (
-        ${g.id}, ${g.espnId}, ${g.sport}, ${g.league}, ${g.startAt}, ${g.status},
-        ${g.home.name}, ${g.away.name}, ${g.home.abbr}, ${g.away.abbr}, ${g.home.logo}, ${g.away.logo},
-        ${g.home.score}, ${g.away.score}, ${g.home.record}, ${g.away.record}, ${g.venue},
-        ${JSON.stringify(g.odds)}, ${g.rank ? JSON.stringify(g.rank) : null}, ${JSON.stringify(packModelInputs(g))}, now()
-      )
+      ) values ${values.join(", ")}
       on conflict (id) do update set
         status = excluded.status,
         home_score = excluded.home_score,
@@ -263,8 +294,9 @@ export async function upsertGames(games: GameCard[]): Promise<void> {
         rank_json = excluded.rank_json,
         model_inputs_json = excluded.model_inputs_json,
         venue = excluded.venue,
-        updated_at = now()
-    `;
+        updated_at = now()`,
+      params,
+    );
   }
 }
 
@@ -272,7 +304,8 @@ export async function loadGames(): Promise<GameCard[]> {
   const sql = await getSql();
   const rows = await sql<GameRow>`
     select * from games
-    where start_at > now() - interval '10 days'
+    where start_at > now() - interval '2 days'
+      and start_at < now() + interval '4 days'
     order by start_at asc
   `;
   return rows.map(gameFromRow);
@@ -286,7 +319,7 @@ export async function loadPicks(): Promise<PickRow[]> {
     from picks p
     left join games g on g.id = p.game_id
     order by p.created_at desc
-    limit 500
+    limit 200
   `;
   return rows.map(pickFromRow);
 }

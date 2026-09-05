@@ -391,7 +391,7 @@ export async function fetchLeagueSlate(league: LeagueConfig, now = new Date()): 
 
 export async function fetchAllSlates(now = new Date()): Promise<GameCard[]> {
   const leagues = LEAGUES.filter((l) => l.official);
-  const settled = await poolMap(leagues, 4, (l) => fetchLeagueSlate(l, now));
+  const settled = await poolMap(leagues, 6, (l) => fetchLeagueSlate(l, now));
   const games: GameCard[] = [];
   settled.forEach((result) => {
     if (result.status === "fulfilled") games.push(...result.value);

@@ -6,9 +6,9 @@ import {
   postWebhook,
   resolveWebhook,
 } from "@/lib/sports/discord";
-import { fetchAllSlates, inWindow, beginEspnScan, espnScanStats } from "@/lib/sports/espn";
+import { fetchAllSlates, beginEspnScan, espnScanStats } from "@/lib/sports/espn";
+import { mergeFetchedSlate, inLookahead } from "@/lib/sports/slate-merge";
 import { gradePick, settle } from "@/lib/sports/grade";
-import { LEAGUE_BY_ID } from "@/lib/sports/leagues";
 import { buildFreezeSnapshot } from "@/lib/sports/freeze";
 import { impliedFromAmerican, lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import { isFreeBetaMode, oddsBudget } from "@/lib/sports/free-beta";
@@ -30,9 +30,11 @@ import type { GameCard, PickRow } from "@/lib/sports/types";
 import {
   addLog,
   clearWorkerLock,
+  loadGames,
   loadTodayOfficial,
   loadLatestPicksByGames,
   loadRecord,
+  loadMeta,
   readDesk,
   readWebhook,
   touchScan,
@@ -135,15 +137,14 @@ export async function refreshSlate(): Promise<GameCard[]> {
   beginEspnScan();
   const raw = await fetchAllSlates();
   const merged = await mergeDraftKingsOdds(raw);
-  const windowed = merged.filter((g) => {
-    const days = LEAGUE_BY_ID[g.league]?.lookAheadDays ?? 3;
-    return inWindow(g, days);
-  });
+  const windowed = merged.filter((g) => inLookahead(g));
   const ranked = rankGames(windowed);
-  await upsertGames(ranked);
+  if (ranked.length) await upsertGames(ranked);
+  const previous = await loadGames();
+  const next = mergeFetchedSlate(ranked, previous);
   await pruneFreeBetaCaches();
   await touchScan("scan");
-  return ranked;
+  return next;
 }
 
 async function webhookUrl(): Promise<string> {
@@ -635,7 +636,6 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
   if (!locked) return { ok: true as const, skipped: true, source };
   try {
     const games = await prefetchDueDraftKings(await refreshSlate());
-    const { loadMeta } = await import("./store");
     const meta = await loadMeta();
     const voided = await voidDeadGames(games);
     const graded = await gradeOpenPicks(games);

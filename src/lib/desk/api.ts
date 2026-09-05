@@ -8,6 +8,7 @@ import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pi
 import { postPickById, refreshSlate, runTick } from "./cycle";
 import { redactDesk } from "./redact";
 import { addLog, loadGames, loadMeta, pickFromRow, readDesk, writeMaxDailyPicks, writeWebhook } from "./store";
+import { shouldStartInProcessWorker } from "./worker-policy";
 
 const g = globalThis as typeof globalThis & {
   __boatboyzWorker?: ReturnType<typeof setInterval>;
@@ -16,6 +17,7 @@ const g = globalThis as typeof globalThis & {
 
 export function ensureWorkerStarted() {
   if (typeof setInterval === "undefined") return;
+  if (!shouldStartInProcessWorker()) return;
   if (g.__boatboyzWorker) return;
   g.__boatboyzWorker = setInterval(() => {
     void runTick("interval", { research: false }).catch((err) => {
@@ -153,8 +155,12 @@ export const postManualPick = createServerFn({ method: "POST" })
       return { ok: false as const, error: "Choose a valid side." };
     }
 
-    const games = await refreshSlate();
-    const game = games.find((item) => item.id === data.gameId);
+    const games = await loadGames();
+    let game = games.find((item) => item.id === data.gameId);
+    if (!game) {
+      const fresh = await refreshSlate();
+      game = fresh.find((item) => item.id === data.gameId);
+    }
     if (!game) return { ok: false as const, error: "Game not found. Scan odds and try again." };
     if (game.status === "final" || game.status === "cancelled" || game.status === "postponed") {
       return { ok: false as const, error: `This game is ${game.status} and cannot be posted.` };
