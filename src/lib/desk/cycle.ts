@@ -287,7 +287,7 @@ export async function postPickById(
   games: GameCard[],
   minEdge: number,
   minConf: number,
-  opts: { ignoreWindow?: boolean; refresh?: boolean } = {},
+  opts: { ignoreWindow?: boolean; refresh?: boolean; allowLive?: boolean } = {},
 ): Promise<{ ok: boolean; posted: boolean; error?: string; pickId: number }> {
   const sql = await getSql();
   if (opts.refresh) {
@@ -312,7 +312,7 @@ export async function postPickById(
 
   const game = games.find((g) => g.id === row.game_id);
   if (!game) return { ok: false, posted: false, pickId, error: "Game not on the slate." };
-  if (game.status !== "scheduled") {
+  if (game.status !== "scheduled" && !(opts.allowLive && game.status === "in_progress")) {
     await sql`update picks set status = 'skipped', skip_reason = ${`Game ${game.status}.`} where id = ${row.id} and status = 'queued'`;
     return { ok: true, posted: false, pickId };
   }

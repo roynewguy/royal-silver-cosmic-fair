@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
-import { deleteWebhookMessage, discordWebhookOk, resolveWebhook } from "@/lib/sports/discord";
+import { buildTestPreviewMessage, deleteWebhookMessage, discordWebhookOk, postWebhook, resolveWebhook } from "@/lib/sports/discord";
 import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
 import { postPickById, refreshSlate, runTick } from "./cycle";
 import { redactDesk } from "./redact";
@@ -58,10 +58,11 @@ export const runDesk = createServerFn({ method: "POST" }).handler(async () => {
 
 export const pushPick = createServerFn({ method: "POST" })
   .validator((input: unknown) => {
-    const data = input as { pickId?: number; webhookUrl?: string };
+    const data = input as { pickId?: number; webhookUrl?: string; allowLive?: boolean };
     return {
       pickId: Number(data.pickId),
       webhookUrl: typeof data.webhookUrl === "string" ? data.webhookUrl.trim() : "",
+      allowLive: data.allowLive === true,
     };
   })
   .handler(async ({ data }) => {
@@ -97,12 +98,27 @@ export const pushPick = createServerFn({ method: "POST" })
         await loadGames(),
         meta.minEdgePct,
         meta.minConfidence,
-        { ignoreWindow: true, refresh: true },
+        { ignoreWindow: true, refresh: true, allowLive: data.allowLive },
       );
       if (result.pickId !== pick.id) return { ok: false as const, error: "Wrong pick." };
       if (!result.ok) return { ok: false as const, error: result.error ?? "Post failed." };
       if (!result.posted) return { ok: false as const, error: result.error ?? "Pick was not posted." };
     }
+    return { ok: true as const, state: await deskForClient() };
+  });
+
+export const postTestPreview = createServerFn({ method: "POST" })
+  .validator((input: unknown) => ({ gameId: String((input as { gameId?: string }).gameId ?? "") }))
+  .handler(async ({ data }) => {
+    const gate = await requireOperator();
+    if (!gate.ok) return { ok: false as const, error: gate.error };
+    const game = (await loadGames()).find((item) => item.id === data.gameId);
+    if (!game) return { ok: false as const, error: "Game not found on the current slate." };
+    const hook = resolveWebhook(await (await import("./store")).readWebhook()).url;
+    if (!hook) return { ok: false as const, error: "No Discord webhook configured." };
+    const result = await postWebhook(hook, buildTestPreviewMessage(game));
+    if (!result.ok) return { ok: false as const, error: result.error ?? "Test post failed." };
+    await addLog("post", `Test preview posted · ${game.sport} ${game.away.abbr} @ ${game.home.abbr}`, game.sport);
     return { ok: true as const, state: await deskForClient() };
   });
 

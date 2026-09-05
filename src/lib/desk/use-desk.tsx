@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, type ReactNode } from "react";
 import { toast } from "sonner";
-import { deleteDiscordPost, getDesk, lockDesk, pushPick, refreshBoard, runDesk, saveDailyPicks, saveWebhook, unlockDesk } from "@/lib/desk/api";
+import { deleteDiscordPost, getDesk, lockDesk, postTestPreview, pushPick, refreshBoard, runDesk, saveDailyPicks, saveWebhook, unlockDesk } from "@/lib/desk/api";
 import type { DeskState } from "@/lib/sports/types";
 
 const empty: DeskState = {
@@ -34,7 +34,8 @@ type DeskApi = {
   posting: boolean;
   refresh: () => void;
   run: () => void;
-  push: (input: { pickId: number; webhookUrl?: string }) => void;
+  push: (input: { pickId: number; webhookUrl?: string; allowLive?: boolean }) => void;
+  testPost: (gameId: string) => void;
   deletePost: (pickId: number) => void;
   saveHook: (webhookUrl: string) => void;
   setDailyPicks: (count: number) => void;
@@ -109,6 +110,19 @@ function useDeskController(): DeskApi {
     onError: () => toast.error("Delete failed."),
   });
 
+  const testPost = useMutation({
+    mutationFn: (gameId: string) => postTestPreview({ data: { gameId } }),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        toast.error(res.error ?? "Test post failed.");
+        return;
+      }
+      if (res.state) qc.setQueryData(["desk"], res.state);
+      toast.success("Test preview posted to Discord.");
+    },
+    onError: () => toast.error("Test post failed."),
+  });
+
   const saveHook = useMutation({
     mutationFn: (webhookUrl: string) => saveWebhook({ data: { webhookUrl } }),
     onSuccess: (res) => {
@@ -160,6 +174,7 @@ function useDeskController(): DeskApi {
     refresh: () => refresh.mutate(),
     run: () => run.mutate(),
     push: (input) => push.mutate(input),
+    testPost: (gameId) => testPost.mutate(gameId),
     deletePost: (pickId) => deletePost.mutate(pickId),
     saveHook: (webhookUrl) => saveHook.mutate(webhookUrl),
     setDailyPicks: (count) => savePlays.mutate(count),
