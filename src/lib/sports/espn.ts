@@ -90,7 +90,7 @@ function pickEspnOdds(list?: EspnOdds[]): EspnOdds | undefined {
   );
 }
 
-function parseOdds(raw: EspnOdds | undefined): OddsSnapshot {
+function parseOdds(raw: EspnOdds | undefined, capturedAt: string | null = null): OddsSnapshot {
   const empty: OddsSnapshot = {
     book: "—",
     details: null,
@@ -133,7 +133,7 @@ function parseOdds(raw: EspnOdds | undefined): OddsSnapshot {
     openTotal: parseLine(raw.total?.over?.open?.line),
     openHomeMl: parseAmerican(raw.moneyline?.home?.open?.odds),
     source: "espn",
-    capturedAt: new Date().toISOString(),
+    capturedAt: capturedAt,
   };
 }
 
@@ -236,7 +236,7 @@ function weatherFrom(comp: {
   return bits.length ? bits.join(" · ") : null;
 }
 
-function eventToGames(event: EspnEvent, league: LeagueConfig): GameCard[] {
+function eventToGames(event: EspnEvent, league: LeagueConfig, fetchedAt: string): GameCard[] {
   const competitions = event.competitions ?? [];
   const cards: GameCard[] = [];
   for (const comp of competitions) {
@@ -263,7 +263,7 @@ function eventToGames(event: EspnEvent, league: LeagueConfig): GameCard[] {
       home: teamFrom(home),
       away: teamFrom(away),
       venue: comp.venue?.fullName ?? null,
-      odds: parseOdds(pickEspnOdds(comp.odds)),
+      odds: parseOdds(pickEspnOdds(comp.odds), fetchedAt),
       rank: null,
       notes: notesFrom(comp, event),
       injuries: injuriesFrom(home, away),
@@ -271,6 +271,7 @@ function eventToGames(event: EspnEvent, league: LeagueConfig): GameCard[] {
       clock: comp.status?.displayClock ?? event.status?.displayClock ?? null,
       period: comp.status?.period ?? event.status?.period ?? null,
       shortDetail: comp.status?.type?.shortDetail ?? event.status?.type?.shortDetail ?? null,
+      fetchedAt,
     });
   }
   return cards;
@@ -363,10 +364,10 @@ export function espnScoreboardUrlCount(now = new Date()): number {
   return LEAGUES.filter((l) => l.official).reduce((n, l) => n + urlsFor(l, now).length, 0);
 }
 
-function absorb(payload: unknown, league: LeagueConfig, byId: Map<string, GameCard>) {
+function absorb(payload: unknown, league: LeagueConfig, byId: Map<string, GameCard>, fetchedAt = new Date().toISOString()) {
   const events = (payload as { events?: EspnEvent[] })?.events ?? [];
   for (const event of events) {
-    for (const game of eventToGames(event, league)) {
+    for (const game of eventToGames(event, league, fetchedAt)) {
       byId.set(game.id, game);
     }
   }
@@ -376,20 +377,21 @@ export async function fetchLeagueSlate(league: LeagueConfig, now = new Date()): 
   const todayKey = ymdToEspn(ptYmd(now));
   const byId = new Map<string, GameCard>();
   try {
-    absorb(await fetchJson(scoreboardUrl(league, todayKey)), league, byId);
+    absorb(await fetchJson(scoreboardUrl(league, todayKey)), league, byId, new Date().toISOString());
   } catch {
     /* keep going — yesterday may still grade */
   }
   const extra = extraScanDateKeys(league.daily, byId.size, now);
   const extraResults = await poolMap(extra, 2, (k) => fetchJson(scoreboardUrl(league, k)));
   for (const result of extraResults) {
-    if (result.status === "fulfilled") absorb(result.value, league, byId);
+    if (result.status === "fulfilled") absorb(result.value, league, byId, new Date().toISOString());
   }
   const games = [...byId.values()];
   const needInjuries = games.some((g) => g.status === "scheduled" && g.injuries.length === 0);
   if (!needInjuries) return games;
   const board = await fetchInjuryBoard(league);
-  return games.map((g) => mergeInjuryBoard(g, board));
+  if (!board) return games;
+  return games.map((g) => mergeInjuryBoard(g, board.rows, board.fetchedAt));
 }
 
 export async function fetchAllSlates(now = new Date()): Promise<GameCard[]> {
@@ -404,11 +406,11 @@ export async function fetchAllSlates(now = new Date()): Promise<GameCard[]> {
 
 type BoardInj = { abbr: string; player: string; status: string; position: string | null };
 
-const injuryCache = new Map<string, { at: number; rows: BoardInj[] }>();
+const injuryCache = new Map<string, { at: number; rows: BoardInj[]; fetchedAt: string }>();
 
-async function fetchInjuryBoard(league: LeagueConfig): Promise<BoardInj[]> {
+async function fetchInjuryBoard(league: LeagueConfig): Promise<{ rows: BoardInj[]; fetchedAt: string } | null> {
   const hit = injuryCache.get(league.id);
-  if (hit && Date.now() - hit.at < INJURY_CACHE_MS) return hit.rows;
+  if (hit && Date.now() - hit.at < INJURY_CACHE_MS) return { rows: hit.rows, fetchedAt: hit.fetchedAt };
   const url = `https://site.api.espn.com/apis/site/v2/sports/${league.espnSport}/${league.espnLeague}/injuries`;
   try {
     const payload = (await fetchJson(url)) as {
@@ -442,16 +444,15 @@ async function fetchInjuryBoard(league: LeagueConfig): Promise<BoardInj[]> {
         });
       }
     }
-    injuryCache.set(league.id, { at: Date.now(), rows });
-    return rows;
+    injuryCache.set(league.id, { at: Date.now(), rows, fetchedAt: new Date().toISOString() });
+    return { rows, fetchedAt: injuryCache.get(league.id)!.fetchedAt };
   } catch {
-    injuryCache.set(league.id, { at: Date.now(), rows: [] });
-    return [];
+    return null;
   }
 }
 
-function mergeInjuryBoard(game: GameCard, board: BoardInj[]): GameCard {
-  if (!board.length) return game;
+function mergeInjuryBoard(game: GameCard, board: BoardInj[], fetchedAt: string): GameCard {
+  if (!board.length) return { ...game, injuriesFetchedAt: fetchedAt };
   const extra: Injury[] = [];
   for (const row of board) {
     const team =
@@ -464,7 +465,7 @@ function mergeInjuryBoard(game: GameCard, board: BoardInj[]): GameCard {
       position: row.position,
     });
   }
-  if (!extra.length) return game;
+  if (!extra.length) return { ...game, injuriesFetchedAt: fetchedAt };
   const seen = new Set(game.injuries.map((i) => `${i.team}:${i.player}`));
   const merged = [...game.injuries];
   for (const inj of extra) {
@@ -473,7 +474,7 @@ function mergeInjuryBoard(game: GameCard, board: BoardInj[]): GameCard {
     seen.add(key);
     merged.push(inj);
   }
-  return { ...game, injuries: merged.slice(0, 20) };
+  return { ...game, injuries: merged.slice(0, 20), injuriesFetchedAt: fetchedAt };
 }
 
 export function inWindow(game: GameCard, days: number, now = Date.now()): boolean {

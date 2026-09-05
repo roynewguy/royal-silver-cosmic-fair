@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDesk } from "@/lib/desk/use-desk";
 import { buildManualPickMessage, buildTestPreviewMessage } from "@/lib/sports/discord";
-import { resolveManualTicket } from "@/lib/sports/manual-post";
+import { canPostGame, NO_INVENTED_LINE, resolveManualTicket } from "@/lib/sports/manual-post";
 import { DiscordComposer } from "@/components/desk/discord-composer";
 import { formatKick } from "@/lib/utils";
 import { replayPaperDay } from "@/lib/desk/api";
@@ -38,7 +38,7 @@ export function AdvancedBoard() {
   });
 
   const upcoming = desk.data.games.filter((g) => g.status === "scheduled").slice(0, 30);
-  const manualGames = desk.data.games.filter((g) => g.status !== "cancelled" && g.status !== "postponed");
+  const manualGames = desk.data.games.filter((g) => canPostGame(g));
   const previewGame = desk.data.games.find((g) => g.id === previewId) ?? upcoming[0];
 
   return (
@@ -265,19 +265,33 @@ function ManualPick({ games }: { games: GameCard[] }) {
 
   if (!game) return <p className="text-sm text-muted">No games on the board.</p>;
 
-  const ticket = resolveManualTicket({
-    game,
-    market,
-    side,
-    selection,
-    line,
-    odds,
-    units,
-    note,
-  });
-  const source =
-    ticket.lineSource === "draftkings" ? "DraftKings" : ticket.lineSource === "espn" ? "ESPN" : ticket.lineSource === "odds-api" ? "Odds API" : "Current board";
-  const previewPick = {
+  let ticket: ReturnType<typeof resolveManualTicket> | null = null;
+  let ticketError: string | null = null;
+  try {
+    ticket = resolveManualTicket({
+      game,
+      market,
+      side,
+      selection,
+      line,
+      odds,
+      units,
+      note,
+    });
+  } catch (err) {
+    ticketError = err instanceof Error ? err.message : NO_INVENTED_LINE;
+  }
+  const source = ticket
+    ? ticket.lineSource === "draftkings"
+      ? "DraftKings"
+      : ticket.lineSource === "espn"
+        ? "ESPN"
+        : ticket.lineSource === "odds-api"
+          ? "Odds API"
+          : "Current board"
+    : "No line";
+  const previewPick = ticket
+    ? {
     id: 0,
     gameId: game.id,
     sport: game.sport,
@@ -325,7 +339,8 @@ function ManualPick({ games }: { games: GameCard[] }) {
     homeScore: game.home.score,
     awayScore: game.away.score,
     gameStatus: game.status,
-  } satisfies PickRow;
+  } satisfies PickRow
+    : null;
 
   return (
     <div className="space-y-3 rounded-xl bg-surface p-4 shadow-border">
@@ -385,25 +400,26 @@ function ManualPick({ games }: { games: GameCard[] }) {
       <Input placeholder="Selection (Lakers +4.5)" value={selection} onChange={(e) => setSelection(e.target.value)} />
       <div className="grid grid-cols-3 gap-2">
         <Input placeholder="Line" value={line} onChange={(e) => setLine(e.target.value)} />
-        <Input placeholder="Odds -110" value={odds} onChange={(e) => setOdds(e.target.value)} />
+        <Input placeholder="Actual odds" value={odds} onChange={(e) => setOdds(e.target.value)} />
         <Input placeholder="Units" value={units} onChange={(e) => setUnits(e.target.value)} />
       </div>
       <Input placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
       <p className="text-xs text-subtle">Line: {source}</p>
-      {preview ? (
+      {ticketError ? <p className="text-xs text-loss">{ticketError}</p> : null}
+      {preview && previewPick ? (
         <pre className="whitespace-pre-wrap rounded-lg bg-bg-elevated p-3 font-mono text-xs text-muted">
           {buildManualPickMessage(previewPick, game)}
         </pre>
       ) : null}
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="secondary" className="min-h-12" onClick={() => setPreview(true)}>
+        <Button variant="secondary" className="min-h-12" onClick={() => setPreview(true)} disabled={!ticket}>
           Preview
         </Button>
         <Button
           className="min-h-12"
-          disabled={desk.posting}
+          disabled={desk.posting || !ticket}
           onClick={() => {
-            if (desk.posting) return;
+            if (desk.posting || !ticket) return;
             desk.manualPost({
               gameId: game.id,
               market,

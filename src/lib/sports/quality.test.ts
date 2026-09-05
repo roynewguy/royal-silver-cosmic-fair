@@ -139,6 +139,25 @@ test("low data quality and missing starters near post become PASS reasons", () =
   assert.equal(isPlayableRank(weak), false);
 });
 
+test("either missing MLB starter near post is PASS_MISSING_STARTER", () => {
+  const r = rankMlb(
+    card({
+      startAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+      away: { ...card().away, starter: null },
+    }),
+  );
+  assert.equal(r?.passReason, "PASS_MISSING_STARTER");
+  assert.equal(isPlayableRank(r), false);
+});
+
+test("empty injuries without a fetch stamp do not count as injury data", () => {
+  const none = mlbDataQuality(card({ injuries: [] }));
+  assert.ok(none.missing.includes("injuries"));
+  const stamped = mlbDataQuality(card({ injuries: [], injuriesFetchedAt: new Date().toISOString() }));
+  assert.ok(!stamped.missing.includes("injuries"));
+  assert.ok(stamped.score - none.score >= 15);
+});
+
 test("stale DK capturedAt is PASS_STALE_MARKET", () => {
   const r = rankMlb(
     card({

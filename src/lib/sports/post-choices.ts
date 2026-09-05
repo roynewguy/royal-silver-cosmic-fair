@@ -1,4 +1,5 @@
-import { lineFor, priceFor, selectionLabel } from "./odds.ts";
+import { lineFor, selectionLabel } from "./odds.ts";
+import { canPostGame, feedPriceForPost, liveFeedUsable } from "./manual-post.ts";
 import type { GameCard, Market, Side } from "./types.ts";
 
 export type PostChoice = {
@@ -15,13 +16,16 @@ const MARKETS: Array<{ market: Market; sides: Side[] }> = [
   { market: "total", sides: ["over", "under"] },
 ];
 
-/** Every slate game can be posted on any standard market, even with no feed line. */
-export function operatorPostChoices(game: GameCard): PostChoice[] {
+/** Only real feed prices. Never invent -110. */
+export function operatorPostChoices(game: GameCard, now = Date.now()): PostChoice[] {
+  if (!canPostGame(game)) return [];
   const choices: PostChoice[] = [];
   for (const { market, sides } of MARKETS) {
     for (const side of sides) {
-      const price = priceFor(game.odds, market, side) ?? -110;
-      const line = lineFor(game.odds, market, side);
+      const price = feedPriceForPost(game, market, side, now);
+      if (price == null) continue;
+      const line = liveFeedUsable(game, now) ? lineFor(game.odds, market, side) : null;
+      if (market !== "moneyline" && (line == null || !Number.isFinite(line))) continue;
       choices.push({
         market,
         side,
@@ -42,5 +46,5 @@ export function operatorPostChoices(game: GameCard): PostChoice[] {
 }
 
 export function canOperatorPost(game: GameCard): boolean {
-  return game.status !== "cancelled" && game.status !== "postponed";
+  return canPostGame(game);
 }

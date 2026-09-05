@@ -2,9 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
 import { buildManualPickMessage, buildOperatorPost, buildTestPreviewMessage, deleteWebhookMessage, discordWebhookOk, postWebhook, resolveWebhook } from "@/lib/sports/discord";
 import type { Market, Side } from "@/lib/sports/types";
-import { resolveManualTicket } from "@/lib/sports/manual-post";
+import { canPostGame, manualFreezeJson, NO_INVENTED_LINE, resolveManualTicket } from "@/lib/sports/manual-post";
 import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
-import { postPickById, refreshSlate, runTick } from "./cycle";
+import { alertOwner } from "./alerts";
+import { postPickById, refreshSlate, runTick, sqlLocker } from "./cycle";
+import { sendOnce } from "./post-pipeline";
 import { redactDesk } from "./redact";
 import { addLog, loadGames, loadMeta, pickFromRow, readDesk, writeDeskSettings, writeMaxDailyPicks, writeWebhook } from "./store";
 import { shouldStartInProcessWorker } from "./worker-policy";
@@ -176,20 +178,25 @@ export const postManualPick = createServerFn({ method: "POST" })
       game = fresh.find((item) => item.id === data.gameId);
     }
     if (!game) return { ok: false as const, error: "Game not found. Scan odds and try again." };
-    if (game.status === "cancelled" || game.status === "postponed") {
+    if (!canPostGame(game)) {
       return { ok: false as const, error: `This game is ${game.status} and cannot be posted.` };
     }
 
-    const ticket = resolveManualTicket({
-      game,
-      market: data.market,
-      side: data.side,
-      selection: data.selection,
-      line: data.line,
-      odds: data.odds,
-      units: data.units,
-      note: data.note,
-    });
+    let ticket;
+    try {
+      ticket = resolveManualTicket({
+        game,
+        market: data.market,
+        side: data.side,
+        selection: data.selection,
+        line: data.line,
+        odds: data.odds,
+        units: data.units,
+        note: data.note,
+      });
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : NO_INVENTED_LINE };
+    }
 
     const hook = resolveWebhook(await (await import("./store")).readWebhook()).url;
     if (!hook) return { ok: false as const, error: "No Discord webhook configured." };
@@ -203,11 +210,11 @@ export const postManualPick = createServerFn({ method: "POST" })
     if (existing[0]?.status === "posted") {
       return { ok: true as const, state: await deskForClient(), duplicate: true };
     }
+    if (existing[0]?.status === "posting" || existing[0]?.status === "skipped") {
+      return { ok: false as const, error: "This pick was already sent or is uncertain — not retried." };
+    }
 
     let id = existing[0]?.id;
-    if (id && existing[0]?.status === "skipped") {
-      await sql`update picks set status = 'queued', skip_reason = null where id = ${id}`;
-    }
     if (!id) {
       try {
         const inserted = await sql<{ id: number }>`
@@ -232,7 +239,13 @@ export const postManualPick = createServerFn({ method: "POST" })
       } catch {
         const again = await sql<{ id: number; status: string }>`select id, status from picks where manual_post_id = ${requestId} limit 1`;
         if (again[0]?.status === "posted") return { ok: true as const, state: await deskForClient(), duplicate: true };
+        if (again[0]?.status === "posting" || again[0]?.status === "skipped") {
+          return { ok: false as const, error: "This pick was already sent or is uncertain — not retried." };
+        }
         id = again[0]?.id;
+        if (!id) {
+          return { ok: false as const, error: "This game already has an open pick." };
+        }
       }
     }
     if (!id) return { ok: false as const, error: "Could not create the manual pick." };
@@ -245,19 +258,45 @@ export const postManualPick = createServerFn({ method: "POST" })
       { ...pick, postedAt: now, pickSource: ticket.pickSource, lineSource: ticket.lineSource, postedScore: ticket.postedScore, postedState: ticket.postedState, reason: ticket.reason },
       game,
     );
-    const sent = await postWebhook(hook, message);
-    if (!sent.ok) {
-      await sql`update picks set status = 'skipped', skip_reason = ${sent.error ?? "Discord post failed."} where id = ${id} and status = 'queued'`;
-      return { ok: false as const, error: sent.error ?? "Discord post failed." };
+    const result = await sendOnce(id, sqlLocker(sql), () => postWebhook(hook, message), {
+      freezeJson: manualFreezeJson({ game, ticket, market: data.market, side: data.side }),
+      discordMessage: message,
+      selection: ticket.selection,
+      market: data.market,
+      side: data.side,
+      lockedOdds: ticket.odds,
+      lockedLine: ticket.line,
+      lockedOddsJson: JSON.stringify(game.odds),
+      edgePct: 0,
+      confidence: 0,
+      units: ticket.units,
+      modelVersion: null,
+      modelProbability: null,
+      modelEdge: null,
+      postedOdds: ticket.odds,
+      selectedOdds: ticket.odds,
+    });
+    if (!result.claimed) {
+      if (result.status === "posted") return { ok: true as const, state: await deskForClient(), duplicate: true };
+      return { ok: false as const, error: "This pick is already posting to Discord." };
     }
-    await sql`
-      update picks set
-        status = 'posted', posted_at = now(), posted_odds = ${ticket.odds},
-        discord_message = ${message}, discord_message_id = ${sent.id ?? null},
-        model_version = null, model_probability = null, model_edge = null
-      where id = ${id} and status = 'queued'
-    `;
-    await addLog("post", `Manual ${ticket.pickSource} posted · ${ticket.selection} · ${game.sport}`, game.sport);
+    if (result.uncertain || (result.sent && result.status !== "posted")) {
+      await sql`
+        update picks
+        set status = 'skipped', skip_reason = ${"Discord send uncertain — not retried."},
+            posting_at = null, posting_started_at = null, posting_token = null
+        where id = ${id} and status = 'posting' and discord_message_id is null
+      `;
+      await addLog("post", `Discord send uncertain, not retried · ${ticket.selection}`, game.sport);
+      void alertOwner("DISCORD_FAIL", result.error ?? "timeout after send");
+      return { ok: false as const, error: result.error ?? "Discord send uncertain — not retried." };
+    }
+    if (!result.sent) {
+      await addLog("post", `Discord failed, still queued: ${result.error ?? "send failed"}`, game.sport);
+      void alertOwner("DISCORD_FAIL", result.error ?? "send failed");
+      return { ok: false as const, error: result.error ?? "Discord post failed." };
+    }
+    await addLog("post", `Posted · ${ticket.selection} · ${game.sport}`, game.sport);
     return { ok: true as const, state: await deskForClient() };
   });
 

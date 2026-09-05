@@ -137,6 +137,8 @@ export type GameCard = {
   clock?: string | null;
   period?: number | null;
   shortDetail?: string | null;
+  fetchedAt?: string | null;
+  injuriesFetchedAt?: string | null;
 };
 
 export type SportScan = {

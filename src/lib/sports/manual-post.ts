@@ -1,5 +1,6 @@
 import { isDraftKingsLine } from "./odds-api.ts";
 import { parseAmerican, parseLine, priceFor, lineFor, selectionLabel } from "./odds.ts";
+import { marketAgeMs } from "./data-quality.ts";
 import { defaultPlayReason } from "./why.ts";
 import type { GameCard, GameStatus, Market, Side } from "./types.ts";
 
@@ -7,6 +8,9 @@ export type PickSource = "auto" | "manual" | "manual_live";
 export type LineSource = "draftkings" | "odds-api" | "espn" | "manual-entry";
 
 export const NEEDS_MANUAL_GRADE = "NEEDS_MANUAL_GRADE";
+export const NO_INVENTED_LINE = "Enter the actual odds. BoatBoyz will not invent a line.";
+export const EMPTY_FEED_LINE = "No feed line on this market. Enter the actual odds — BoatBoyz will not invent -110.";
+export const LIVE_MARKET_MAX_AGE_MS = 8 * 60_000;
 
 export function pickSourceForStatus(status: GameStatus): Exclude<PickSource, "auto"> {
   return status === "in_progress" || status === "delayed" ? "manual_live" : "manual";
@@ -77,6 +81,22 @@ export function canAutoGradeManual(input: { market: Market; side: Side; lockedLi
   return false;
 }
 
+export function canPostGame(game: GameCard): boolean {
+  return game.status === "scheduled" || game.status === "delayed" || game.status === "in_progress";
+}
+
+export function liveFeedUsable(game: GameCard, now = Date.now()): boolean {
+  if (game.status !== "in_progress" && game.status !== "delayed") return true;
+  const age = marketAgeMs(game, now);
+  return age != null && age <= LIVE_MARKET_MAX_AGE_MS;
+}
+
+export function feedPriceForPost(game: GameCard, market: Market, side: Side, now = Date.now()): number | null {
+  if (!canPostGame(game)) return null;
+  if (!liveFeedUsable(game, now)) return null;
+  return priceFor(game.odds, market, side);
+}
+
 export function resolveManualTicket(input: {
   game: GameCard;
   market: Market;
@@ -86,6 +106,7 @@ export function resolveManualTicket(input: {
   odds?: string | number | null;
   units?: string | number | null;
   note?: string | null;
+  now?: number;
 }): {
   selection: string;
   line: number | null;
@@ -98,12 +119,16 @@ export function resolveManualTicket(input: {
   postedScore: string;
   postedState: string | null;
 } {
-  const feedPrice = priceFor(input.game.odds, input.market, input.side);
-  const feedLine = lineFor(input.game.odds, input.market, input.side);
+  if (!canPostGame(input.game)) {
+    throw new Error(`This game is ${input.game.status} and cannot be posted.`);
+  }
+  const feedPrice = feedPriceForPost(input.game, input.market, input.side, input.now);
+  const feedLine = liveFeedUsable(input.game, input.now) ? lineFor(input.game.odds, input.market, input.side) : null;
   const customOdds = parseAmerican(input.odds);
   const customLine = parseLine(input.line);
-  const overridden = customOdds != null || customLine != null || Boolean(input.selection?.trim());
-  const odds = customOdds ?? feedPrice ?? -110;
+  const overridden = customOdds != null || customLine != null;
+  const odds = customOdds ?? feedPrice;
+  if (odds == null) throw new Error(NO_INVENTED_LINE);
   const line = customLine ?? feedLine;
   const selection =
     input.selection?.trim() ||
@@ -123,11 +148,41 @@ export function resolveManualTicket(input: {
     line,
     odds,
     units: clampManualUnits(input.units),
-    lineSource: lineSourceOf(input.game, overridden && (customOdds != null || customLine != null)),
+    lineSource: lineSourceOf(input.game, overridden),
     needsManualGrade,
     pickSource: pickSourceForStatus(input.game.status),
     reason: defaultPlayReason(input.game, input.side, input.note),
     postedScore: `${away} · ${home}`,
     postedState: liveStateLabel(input.game),
   };
+}
+
+export function manualFreezeJson(input: {
+  game: GameCard;
+  ticket: ReturnType<typeof resolveManualTicket>;
+  market: Market;
+  side: Side;
+}): string {
+  return JSON.stringify({
+    frozenAt: new Date().toISOString(),
+    modelVersion: null,
+    modelProbability: null,
+    modelEdge: null,
+    confidence: 0,
+    units: input.ticket.units,
+    market: input.market,
+    side: input.side,
+    selection: input.ticket.selection,
+    lockedOdds: input.ticket.odds,
+    lockedLine: input.ticket.line,
+    gameId: input.game.id,
+    odds: input.game.odds,
+    homeTeam: input.game.home.name,
+    awayTeam: input.game.away.name,
+    startAt: input.game.startAt,
+    league: input.game.league,
+    pickSource: input.ticket.pickSource,
+    lineSource: input.ticket.lineSource,
+    llmFacts: false,
+  });
 }

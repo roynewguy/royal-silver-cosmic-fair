@@ -34,7 +34,7 @@ export function mlbDataQuality(game: GameCard, now = Date.now()): { score: numbe
   if (game.home.starter?.era != null && game.away.starter?.era != null) score += 20;
   else missing.push("starter ERA");
 
-  if (Array.isArray(game.injuries)) score += 15;
+  if (game.injuriesFetchedAt || (game.injuries?.length ?? 0) > 0) score += 15;
   else missing.push("injuries");
 
   const age = marketAgeMs(game, now);
@@ -57,7 +57,7 @@ export function genericDataQuality(game: GameCard, now = Date.now()): { score: n
   const missing: string[] = [];
   if (parseWinPct(game.home.record) != null && parseWinPct(game.away.record) != null) score += 15;
   else missing.push("team records");
-  if (Array.isArray(game.injuries)) score += 15;
+  if (game.injuriesFetchedAt || (game.injuries?.length ?? 0) > 0) score += 15;
   else missing.push("injuries");
   const age = marketAgeMs(game, now);
   if (isDraftKingsLine(game.odds) && (age == null || age <= STALE_MARKET_MS)) score += 20;
@@ -108,8 +108,8 @@ export function guardrailReason(
 ): PassReason | null {
   const start = new Date(game.startAt).getTime();
   const near = Number.isFinite(start) && start - now <= STARTER_WINDOW_MS && start > now;
-  const bothStartersMissing = !game.home.starter?.name && !game.away.starter?.name;
-  if (game.league === "mlb" && near && bothStartersMissing) return "PASS_MISSING_STARTER";
+  const missingStarter = !game.home.starter?.name || !game.away.starter?.name;
+  if (game.league === "mlb" && near && missingStarter) return "PASS_MISSING_STARTER";
   const age = marketAgeMs(game, now);
   if (isDraftKingsLine(game.odds) && age != null && age > STALE_MARKET_MS) return "PASS_STALE_MARKET";
   if (quality.score < LOW_DATA_QUALITY) return "PASS_LOW_DATA_QUALITY";

@@ -45,16 +45,13 @@ function game(over: Partial<GameCard> = {}): GameCard {
   };
 }
 
-test("every sport can post ML, spread, and total even with no qualifying line", () => {
+test("blank odds produce no invented -110 choices", () => {
   const choices = operatorPostChoices(game());
-  assert.equal(choices.length, 6);
-  assert.deepEqual(
-    choices.map((c) => `${c.market}:${c.side}`),
-    ["moneyline:away", "moneyline:home", "spread:away", "spread:home", "total:over", "total:under"],
-  );
-  assert.ok(choices.every((c) => c.price === -110));
+  assert.equal(choices.length, 0);
   assert.equal(canOperatorPost(game()), true);
   assert.equal(canOperatorPost(game({ status: "cancelled" })), false);
+  assert.equal(canOperatorPost(game({ status: "final" })), false);
+  assert.equal(canOperatorPost(game({ status: "suspended" })), false);
 });
 
 test("feed lines are used when present", () => {
@@ -83,4 +80,21 @@ test("feed lines are used when present", () => {
   assert.equal(choices.find((c) => c.market === "moneyline" && c.side === "home")?.price, -140);
   assert.equal(choices.find((c) => c.market === "spread" && c.side === "home")?.line, -3.5);
   assert.equal(choices.find((c) => c.market === "total" && c.side === "over")?.line, 224.5);
+});
+
+test("stale live stored odds are not offered as post choices", () => {
+  const choices = operatorPostChoices(
+    game({
+      status: "in_progress",
+      odds: {
+        ...blankOdds,
+        book: "DraftKings",
+        source: "odds-api",
+        homeMl: -140,
+        awayMl: 120,
+        capturedAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+      },
+    }),
+  );
+  assert.equal(choices.length, 0);
 });

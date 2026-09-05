@@ -18,6 +18,7 @@ test("posting claim is exclusive", () => {
   assert.equal(applyPostEvent("posting", "success"), "posted");
   assert.equal(applyPostEvent("posting", "fail"), "queued");
   assert.equal(applyPostEvent("queued", "fail"), null);
+  assert.equal(applyPostEvent("posting", "stale"), "skipped");
 });
 
 test("non-operators cannot see queued picks, ranks, or logs", () => {

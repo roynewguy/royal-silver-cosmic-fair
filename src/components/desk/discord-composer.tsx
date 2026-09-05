@@ -20,7 +20,7 @@ export function DiscordComposer({ compact = false }: { compact?: boolean }) {
     [desk.data.record, desk.data.picks, desk.data.games],
   );
   if (!desk.data.operator) return null;
-  const shown = compact ? presets.filter((p) => ["card", "pass", "record", "cash", "live", "custom"].includes(p.id)) : presets;
+  const shown = compact ? presets.filter((p) => ["card", "pass", "record", "cash", "live", "note"].includes(p.id)) : presets;
 
   return (
     <form
@@ -60,7 +60,7 @@ export function DiscordComposer({ compact = false }: { compact?: boolean }) {
         }}
         rows={compact ? 5 : 8}
         maxLength={1900}
-        placeholder="Write anything — recap, custom pick, lineup note…"
+        placeholder="Write a desk note — recap, lineup, injury. Not an official pick."
         className="w-full resize-y rounded-xl bg-bg-elevated px-3 py-2.5 text-sm text-fg outline-none ring-1 ring-white/10 focus:ring-accent"
       />
       <div className="flex items-center justify-between gap-2">

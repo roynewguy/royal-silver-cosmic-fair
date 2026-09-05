@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useDesk } from "@/lib/desk/use-desk";
 import { canOperatorPost, operatorPostChoices } from "@/lib/sports/post-choices";
+import { EMPTY_FEED_LINE } from "@/lib/sports/manual-post";
 import type { GameCard } from "@/lib/sports/types";
 
 export function GamePostPicker({ game }: { game: GameCard }) {
@@ -30,26 +31,30 @@ export function GamePostPicker({ game }: { game: GameCard }) {
       </Button>
       {open ? (
         <div className="mt-2 flex flex-wrap gap-2">
-          {choices.map((choice) => (
-            <Button
-              key={`${choice.market}-${choice.side}`}
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={desk.posting}
-              onClick={() => {
-                if (desk.posting) return;
-                desk.manualPost({
-                  gameId: game.id,
-                  market: choice.market,
-                  side: choice.side,
-                  requestId: crypto.randomUUID(),
-                });
-              }}
-            >
-              {choice.label}
-            </Button>
-          ))}
+          {choices.length === 0 ? (
+            <p className="text-xs text-subtle">{EMPTY_FEED_LINE}</p>
+          ) : (
+            choices.map((choice) => (
+              <Button
+                key={`${choice.market}-${choice.side}`}
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={desk.posting}
+                onClick={() => {
+                  if (desk.posting) return;
+                  desk.manualPost({
+                    gameId: game.id,
+                    market: choice.market,
+                    side: choice.side,
+                    requestId: crypto.randomUUID(),
+                  });
+                }}
+              >
+                {choice.label}
+              </Button>
+            ))
+          )}
         </div>
       ) : null}
     </div>

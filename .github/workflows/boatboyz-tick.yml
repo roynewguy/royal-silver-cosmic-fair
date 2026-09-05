@@ -25,17 +25,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
-            echo "::notice title=BoatBoyz 24/7 is NOT armed::GitHub secrets APP_URL and/or CRON_SECRET are empty. This run did NOT call BoatBoyz."
+            echo "::error title=BoatBoyz 24/7 is NOT armed::GitHub secrets APP_URL and/or CRON_SECRET are empty. This run did NOT call BoatBoyz."
             echo "Set them now: GitHub repo → Settings → Secrets and variables → Actions → New repository secret"
             echo "  APP_URL      = https://YOUR-APP.vercel.app     (no trailing slash)"
             echo "  CRON_SECRET  = the SAME random string you put on Vercel as CRON_SECRET"
             echo "Then: Actions → BoatBoyz tick → Run workflow"
             echo "A good run prints HTTP 200 and contacted: true"
-            if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
-              echo "::error::Manual tick aborted — add APP_URL and CRON_SECRET first."
-              exit 1
-            fi
-            exit 0
+            exit 1
           fi
 
           URL="${APP_URL%/}/api/cron/tick"

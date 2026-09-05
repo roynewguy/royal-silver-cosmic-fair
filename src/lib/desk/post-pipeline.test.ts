@@ -62,8 +62,23 @@ test("stale posting older than 4 minutes does recover", () => {
     },
   ]);
   assert.equal(locker.recoverStale(), 1);
-  assert.equal(locker.rows.get(2)?.status, "queued");
+  assert.equal(locker.rows.get(2)?.status, "skipped");
   assert.equal(locker.rows.get(2)?.token, null);
+});
+
+test("stale posting with a Discord id is marked posted, never resent", () => {
+  const started = Date.now() - STALE_POSTING_MS - 1000;
+  const locker = createMemoryLocker([
+    {
+      id: 5,
+      status: "posting",
+      createdAt: Date.now() - 8 * 3600_000,
+      postingStartedAt: started,
+    },
+  ]);
+  locker.rows.get(5)!.discordId = "already-sent";
+  assert.equal(locker.recoverStale(), 1);
+  assert.equal(locker.rows.get(5)?.status, "posted");
 });
 
 test("two simultaneous posts send Discord once", async () => {
@@ -133,4 +148,18 @@ test("already posting or posted never sends", async () => {
   assert.equal(a.claimed, false);
   assert.equal(b.claimed, false);
   assert.equal(sends, 0);
+});
+
+test("Discord throw is uncertain and never released for a retry send", async () => {
+  const locker = createMemoryLocker([{ id: 3, status: "queued" }]);
+  const result = await sendOnce(3, locker, async () => {
+    throw new Error("timeout");
+  }, payload());
+  assert.equal(result.uncertain, true);
+  assert.equal(result.sent, false);
+  assert.equal(result.status, "posting");
+  assert.equal(locker.rows.get(3)?.status, "posting");
+  const again = await sendOnce(3, locker, async () => ({ ok: true, id: "dup" }), payload());
+  assert.equal(again.claimed, false);
+  assert.equal(locker.rows.get(3)?.discordId, null);
 });

@@ -37,7 +37,8 @@ test("presets fill from the live card and never look like official auto tickets"
     ],
   });
   const ids = presets.map((p) => p.id);
-  assert.deepEqual(ids, ["card", "pass", "record", "cash", "live", "injury", "lock", "slate", "welcome", "custom"]);
+  assert.deepEqual(ids, ["card", "pass", "record", "cash", "live", "injury", "lock", "slate", "welcome", "note"]);
+  assert.ok(!ids.includes("custom"));
   const card = presets.find((p) => p.id === "card")!;
   assert.match(card.body, /TODAY'S CARD/);
   assert.match(card.body, /MIA ML/);
@@ -55,12 +56,13 @@ test("presets fill from the live card and never look like official auto tickets"
   }
 });
 
-test("empty board still gives a PASS and blank custom template", () => {
+test("empty board still gives a PASS and a notes-only template", () => {
   const presets = buildDiscordPresets({ record, picks: [], games: [] });
   assert.match(presets.find((p) => p.id === "pass")!.body, /No play on this window/);
-  assert.match(presets.find((p) => p.id === "custom")!.body, /BOATBOYZ PLAY/);
-  assert.match(presets.find((p) => p.id === "custom")!.body, /WHY BOATBOYZ LIKES IT/);
-  assert.doesNotMatch(presets.find((p) => p.id === "custom")!.body, /Operator/i);
-  assert.doesNotMatch(presets.find((p) => p.id === "custom")!.body, /Manual/i);
+  assert.equal(presets.find((p) => p.id === "custom"), undefined);
+  assert.match(presets.find((p) => p.id === "note")!.body, /Desk note/);
+  assert.doesNotMatch(presets.find((p) => p.id === "note")!.body, /BOATBOYZ PLAY/);
+  assert.doesNotMatch(presets.find((p) => p.id === "note")!.body, /Operator/i);
+  assert.doesNotMatch(presets.find((p) => p.id === "note")!.body, /Manual/i);
   assert.match(presets.find((p) => p.id === "card")!.body, /No official plays locked yet/);
 });

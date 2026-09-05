@@ -183,6 +183,16 @@ test("missing MLB starters in the post window PASS", () => {
   if (!gate.ok) assert.equal(gate.reason, "PASS_MISSING_STARTER");
 });
 
+test("either missing MLB starter in the post window PASS", () => {
+  const g = live({
+    startAt: new Date(now + 60 * 60_000).toISOString(),
+    away: { ...live().away, starter: null },
+  });
+  const gate = prePostTruthCheck({ queued: queued(g), live: g, rank: rank(), minEdge: 3, minConf: 58, now });
+  assert.equal(gate.ok, false);
+  if (!gate.ok) assert.equal(gate.reason, "PASS_MISSING_STARTER");
+});
+
 test("starter change is detected and does not reuse the old identity", () => {
   const g = live();
   assert.equal(startersChanged({ ...queued(g), homeStarter: "Alcantara" }, g), true);

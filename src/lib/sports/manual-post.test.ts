@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   canAutoGradeManual,
+  canPostGame,
   countsTowardAutoCap,
   countsTowardAutoRecord,
+  feedPriceForPost,
   lineSourceLabel,
   lineSourceOf,
+  liveFeedUsable,
   liveStateLabel,
   NEEDS_MANUAL_GRADE,
+  NO_INVENTED_LINE,
   pickSourceForStatus,
   resolveManualTicket,
 } from "./manual-post.ts";
@@ -179,7 +183,7 @@ test("missing model probability is not invented on the Discord body", () => {
   assert.equal(pick.modelProbability, null);
 });
 
-test("operator can post even with no qualifying feed line", () => {
+test("missing feed odds are refused instead of inventing -110", () => {
   const blank = game({
     odds: {
       book: "—",
@@ -201,11 +205,37 @@ test("operator can post even with no qualifying feed line", () => {
     },
     rank: null,
   });
-  const t = resolveManualTicket({ game: blank, market: "moneyline", side: "home" });
-  assert.equal(t.odds, -110);
-  assert.ok(t.selection.includes("LAL") || t.selection.includes("ML"));
-  assert.match(t.reason, /favored to win at home/i);
-  assert.match(t.reason, /Why BoatBoyz likes it/i);
+  assert.throws(() => resolveManualTicket({ game: blank, market: "moneyline", side: "home" }), (err: unknown) => {
+    assert.ok(err instanceof Error);
+    assert.equal(err.message, NO_INVENTED_LINE);
+    return true;
+  });
+  const custom = resolveManualTicket({ game: blank, market: "moneyline", side: "home", odds: -125 });
+  assert.equal(custom.odds, -125);
+  assert.equal(custom.lineSource, "manual-entry");
+});
+
+test("final and cancelled games cannot be posted", () => {
+  assert.equal(canPostGame(game({ status: "final" })), false);
+  assert.equal(canPostGame(game({ status: "suspended" })), false);
+  assert.throws(() => resolveManualTicket({ game: game({ status: "final" }), market: "moneyline", side: "home" }));
+});
+
+test("live picker refuses stale stored pregame odds", () => {
+  const live = game({
+    status: "in_progress",
+    odds: odds({ capturedAt: new Date(Date.now() - 20 * 60_000).toISOString() }),
+  });
+  assert.equal(liveFeedUsable(live), false);
+  assert.equal(feedPriceForPost(live, "moneyline", "home"), null);
+  assert.throws(() => resolveManualTicket({ game: live, market: "moneyline", side: "home" }), (err: unknown) => {
+    assert.ok(err instanceof Error);
+    assert.equal(err.message, NO_INVENTED_LINE);
+    return true;
+  });
+  const custom = resolveManualTicket({ game: live, market: "moneyline", side: "home", odds: "+105" });
+  assert.equal(custom.odds, 105);
+  assert.equal(custom.pickSource, "manual_live");
 });
 
 test("manual Discord writeup matches the pick card and never labels operator entry", () => {

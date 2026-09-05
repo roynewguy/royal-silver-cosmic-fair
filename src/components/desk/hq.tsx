@@ -11,6 +11,7 @@ import { SportRail } from "@/components/desk/sport-rail";
 import { useDesk } from "@/lib/desk/use-desk";
 import { formatKick, relativeTo } from "@/lib/utils";
 import { canOperatorPost, operatorPostChoices } from "@/lib/sports/post-choices";
+import { EMPTY_FEED_LINE } from "@/lib/sports/manual-post";
 import type { CalibrationReport, GameCard, Market, Side } from "@/lib/sports/types";
 
 export function DeskHq() {
@@ -268,16 +269,20 @@ function UpcomingRow({
       </div>
       {operator && choosing ? (
         <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
-          {choices.map((choice) => (
-            <Button
-              key={`${choice.market}-${choice.side}`}
-              variant="ghost"
-              size="sm"
-              onClick={() => onManualPost({ gameId: game.id, market: choice.market, side: choice.side })}
-            >
-              Post {choice.label}
-            </Button>
-          ))}
+          {choices.length === 0 ? (
+            <p className="text-xs text-subtle">{EMPTY_FEED_LINE}</p>
+          ) : (
+            choices.map((choice) => (
+              <Button
+                key={`${choice.market}-${choice.side}`}
+                variant="ghost"
+                size="sm"
+                onClick={() => onManualPost({ gameId: game.id, market: choice.market, side: choice.side })}
+              >
+                Post {choice.label}
+              </Button>
+            ))
+          )}
         </div>
       ) : null}
     </li>

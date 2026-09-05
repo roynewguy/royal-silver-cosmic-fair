@@ -18,9 +18,9 @@ export type CompletePayload = {
   edgePct: number;
   confidence: number;
   units: number;
-  modelVersion: string;
-  modelProbability: number;
-  modelEdge: number;
+  modelVersion: string | null;
+  modelProbability: number | null;
+  modelEdge: number | null;
   postedOdds: number;
   selectedOdds: number;
 };
@@ -37,6 +37,7 @@ export type SendOnceResult = {
   claimed: boolean;
   status: PickStatus | null;
   error?: string;
+  uncertain?: boolean;
 };
 
 export function newPostingToken(): string {
@@ -87,12 +88,12 @@ export async function sendOnce(
     }
     return { sent: true, claimed: true, status: "posted" };
   } catch (err) {
-    await store.release(pickId, token);
     return {
       sent: false,
       claimed: true,
-      status: "queued",
-      error: err instanceof Error ? err.message : "Post failed.",
+      uncertain: true,
+      status: "posting",
+      error: err instanceof Error ? err.message : "Discord send timed out.",
     };
   }
 }
@@ -143,7 +144,11 @@ export function createMemoryLocker(
             now,
           })
         ) {
-          row.status = "queued";
+          if (row.discordId) {
+            row.status = "posted";
+          } else {
+            row.status = "skipped";
+          }
           row.token = null;
           row.postingStartedAt = null;
           n += 1;

@@ -5,7 +5,8 @@ export type PostEvent = "claim" | "success" | "fail" | "stale";
 export function applyPostEvent(status: PickStatus, event: PostEvent): PickStatus | null {
   if (event === "claim") return status === "queued" ? "posting" : null;
   if (event === "success") return status === "posting" ? "posted" : null;
-  if (event === "fail" || event === "stale") return status === "posting" ? "queued" : null;
+  if (event === "fail") return status === "posting" ? "queued" : null;
+  if (event === "stale") return status === "posting" ? "skipped" : null;
   return null;
 }
 

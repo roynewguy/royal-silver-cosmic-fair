@@ -15,6 +15,8 @@ export type ModelInputs = {
   clock?: string | null;
   period?: number | null;
   shortDetail?: string | null;
+  fetchedAt?: string | null;
+  injuriesFetchedAt?: string | null;
 };
 
 export function packModelInputs(game: GameCard): ModelInputs {
@@ -29,10 +31,12 @@ export function packModelInputs(game: GameCard): ModelInputs {
     weather: game.weather,
     notes: game.notes ?? [],
     modelVersion: game.rank?.model ?? null,
-    capturedAt: new Date().toISOString(),
+    capturedAt: game.fetchedAt ?? game.odds?.capturedAt ?? game.injuriesFetchedAt ?? "",
     clock: game.clock ?? null,
     period: game.period ?? null,
     shortDetail: game.shortDetail ?? null,
+    fetchedAt: game.fetchedAt ?? null,
+    injuriesFetchedAt: game.injuriesFetchedAt ?? null,
   };
 }
 
@@ -47,6 +51,8 @@ export function applyModelInputs(game: GameCard, raw: unknown): GameCard {
     clock: m.clock ?? game.clock ?? null,
     period: m.period ?? game.period ?? null,
     shortDetail: m.shortDetail ?? game.shortDetail ?? null,
+    fetchedAt: m.fetchedAt ?? game.fetchedAt ?? null,
+    injuriesFetchedAt: m.injuriesFetchedAt ?? game.injuriesFetchedAt ?? null,
     home: {
       ...game.home,
       homeSplit: m.homeSplit ?? game.home.homeSplit,

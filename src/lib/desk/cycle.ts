@@ -54,7 +54,7 @@ function postAtFor(startAt: string, leadMinutes: number): string {
   return new Date(new Date(startAt).getTime() - leadMinutes * 60_000).toISOString();
 }
 
-function sqlLocker(sql: Awaited<ReturnType<typeof getSql>>): ClaimStore {
+export function sqlLocker(sql: Awaited<ReturnType<typeof getSql>>): ClaimStore {
   return {
     async claim(id) {
       const token = newPostingToken();
@@ -335,8 +335,18 @@ export async function postPickById(
     games = await refreshSlate();
   }
   await sql`
-    update picks set status = 'queued', posting_at = null, posting_started_at = null, posting_token = null
+    update picks
+    set status = 'posted', posted_at = coalesce(posted_at, now()), posting_at = null, posting_started_at = null, posting_token = null
+    where id = ${pickId} and status = 'posting' and discord_message_id is not null
+      and posting_started_at is not null
+      and posting_started_at < now() - interval '4 minutes'
+  `;
+  await sql`
+    update picks
+    set status = 'skipped', skip_reason = ${"Discord send uncertain — not retried."},
+        posting_at = null, posting_started_at = null, posting_token = null
     where id = ${pickId} and status = 'posting' and posted_at is null and freeze_json is null
+      and discord_message_id is null
       and posting_started_at is not null
       and posting_started_at < now() - interval '4 minutes'
   `;
@@ -502,6 +512,17 @@ export async function postPickById(
   );
   if (!result.claimed) {
     return { ok: true, posted: false, pickId, error: "Pick is already posting." };
+  }
+  if (result.uncertain) {
+    await sql`
+      update picks
+      set status = 'skipped', skip_reason = ${"Discord send uncertain — not retried."},
+          posting_at = null, posting_started_at = null, posting_token = null
+      where id = ${pick.id} and status = 'posting' and discord_message_id is null
+    `;
+    await addLog("post", `Discord send uncertain, not retried · ${gate.selection}`, pick.sport);
+    void alertOwner("DISCORD_FAIL", result.error ?? "timeout after send");
+    return { ok: false, posted: false, pickId, error: result.error };
   }
   if (!result.sent) {
     await addLog("post", `Discord failed, still queued: ${result.error ?? "send failed"}`, pick.sport);

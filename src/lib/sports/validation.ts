@@ -22,10 +22,10 @@ export function featureFreshness(game: GameCard, now = Date.now()): Record<strin
   };
   return {
     market: age(game.odds.capturedAt, game.odds.book || game.odds.source),
-    starter: { ageMinutes: game.home.starter?.name || game.away.starter?.name ? 0 : null, source: "espn-probable" },
-    injuries: { ageMinutes: Array.isArray(game.injuries) ? 0 : null, source: "espn-injury" },
-    weather: { ageMinutes: game.weather ? 0 : null, source: game.weather ? "espn-weather" : "none" },
-    team: { ageMinutes: game.home.record ? 0 : null, source: "espn-record" },
+    starter: age(game.home.starter?.name || game.away.starter?.name ? game.fetchedAt ?? null : null, "espn-probable"),
+    injuries: age(game.injuriesFetchedAt ?? ((game.injuries?.length ?? 0) > 0 ? game.fetchedAt ?? null : null), "espn-injury"),
+    weather: age(game.weather ? game.fetchedAt ?? null : null, game.weather ? "espn-weather" : "none"),
+    team: age(game.home.record ? game.fetchedAt ?? null : null, "espn-record"),
   };
 }
 

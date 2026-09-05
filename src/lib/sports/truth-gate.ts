@@ -48,7 +48,7 @@ export function startersMissingInWindow(live: GameCard, now = Date.now()): boole
   if (live.league !== "mlb") return false;
   const start = new Date(live.startAt).getTime();
   if (!Number.isFinite(start) || start - now > STARTER_WINDOW_MS || start <= now) return false;
-  return !live.home.starter?.name && !live.away.starter?.name;
+  return !live.home.starter?.name || !live.away.starter?.name;
 }
 
 export function gradeTruth(
@@ -108,7 +108,7 @@ export function prePostTruthCheck(input: {
   if (!isFreshOfficialDkCache(dkAge)) return { ok: false, reason: "PASS_DK_STALE", detail: "DraftKings capturedAt too old." };
 
   if (startersMissingInWindow(live, now)) {
-    return { ok: false, reason: "PASS_MISSING_STARTER", detail: "Both MLB starters unknown in the post window." };
+    return { ok: false, reason: "PASS_MISSING_STARTER", detail: "Both MLB starters required in the post window." };
   }
   if (startersChanged(queued, live) && startersMissingInWindow(live, now)) {
     return { ok: false, reason: "PASS_STARTER_CHANGED", detail: "Starter changed and current arms are missing." };

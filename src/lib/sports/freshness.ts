@@ -36,9 +36,9 @@ export function gameFreshness(game: GameCard, now = Date.now()): Record<string, 
   return {
     schedule: stamp("espn", game.startAt, TTL_MS.schedule, now),
     market: stamp(game.odds.book || game.odds.source, game.odds.capturedAt, TTL_MS.marketOfficial, now),
-    starter: stamp("espn-probable", game.home.starter?.name || game.away.starter?.name ? game.odds.capturedAt ?? new Date(now).toISOString() : null, TTL_MS.starter, now),
-    injuries: stamp("espn-injury", Array.isArray(game.injuries) ? new Date(now).toISOString() : null, TTL_MS.injury, now),
-    weather: stamp("espn-weather", game.weather ? new Date(now).toISOString() : null, TTL_MS.weather, now),
-    team: stamp("espn-record", game.home.record ? new Date(now).toISOString() : null, TTL_MS.team, now),
+    starter: stamp("espn-probable", game.home.starter?.name || game.away.starter?.name ? game.fetchedAt ?? null : null, TTL_MS.starter, now),
+    injuries: stamp("espn-injury", game.injuriesFetchedAt ?? ((game.injuries?.length ?? 0) > 0 ? game.fetchedAt ?? null : null), TTL_MS.injury, now),
+    weather: stamp("espn-weather", game.weather ? game.fetchedAt ?? null : null, TTL_MS.weather, now),
+    team: stamp("espn-record", game.home.record ? game.fetchedAt ?? null : null, TTL_MS.team, now),
   };
 }

@@ -184,21 +184,16 @@ export function buildDiscordPresets(input: {
       ].join("\n"),
     },
     {
-      id: "custom",
-      label: "Custom pick",
+      id: "note",
+      label: "Desk note",
       body: [
-        "🌊 BOATBOYZ PLAY",
+        "🌊 BOATBOYZ NOTE",
         "",
-        "[SPORT]",
-        "**[SELECTION]**",
-        "vs [OPPONENT]",
+        "[note]",
         "",
-        "Odds: [LINE]",
-        "Units: 1.0U",
-        "",
-        "WHY BOATBOYZ LIKES IT",
-        "[home / road, starter, injury, number]",
+        "Desk note. Not an official pick.",
       ].join("\n"),
     },
   ];
 }
+
