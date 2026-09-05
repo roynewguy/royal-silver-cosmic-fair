@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 async function handleTick(request: Request): Promise<Response> {
-  const { cronAuthorized } = await import("@/lib/desk/cron-auth");
+  const { authorizeCron } = await import("@/lib/desk/cron-auth");
   const { runTick } = await import("@/lib/desk/cycle");
   const { dbSource } = await import("@/lib/db");
   const { isFreeBetaMode } = await import("@/lib/sports/free-beta");
-  if (!cronAuthorized(request)) {
+  if (!(await authorizeCron(request))) {
     return Response.json({ ok: false, contacted: false, error: "Unauthorized" }, { status: 401 });
   }
   const tick = await runTick("cron");

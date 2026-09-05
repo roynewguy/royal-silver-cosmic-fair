@@ -92,7 +92,7 @@ Paper uses the same scan/rank/queue/verify/truth/freeze/grade pipeline with a si
 
 ## Required configuration
 
-**GitHub Actions repository secrets:** `APP_URL` (production origin, no path) and `CRON_SECRET` (exactly the deployed value).
+**GitHub Actions authentication:** the current main branch added signed GitHub OIDC, which is preserved. Only this repository tick workflow on main is accepted. No repository secrets are required with OIDC. Optional overrides: `APP_URL` (production origin, no path) and `CRON_SECRET` (exactly the deployed value).
 
 **Vercel Production:** `DATABASE_URL` (persistent PostgreSQL), `CRON_SECRET`, `ODDS_API_KEY`, `BOATBOYZ_PIN`, `FREE_BETA_MODE`, `DAILY_PICK_TARGET`, `BOATBOYZ_LIVE_POSTING`, `PAPER_MODE`, plus the four separated webhook settings above. Optional manual webhook and legacy picks fallback are documented in `.env.example`. LLM keys are not required for official operation. No payment integration was added.
 
@@ -127,7 +127,7 @@ Baseline: 226/226 tests. Audit: 234/234 passing tests at the last full check; ty
 
 Outstanding live checks:
 
-1. Last observed GitHub runs failed because APP_URL/CRON_SECRET were missing. No successful unattended production cycle has been verified by this audit.
+1. Earlier GitHub runs lacked APP_URL/CRON_SECRET. The newer signed OIDC workflow removes that requirement; a successful unattended production cycle still needs live verification.
 2. Four separated webhook destinations and private Discord permissions are not verified/configured here. No customer test or live bet was sent by this audit.
 3. ESPN injury endpoint returned Access Denied from the audit environment; exact live data completeness must be demonstrated per league. Unknown schemas remain missing data. Do not turn on official posting merely to get messages.
 4. Verify existing DB migration/data compatibility on an isolated production snapshot before promotion. Local SQL tests cannot certify the live database contents.
