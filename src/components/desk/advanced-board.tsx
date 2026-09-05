@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { useDesk } from "@/lib/desk/use-desk";
 import { lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import { buildTestPreviewMessage } from "@/lib/sports/discord";
+import { DiscordComposer } from "@/components/desk/discord-composer";
 import { formatKick } from "@/lib/utils";
 import type { CalibrationReport, GameCard, Market, Side } from "@/lib/sports/types";
 
@@ -94,6 +95,7 @@ export function AdvancedBoard() {
         <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">Discord</h2>
         <p className="text-sm text-fg">{health.discordLabel}</p>
         <p className="text-xs text-subtle">Source: {desk.data.webhookSource === "env" ? "Environment" : desk.data.webhookSource === "desk" ? "Stored" : "Missing"}</p>
+        <DiscordComposer />
         {desk.data.webhookSource !== "env" ? (
           <Input
             type="password"

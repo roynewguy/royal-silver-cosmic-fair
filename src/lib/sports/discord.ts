@@ -118,6 +118,12 @@ function whyBlock(reason: string, heading = "WHY BOATBOYZ LIKES IT"): string[] {
   return [heading, ...body];
 }
 
+export function buildOperatorPost(body: string): string | null {
+  const text = body.replace(/\r\n/g, "\n").trim();
+  if (!text) return null;
+  return text.slice(0, 1900);
+}
+
 export function buildTestPreviewMessage(game: GameCard): string {
   const notes = previewNotes(game);
   const bullets = notes.bullets.map((b) => `• ${b}`);

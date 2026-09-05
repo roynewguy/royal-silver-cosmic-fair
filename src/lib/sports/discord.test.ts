@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildDiscordMessage,
+  buildOperatorPost,
   buildTestPreviewMessage,
   discordWebhookOk,
   favoredLine,
@@ -18,6 +19,15 @@ test("accepts discord webhook urls", () => {
   assert.equal(discordWebhookOk("https://discord.com/api/webhooks/123/abc"), true);
   assert.equal(discordWebhookOk("https://discordapp.com/api/webhooks/123/abc"), true);
 });
+
+test("operator freeform posts send the typed text and skip empty", () => {
+  assert.equal(buildOperatorPost("   "), null);
+  assert.equal(buildOperatorPost(""), null);
+  const msg = buildOperatorPost("  Lakers ML tonight, fading the public  ");
+  assert.equal(msg, "Lakers ML tonight, fading the public");
+  assert.equal(buildOperatorPost("x".repeat(2000))?.length, 1900);
+});
+
 
 test("env webhook beats stored desk webhook", () => {
   const prev = process.env.DISCORD_WEBHOOK_URL;

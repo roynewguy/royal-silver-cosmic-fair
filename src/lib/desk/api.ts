@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
-import { buildManualPickMessage, buildTestPreviewMessage, deleteWebhookMessage, discordWebhookOk, postWebhook, resolveWebhook } from "@/lib/sports/discord";
+import { buildManualPickMessage, buildOperatorPost, buildTestPreviewMessage, deleteWebhookMessage, discordWebhookOk, postWebhook, resolveWebhook } from "@/lib/sports/discord";
 import { formatWhy } from "@/lib/sports/why";
 import { lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import type { Market, Side } from "@/lib/sports/types";
@@ -224,6 +224,23 @@ export const postManualPick = createServerFn({ method: "POST" })
       where id = ${id}
     `;
     await addLog("post", `Manual pick posted · ${selection} · ${game.sport}`, game.sport);
+    return { ok: true as const, state: await deskForClient() };
+  });
+
+export const sendDiscordNote = createServerFn({ method: "POST" })
+  .validator((input: unknown) => ({
+    message: typeof (input as { message?: string }).message === "string" ? (input as { message: string }).message : "",
+  }))
+  .handler(async ({ data }) => {
+    const gate = await requireOperator();
+    if (!gate.ok) return { ok: false as const, error: gate.error };
+    const message = buildOperatorPost(data.message);
+    if (!message) return { ok: false as const, error: "Type a message first." };
+    const hook = resolveWebhook(await (await import("./store")).readWebhook()).url;
+    if (!hook) return { ok: false as const, error: "No Discord webhook configured." };
+    const sent = await postWebhook(hook, message);
+    if (!sent.ok) return { ok: false as const, error: sent.error ?? "Discord post failed." };
+    await addLog("post", `Operator Discord post sent (${message.length} chars).`);
     return { ok: true as const, state: await deskForClient() };
   });
 

@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TicketCard } from "@/components/desk/ticket-card";
+import { DiscordComposer } from "@/components/desk/discord-composer";
 import { StatusDot } from "@/components/desk/status-dot";
 import { useDesk } from "@/lib/desk/use-desk";
 import { isLockedTicket, todayOfficialCard } from "@/lib/desk/card-view";
@@ -139,6 +140,16 @@ export function HomeBoard() {
           </div>
         )}
       </section>
+
+      {desk.data.operator ? (
+        <section className="rounded-xl bg-surface px-5 py-4 shadow-border">
+          <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">Post to Discord</h2>
+          <p className="mt-1 text-xs text-subtle">Send any message as the BoatBoyz bot. Does not count as an official pick.</p>
+          <div className="mt-3">
+            <DiscordComposer compact />
+          </div>
+        </section>
+      ) : null}
 
       <section className="rounded-xl bg-surface px-5 py-4 shadow-border">
         <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">What BoatBoyz is doing next</h2>

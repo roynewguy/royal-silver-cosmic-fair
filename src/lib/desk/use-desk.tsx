@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, type ReactNode } from "react";
 import { toast } from "sonner";
-import { deleteDiscordPost, getDesk, lockDesk, postManualPick, postTestPreview, pushPick, refreshBoard, runDesk, saveDailyPicks, saveDeskSettings, saveWebhook, unlockDesk } from "@/lib/desk/api";
+import { deleteDiscordPost, getDesk, lockDesk, postManualPick, postTestPreview, pushPick, refreshBoard, runDesk, saveDailyPicks, saveDeskSettings, saveWebhook, sendDiscordNote, unlockDesk } from "@/lib/desk/api";
 import { EMPTY_HEALTH } from "@/lib/desk/health";
 import type { DeskState, Market, Side } from "@/lib/sports/types";
 
@@ -46,7 +46,9 @@ type DeskApi = {
   setDailyPicks: (count: number) => void;
   unlock: (pin: string) => void;
   lock: () => void;
+  sendNote: (message: string, onSent?: () => void) => void;
   testing: boolean;
+  sendingNote: boolean;
 };
 
 const DeskContext = createContext<DeskApi | null>(null);
@@ -199,6 +201,11 @@ function useDeskController(): DeskApi {
     onSuccess: (data) => qc.setQueryData(["desk"], data),
   });
 
+  const sendNote = useMutation({
+    mutationFn: (message: string) => sendDiscordNote({ data: { message } }),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Discord post failed."),
+  });
+
   return {
     data: query.data ?? empty,
     loading: query.isLoading,
@@ -206,6 +213,7 @@ function useDeskController(): DeskApi {
     running: run.isPending,
     posting: push.isPending || manualPost.isPending,
     testing: testPost.isPending,
+    sendingNote: sendNote.isPending,
     refresh: () => refresh.mutate(),
     run: () => run.mutate(),
     push: (input) => push.mutate(input),
@@ -217,6 +225,19 @@ function useDeskController(): DeskApi {
     setDailyPicks: (count) => savePlays.mutate(count),
     unlock: (pin) => unlock.mutate(pin),
     lock: () => lock.mutate(),
+    sendNote: (message, onSent) => {
+      sendNote.mutate(message, {
+        onSuccess: (res) => {
+          if (!res.ok) {
+            toast.error(res.error);
+            return;
+          }
+          if ("state" in res && res.state) qc.setQueryData(["desk"], res.state);
+          toast.success("Posted to Discord.");
+          onSent?.();
+        },
+      });
+    },
   };
 }
 
