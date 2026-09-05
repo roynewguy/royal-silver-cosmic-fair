@@ -213,6 +213,7 @@ function useDeskController(): DeskApi {
         return;
       }
       if ("state" in res && res.state) qc.setQueryData(["desk"], res.state);
+      void qc.invalidateQueries({ queryKey: ["desk"] });
       toast.success("Desk unlocked.");
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Unlock failed."),

@@ -1,6 +1,6 @@
+import { recordEvent } from "./telemetry";
 import { getSql } from "@/lib/db";
-import { applyDraftKingsSnapshot } from "@/lib/sports/dk-open.ts";
-import { isFreshOfficialDkCache, marketParam, officialDkAction } from "@/lib/sports/free-beta.ts";
+import { isFreshOfficialDkCache, marketParam, } from "@/lib/sports/free-beta.ts";
 import { LEAGUE_BY_ID } from "@/lib/sports/leagues.ts";
 import {
   fetchDraftKingsMarket,
@@ -59,7 +59,7 @@ async function loadCache(gameId: string, market: Market): Promise<{
   const odds = jsonParse<OddsSnapshot>(row.odds_json, null as unknown as OddsSnapshot);
   if (!odds) return null;
   const at = new Date(String(row.verified_at)).getTime();
-  return { odds, checks: Number(row.checks) || 0, ageMs: Number.isFinite(at) ? Date.now() - at : 0 };
+  return { odds, checks: Number(row.checks) || 0, ageMs: Number.isFinite(at) ? Date.now() - at : Infinity };
 }
 
 async function saveCache(gameId: string, market: Market, odds: OddsSnapshot, checks: number): Promise<void> {
@@ -74,32 +74,11 @@ async function saveCache(gameId: string, market: Market, odds: OddsSnapshot, che
   `;
 }
 
-function cacheIsOfficiallyValid(cached: { odds: OddsSnapshot; ageMs: number } | null): boolean {
-  return Boolean(cached && isDraftKingsLine(cached.odds) && isFreshOfficialDkCache(cached.ageMs));
-}
-
 export async function confirmDraftKings(
   game: GameCard,
   market: Market,
 ): Promise<{ ok: true; game: GameCard } | { ok: false; error: string }> {
   const cached = await loadCache(game.id, market);
-  const remaining = await loadOddsRemaining();
-  const fresh = cacheIsOfficiallyValid(cached);
-  const action = officialDkAction({
-    remaining,
-    cacheAgeMs: cached?.ageMs ?? null,
-    cachedIsDk: Boolean(cached && isDraftKingsLine(cached.odds)),
-    checksAlready: cached?.checks ?? 0,
-  });
-
-  if (action === "use-cache") {
-    if (!fresh || !cached) return { ok: false, error: "PASS_DK_STALE" };
-    return { ok: true, game: { ...game, odds: applyDraftKingsSnapshot(game.odds, cached.odds) } };
-  }
-  if (action === "pass") {
-    return { ok: false, error: "PASS_DK_STALE" };
-  }
-
   const league = LEAGUE_BY_ID[game.league];
   const apiKey = process.env.ODDS_API_KEY?.trim();
   if (!league?.oddsApiKey || !apiKey) {
@@ -109,21 +88,24 @@ export async function confirmDraftKings(
   try {
     const { rows, usage } = await fetchDraftKingsMarket(league.oddsApiKey, apiKey, marketParam(market));
     await recordOddsUsage(usage);
+    await recordEvent("odds_api_success");
     const match = matchSingleOddsEvent(
       { home: game.home.name, away: game.away.name, startAt: game.startAt },
-      rows,
+      rows.filter(e => e.sport_key === league.oddsApiKey),
     );
     if (!match.ok) return { ok: false, error: match.reason };
-    const hit = rows[match.index];
+    const hit = rows.filter(e => e.sport_key === league.oddsApiKey)[match.index];
     if (hit) {
       const next = overlayDraftKings(game, hit);
-      if (next && isDraftKingsLine(next.odds)) {
+      if (next && isDraftKingsLine(next.odds) && next.odds.eventId && isFreshOfficialDkCache(next.odds.capturedAt ? Date.now() - Date.parse(next.odds.capturedAt) : null)) {
+        await recordEvent("dk_success");
         await saveCache(game.id, market, next.odds, (cached?.checks ?? 0) + 1);
         return { ok: true, game: next };
       }
     }
-  } catch (err) {
-    await addLog("scan", `Odds API ${err instanceof Error ? err.message : "failed"}`, game.sport);
+  } catch {
+    await recordEvent("dk_failure", "DraftKings request failed");
+    await addLog("scan", "Odds API request failed", game.sport);
   }
 
   return { ok: false, error: "PASS_DK_UNAVAILABLE" };
@@ -136,7 +118,7 @@ export async function pruneFreeBetaCaches(force = false): Promise<void> {
   if (!force && Number.isFinite(last) && Date.now() - last < 6 * 3600_000) return;
   await sql`delete from dk_cache where verified_at < now() - interval '2 days'`;
   await sql`delete from research_cache where updated_at < now() - interval '2 days'`;
-  await sql`delete from desk_log where id < (select coalesce(max(id), 0) - 80 from desk_log)`;
+  await sql`delete from desk_log where created_at < now() - interval '30 days'`;
   await sql`delete from games where start_at < now() - interval '10 days' and status in ('final','cancelled','postponed')`;
   await sql`update desk_meta set last_prune_at = now(), updated_at = now() where id = 1`;
 }

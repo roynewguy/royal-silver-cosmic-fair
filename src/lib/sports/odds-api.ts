@@ -10,10 +10,12 @@ type OddsApiMarket = {
 };
 
 export type OddsApiGame = {
+  id?: string;
+  sport_key?: string;
   home_team?: string;
   away_team?: string;
   commence_time?: string;
-  bookmakers?: { key?: string; title?: string; markets?: OddsApiMarket[] }[];
+  bookmakers?: { key?: string; title?: string; last_update?: string; markets?: OddsApiMarket[] }[];
 };
 
 const cache: { byLeague: Map<string, { at: number; rows: OddsApiGame[] }> } = {
@@ -21,7 +23,7 @@ const cache: { byLeague: Map<string, { at: number; rows: OddsApiGame[] }> } = {
 };
 
 export const SCAN_START_DELTA_MS = 4 * 60 * 60 * 1000;
-export const OFFICIAL_START_DELTA_MS = 90 * 60 * 1000;
+export const OFFICIAL_START_DELTA_MS = 15 * 60 * 1000;
 
 function norm(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -31,7 +33,7 @@ export function namesMatch(a: string, b: string): boolean {
   const na = norm(a);
   const nb = norm(b);
   if (!na || !nb) return false;
-  return na === nb || na.includes(nb) || nb.includes(na);
+  return na === nb;
 }
 
 export function teamsSwapped(
@@ -111,7 +113,7 @@ export function pairOddsEvents(
   return out;
 }
 
-function snapshotFromApi(game: OddsApiGame, homeName: string, awayName: string): OddsSnapshot | null {
+export function snapshotFromApi(game: OddsApiGame, homeName: string, awayName: string): OddsSnapshot | null {
   const book = game.bookmakers?.find((b) => /draftkings/i.test(`${b.key ?? ""} ${b.title ?? ""}`));
   if (!book) return null;
   const markets = book.markets ?? [];
@@ -125,6 +127,8 @@ function snapshotFromApi(game: OddsApiGame, homeName: string, awayName: string):
   const over = totals?.outcomes?.find((o) => /^over$/i.test(o.name ?? ""));
   const under = totals?.outcomes?.find((o) => /^under$/i.test(o.name ?? ""));
   if (homeMl == null && homeSp == null && over == null) return null;
+  if (homeSp && awaySp && homeSp.point !== -Number(awaySp.point)) return null;
+  if (over && under && over.point !== under.point) return null;
   return {
     book: book.title || "DraftKings",
     details: null,
@@ -141,7 +145,10 @@ function snapshotFromApi(game: OddsApiGame, homeName: string, awayName: string):
     openTotal: null,
     openHomeMl: null,
     source: "odds-api",
-    capturedAt: new Date().toISOString(),
+    capturedAt: book.last_update ?? null,
+    eventId: game.id ?? null,
+    eventStartAt: game.commence_time ?? null,
+    sportKey: game.sport_key ?? null,
   };
 }
 

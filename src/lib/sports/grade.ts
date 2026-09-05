@@ -5,11 +5,12 @@ import type { GameCard, PickResult, PickRow } from "./types.ts";
 const DEAD = new Set(["postponed", "cancelled", "suspended"]);
 
 export function gradePick(pick: PickRow, game: GameCard): PickResult | null {
-  if (DEAD.has(game.status)) return "VOID";
+  if (DEAD.has(game.status)) return null;
+  if (pick.gameId !== game.id || pick.league !== game.league || pick.needsManualGrade) return null;
   if (game.status !== "final") return null;
   const hs = game.home.score;
   const as = game.away.score;
-  if (hs == null || as == null) return null;
+  if (hs == null || as == null || !Number.isFinite(hs) || !Number.isFinite(as) || hs < 0 || as < 0) return null;
 
   const league = LEAGUE_BY_ID[pick.league as keyof typeof LEAGUE_BY_ID];
   const soccer = league?.soccer3way === true;

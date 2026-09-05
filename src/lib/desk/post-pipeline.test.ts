@@ -62,7 +62,7 @@ test("stale posting older than 4 minutes does recover", () => {
     },
   ]);
   assert.equal(locker.recoverStale(), 1);
-  assert.equal(locker.rows.get(2)?.status, "skipped");
+  assert.equal(locker.rows.get(2)?.status, "delivery_unknown");
   assert.equal(locker.rows.get(2)?.token, null);
 });
 
@@ -157,8 +157,8 @@ test("Discord throw is uncertain and never released for a retry send", async () 
   }, payload());
   assert.equal(result.uncertain, true);
   assert.equal(result.sent, false);
-  assert.equal(result.status, "posting");
-  assert.equal(locker.rows.get(3)?.status, "posting");
+  assert.equal(result.status, "delivery_unknown");
+  assert.equal(locker.rows.get(3)?.status, "delivery_unknown");
   const again = await sendOnce(3, locker, async () => ({ ok: true, id: "dup" }), payload());
   assert.equal(again.claimed, false);
   assert.equal(locker.rows.get(3)?.discordId, null);

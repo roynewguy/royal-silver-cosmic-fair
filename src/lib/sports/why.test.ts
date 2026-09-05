@@ -18,7 +18,8 @@ test("why bullets stay short and mention home plus opponent out", () => {
   assert.ok(bullets.some((b) => /home/i.test(b)));
   assert.ok(bullets.some((b) => /Curry/i.test(b)));
   const writeup = whyWriteup(game, rank);
-  assert.match(writeup, /Lakers are favored to win at home/);
+  assert.match(writeup, /Lakers host Warriors/);
+  assert.doesNotMatch(writeup, /favored|underdog|value/);
   assert.match(writeup, /home|LeBron|Curry/i);
 });
 

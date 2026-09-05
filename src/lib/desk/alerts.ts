@@ -1,4 +1,5 @@
-import { discordWebhookOk, postWebhook } from "../sports/discord.ts";
+import { channelWebhook } from "../sports/discord-routing.ts";
+import { postWebhook } from "../sports/discord.ts";
 
 export type AlertCode =
   | "CRON_STALE"
@@ -15,10 +16,7 @@ const lastSent = new Map<string, number>();
 const COOLDOWN_MS = 30 * 60_000;
 
 export function resolveAlertWebhook(env: NodeJS.ProcessEnv = process.env): string {
-  const url = env.DISCORD_ALERT_WEBHOOK?.trim() || env.OPERATOR_WEBHOOK_URL?.trim() || "";
-  if (!discordWebhookOk(url)) return "";
-  if (url === env.DISCORD_WEBHOOK_URL?.trim()) return "";
-  return url;
+  return channelWebhook("alerts", "", env);
 }
 
 export function parseAlertMap(raw: unknown): Record<string, number> {
@@ -89,7 +87,11 @@ export async function alertOwner(code: AlertCode, detail: string): Promise<void>
   const url = resolveAlertWebhook();
   const text = formatOwnerAlert(code, detail);
   if (!url) return;
-  await postWebhook(url, text);
+  const result = await postWebhook(url, text);
+  try {
+    const { recordEvent } = await import("./telemetry.ts");
+    await recordEvent(result.ok ? "discord_alerts_success" : "discord_failure", result.ok ? "" : "Private alert failed");
+  } catch { /* Alerts must still work when the database fails. */ }
 }
 
 export function bumpTruth(counters: Record<string, number>, key: string): Record<string, number> {

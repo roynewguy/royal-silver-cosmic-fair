@@ -19,7 +19,7 @@ export function marketAgeMs(game: GameCard, now = Date.now()): number | null {
   if (!game.odds.capturedAt) return null;
   const t = new Date(game.odds.capturedAt).getTime();
   if (!Number.isFinite(t)) return null;
-  return Math.max(0, now - t);
+  return t > now ? null : now - t;
 }
 
 export function mlbDataQuality(game: GameCard, now = Date.now()): { score: number; missing: string[] } {
@@ -38,7 +38,7 @@ export function mlbDataQuality(game: GameCard, now = Date.now()): { score: numbe
   else missing.push("injuries");
 
   const age = marketAgeMs(game, now);
-  if (isDraftKingsLine(game.odds) && (age == null || age <= STALE_MARKET_MS)) score += 20;
+  if (isDraftKingsLine(game.odds) && (age != null && age >= 0 && age <= STALE_MARKET_MS)) score += 20;
   else if (game.odds.homeMl != null && game.odds.awayMl != null) {
     score += 10;
     missing.push("market freshness");
@@ -60,7 +60,7 @@ export function genericDataQuality(game: GameCard, now = Date.now()): { score: n
   if (game.injuriesFetchedAt || (game.injuries?.length ?? 0) > 0) score += 15;
   else missing.push("injuries");
   const age = marketAgeMs(game, now);
-  if (isDraftKingsLine(game.odds) && (age == null || age <= STALE_MARKET_MS)) score += 20;
+  if (isDraftKingsLine(game.odds) && (age != null && age >= 0 && age <= STALE_MARKET_MS)) score += 20;
   else if (game.odds.homeMl != null || game.odds.homeSpread != null) {
     score += 10;
     missing.push("market freshness");

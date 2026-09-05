@@ -11,6 +11,7 @@ export function automationStatus(lastCronTickAt: string | null | undefined, now 
   const t = new Date(lastCronTickAt).getTime();
   if (!Number.isFinite(t)) return "unarmed";
   const age = now - t;
+  if (age < 0) return "unarmed";
   if (age <= TICK_ONLINE_MS) return "online";
   if (age <= TICK_DELAYED_MS) return "delayed";
   return "offline";
@@ -18,10 +19,10 @@ export function automationStatus(lastCronTickAt: string | null | undefined, now 
 
 export function nextScanIso(
   lastCronTickAt: string | null | undefined,
-  lastScanAt: string | null | undefined,
+  _lastScanAt: string | null | undefined,
   _now = Date.now(),
 ): string | null {
-  const base = lastCronTickAt ?? lastScanAt;
+  const base = lastCronTickAt;
   if (!base) return null;
   const t = new Date(base).getTime();
   if (!Number.isFinite(t)) return null;
@@ -65,8 +66,8 @@ export function buildDeskHealth(input: {
     db: dbOk ? "ok" : "bad",
     dbLabel: input.dbSource === "neon" ? "Neon connected" : input.dbSource === "pglite" ? "Preview database" : "Database unavailable",
     espn: espnService(input.lastScanAt, input.espnErrors, now),
-    discord: input.hasWebhook ? "ok" : "bad",
-    discordLabel: input.hasWebhook ? "Connected" : "Webhook missing",
+    discord: input.hasWebhook ? "warn" : "bad",
+    discordLabel: input.hasWebhook ? "Configured; see Preflight for delivery proof" : "Webhook missing",
     odds: oddsService(input.oddsRemaining),
     oddsLabel:
       input.oddsRemaining == null

@@ -17,6 +17,8 @@ export type ModelInputs = {
   shortDetail?: string | null;
   fetchedAt?: string | null;
   injuriesFetchedAt?: string | null;
+  startersFetchedAt?: string | null;
+  weatherFetchedAt?: string | null;
 };
 
 export function packModelInputs(game: GameCard): ModelInputs {
@@ -37,6 +39,8 @@ export function packModelInputs(game: GameCard): ModelInputs {
     shortDetail: game.shortDetail ?? null,
     fetchedAt: game.fetchedAt ?? null,
     injuriesFetchedAt: game.injuriesFetchedAt ?? null,
+    startersFetchedAt: game.startersFetchedAt ?? null,
+    weatherFetchedAt: game.weatherFetchedAt ?? null,
   };
 }
 
@@ -52,7 +56,9 @@ export function applyModelInputs(game: GameCard, raw: unknown): GameCard {
     period: m.period ?? game.period ?? null,
     shortDetail: m.shortDetail ?? game.shortDetail ?? null,
     fetchedAt: m.fetchedAt ?? game.fetchedAt ?? null,
-    injuriesFetchedAt: m.injuriesFetchedAt ?? game.injuriesFetchedAt ?? null,
+    injuriesFetchedAt: m.injuriesFetchedAt ?? null,
+    startersFetchedAt: m.startersFetchedAt ?? null,
+    weatherFetchedAt: m.weatherFetchedAt ?? null,
     home: {
       ...game.home,
       homeSplit: m.homeSplit ?? game.home.homeSplit,

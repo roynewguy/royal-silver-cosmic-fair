@@ -64,6 +64,9 @@ function live(over: Partial<GameCard> = {}): GameCard {
     rank: null,
     notes: [],
     injuries: [],
+    fetchedAt: new Date(now).toISOString(),
+    injuriesFetchedAt: new Date(now).toISOString(),
+    startersFetchedAt: new Date(now).toISOString(),
     weather: "78 F",
     ...over,
   };
@@ -230,7 +233,7 @@ test("ambiguous Odds API events PASS instead of guessing closest", () => {
     { home: "Miami Marlins", away: "Chicago Cubs", startAt: "2026-09-04T23:10:00Z" },
     [
       { home_team: "Miami Marlins", away_team: "Chicago Cubs", commence_time: "2026-09-04T23:05:00Z" },
-      { home_team: "Miami Marlins", away_team: "Chicago Cubs", commence_time: "2026-09-04T23:40:00Z" },
+      { home_team: "Miami Marlins", away_team: "Chicago Cubs", commence_time: "2026-09-04T23:20:00Z" },
     ],
   );
   assert.equal(match.ok, false);
@@ -270,7 +273,7 @@ test("grade waits when final score is missing and voids postponed posted tickets
   const posted = { status: "posted", gameId: "mlb:mia", league: "mlb" };
   const missing = gradeTruth(posted, live({ status: "final", home: { ...live().home, score: null } }));
   assert.equal(missing.ok, false);
-  const ok = gradeTruth(posted, live({ status: "final", home: { ...live().home, score: 4 }, away: { ...live().away, score: 2 } }));
+  const ok = gradeTruth(posted, live({ status: "final", home: { ...live().home, score: 4 }, away: { ...live().away, score: 2 } }), now);
   assert.equal(ok.ok, true);
   const pp = gradeTruth(posted, live({ status: "postponed" }));
   assert.equal(pp.ok, false);
@@ -312,4 +315,27 @@ test("source hierarchy forbids LLM-authored odds, injuries, starters, and units"
   assert.ok(LLM_FORBIDDEN.includes("odds"));
   assert.ok(LLM_FORBIDDEN.includes("probability"));
   assert.ok(MLB_V2_INPUTS.productionWeightsFrozen[0].includes("0.16"));
+});
+
+test("successful empty injury report differs from never fetched", () => {
+  const g = live();
+  const ok = prePostTruthCheck({queued:queued(g),live:g,rank:rank(),minEdge:3,minConf:58,now});
+  assert.equal(ok.ok,true);
+  const missing = prePostTruthCheck({queued:queued(g),live:{...g,injuriesFetchedAt:null},rank:rank(),minEdge:3,minConf:58,now});
+  assert.equal(missing.ok,false);
+});
+test("unknown starter statistics are not silently treated as average", () => {
+  const g = live();
+  g.home.starter = {...g.home.starter!,era:null};
+  assert.equal(prePostTruthCheck({queued:queued(g),live:g,rank:rank(),minEdge:3,minConf:58,now}).ok,false);
+});
+test("final games cannot be newly posted and stale final scores cannot grade", () => {
+  const g=live({status:"final"});
+  assert.equal(prePostTruthCheck({queued:queued(g),live:g,rank:rank(),minEdge:3,minConf:58,now}).ok,false);
+  g.home.score=5;g.away.score=4;g.fetchedAt=new Date(now-3600000).toISOString();
+  assert.equal(gradeTruth({status:"posted",gameId:g.id,league:g.league},g,now).ok,false);
+});
+test("grading fails closed on a frozen participant mismatch",()=>{
+  const g=live({status:"final"});g.home.score=5;g.away.score=4;
+  assert.equal(gradeTruth({status:"posted",gameId:g.id,league:g.league,freezeJson:JSON.stringify({homeTeam:"Different team"})},g,now).ok,false);
 });

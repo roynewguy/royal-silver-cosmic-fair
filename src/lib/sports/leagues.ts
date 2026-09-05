@@ -148,7 +148,7 @@ export const LEAGUES: LeagueConfig[] = [
     daily: true,
     lookAheadDays: 3,
     avgTotal: 142,
-    official: true,
+    official: false,
     soccer3way: false,
     oddsApiKey: "basketball_ncaab",
   },

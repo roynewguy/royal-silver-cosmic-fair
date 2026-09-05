@@ -13,9 +13,11 @@ export type TicketLabel =
   | "void"
   | "pass"
   | "rotated"
+  | "unknown"
   | "manual";
 
 export function ticketLabel(pick: PickRow): TicketLabel {
+  if (pick.status === "delivery_unknown") return "unknown";
   if (pick.result === "WIN") return "win";
   if (pick.result === "LOSS") return "loss";
   if (pick.result === "PUSH") return "push";
@@ -36,6 +38,7 @@ export function ticketLabel(pick: PickRow): TicketLabel {
 
 export function ticketCopy(label: TicketLabel): string {
   switch (label) {
+    case "unknown": return "DELIVERY UNKNOWN — REVIEW";
     case "candidate":
       return "CANDIDATE";
     case "provisional":
@@ -62,12 +65,12 @@ export function ticketCopy(label: TicketLabel): string {
 }
 
 export function isLockedTicket(pick: PickRow): boolean {
-  return pick.status === "posting" || pick.status === "posted" || pick.status === "graded";
+  return pick.status === "delivery_unknown" || pick.status === "posting" || pick.status === "posted" || pick.status === "graded";
 }
 
 export function todayOfficialCard(picks: PickRow[], now = new Date()): PickRow[] {
   return picks
-    .filter((p) => p.officialKey && isOfficialDay(p.startAt, now) && p.status !== "skipped")
+    .filter((p) => p.ledger !== "paper" && p.pickSource !== "manual" && p.pickSource !== "manual_live" && p.officialKey && isOfficialDay(p.startAt, now) && p.status !== "skipped")
     .sort((a, b) => {
       const order = (s: string) => (s === "posted" || s === "graded" || s === "posting" ? 0 : 1);
       return order(a.status) - order(b.status) || +new Date(a.startAt) - +new Date(b.startAt);

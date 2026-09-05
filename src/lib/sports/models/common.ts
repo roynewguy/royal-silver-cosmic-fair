@@ -89,7 +89,7 @@ export function spreadPlay(
   why: string,
   model: string,
 ): RankPick | null {
-  if (game.odds.homeSpread == null) return null;
+  if (game.odds.homeSpread == null || game.odds.awaySpread == null || game.odds.homeSpreadOdds == null || game.odds.awaySpreadOdds == null) return null;
   const line = game.odds.homeSpread;
   if (Math.abs(line) > maxSpread) return null;
   const move = spreadMoveBonus(game);
@@ -100,7 +100,7 @@ export function spreadPlay(
   if (Math.abs(edgeHome) < MIN_EDGE) return null;
   const pickHome = edgeHome >= 0;
   const side: Side = pickHome ? "home" : "away";
-  const price = (pickHome ? game.odds.homeSpreadOdds : game.odds.awaySpreadOdds) ?? -110;
+  const price = pickHome ? game.odds.homeSpreadOdds : game.odds.awaySpreadOdds;
   const playLine = pickHome ? game.odds.homeSpread : game.odds.awaySpread;
   const coverProb = clamp(0.5 + coverHome, 0.18, 0.82);
   const homeJuice = game.odds.homeSpreadOdds;
@@ -174,12 +174,10 @@ export function totalPlay(
 export function pickBest(
   game: GameCard,
   candidates: RankPick[],
-  preferred: RankPick["market"],
+  _preferred: RankPick["market"],
 ): RankPick | null {
   if (!candidates.length) return null;
-  const playable = [...candidates].sort((a, b) => {
-    const pref = (m: RankPick) => (m.market === preferred ? 1.2 : m.market === "total" ? 0.84 : 1);
-    return b.edgePct * pref(b) - a.edgePct * pref(a);
-  });
-  return sealRank(game, playable[0] ?? null);
+  const sealed = candidates.map(c => sealRank(game, c)).filter((c): c is RankPick => c != null);
+  sealed.sort((a, b) => Number(Boolean(a.passReason)) - Number(Boolean(b.passReason)) || b.edgePct - a.edgePct || b.confidence - a.confidence || a.market.localeCompare(b.market));
+  return sealed[0] ?? null;
 }

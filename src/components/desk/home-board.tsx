@@ -14,7 +14,7 @@ import { relativeTo } from "@/lib/utils";
 import type { AutomationStatus, ServiceLevel } from "@/lib/sports/types";
 
 const AUTO_COPY: Record<AutomationStatus, { title: string; hint: string }> = {
-  online: { title: "ONLINE · 24/7", hint: "GitHub tick is contacting the live app." },
+  online: { title: "RUNNING", hint: "GitHub tick is contacting the live app." },
   delayed: { title: "DELAYED", hint: "Last successful tick is getting stale." },
   offline: { title: "AUTOMATION OFFLINE", hint: "Last successful tick is older than 25 minutes." },
   unarmed: { title: "24/7 AUTOMATION NOT ARMED", hint: "GitHub tick has not contacted BoatBoyz recently." },
@@ -94,6 +94,8 @@ export function HomeBoard() {
         <p>Next scan: {health.nextScanAt ? relativeTo(health.nextScanAt) : "—"}</p>
       </div>
 
+      <p className="rounded-xl bg-surface p-4 font-display text-lg">New automated posts: {desk.data.livePosting ? "ON" : "OFF — kill switch active"}{desk.data.paperMode ? " · PAPER MODE" : ""}</p>
+      {desk.data.operator && desk.data.preflight ? <div className="text-sm text-muted space-y-1"><p>Last Discord post: {desk.data.preflight.lastPostAt ?? "Never"}</p><p>Last grade: {desk.data.preflight.lastGradeAt ?? "Never"}</p><p>Last critical error: {desk.data.preflight.lastError ?? "None recorded"}</p></div> : null}
       <section>
         <h2 className="mb-2 font-display text-sm tracking-[0.18em] text-muted uppercase">System</h2>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">

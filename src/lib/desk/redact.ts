@@ -47,6 +47,8 @@ export function redactDesk(state: DeskState, operator: boolean): DeskState {
     games: state.games.map(publicGame),
     picks: state.picks.filter((p) => isPublicPickStatus(p.status) && p.ledger !== "paper").map(publicPick),
     log: [],
+    preflight: null,
+    paperRecord: null,
     scans: state.scans.map(publicScan),
     minEdgePct: 0,
     minConfidence: 0,

@@ -11,6 +11,10 @@ export type AuditField = {
 
 export type FreezeSnapshot = {
   frozenAt: string;
+  gameStatus?: string;
+  starters?: { home: unknown; away: unknown };
+  rawMarketProbability?: number | null;
+  sourceFetchedAt?: string | null;
   modelVersion: string;
   modelProbability: number;
   modelEdge: number;
@@ -45,6 +49,10 @@ export function buildFreezeSnapshot(input: {
   gameId: string;
   odds: OddsSnapshot;
   frozenAt?: string;
+  gameStatus?: string;
+  starters?: { home: unknown; away: unknown };
+  rawMarketProbability?: number | null;
+  sourceFetchedAt?: string | null;
   homeTeam?: string;
   awayTeam?: string;
   startAt?: string;
@@ -56,16 +64,20 @@ export function buildFreezeSnapshot(input: {
   const frozenAt = input.frozenAt ?? new Date().toISOString();
   const dkCapturedAt = input.odds.capturedAt;
   const audit: AuditField[] = [
-    { field: "gameId", value: input.gameId, source: SOURCE_HIERARCHY.schedule, capturedAt: frozenAt },
-    { field: "startAt", value: input.startAt ?? "", source: SOURCE_HIERARCHY.schedule, capturedAt: frozenAt },
-    { field: "home", value: input.homeTeam ?? "", source: SOURCE_HIERARCHY.teams, capturedAt: frozenAt },
-    { field: "away", value: input.awayTeam ?? "", source: SOURCE_HIERARCHY.teams, capturedAt: frozenAt },
+    { field: "gameId", value: input.gameId, source: SOURCE_HIERARCHY.schedule, capturedAt: input.sourceFetchedAt ?? null },
+    { field: "startAt", value: input.startAt ?? "", source: SOURCE_HIERARCHY.schedule, capturedAt: input.sourceFetchedAt ?? null },
+    { field: "home", value: input.homeTeam ?? "", source: SOURCE_HIERARCHY.teams, capturedAt: input.sourceFetchedAt ?? null },
+    { field: "away", value: input.awayTeam ?? "", source: SOURCE_HIERARCHY.teams, capturedAt: input.sourceFetchedAt ?? null },
     { field: "price", value: String(input.lockedOdds), source: SOURCE_HIERARCHY.officialPrice, capturedAt: dkCapturedAt },
     { field: "modelVersion", value: input.rank.model, source: SOURCE_HIERARCHY.probability, capturedAt: frozenAt },
     { field: "probability", value: String(input.rank.probability), source: SOURCE_HIERARCHY.probability, capturedAt: frozenAt },
   ];
   return {
     frozenAt,
+    gameStatus: input.gameStatus,
+    starters: input.starters,
+    rawMarketProbability: input.rawMarketProbability,
+    sourceFetchedAt: input.sourceFetchedAt,
     modelVersion: input.rank.model,
     modelProbability: input.rank.probability,
     modelEdge: input.rank.edgePct,

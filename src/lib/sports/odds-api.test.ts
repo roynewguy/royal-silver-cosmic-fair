@@ -48,7 +48,7 @@ test("does not reuse one Odds API event for two games", () => {
       id: "mlb:g2",
       home: "Los Angeles Dodgers",
       away: "San Diego Padres",
-      startAt: "2026-09-04T16:40:00Z",
+      startAt: "2026-09-04T16:20:00Z",
     },
   ];
   const events = [
@@ -118,7 +118,7 @@ test("official matching PASSes when two Odds events fit the same ESPN game", () 
     },
     [
       { home_team: "Los Angeles Dodgers", away_team: "San Diego Padres", commence_time: "2026-09-04T16:05:00Z" },
-      { home_team: "Los Angeles Dodgers", away_team: "San Diego Padres", commence_time: "2026-09-04T16:40:00Z" },
+      { home_team: "Los Angeles Dodgers", away_team: "San Diego Padres", commence_time: "2026-09-04T16:20:00Z" },
     ],
   );
   assert.equal(match.ok, false);

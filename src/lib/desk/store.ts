@@ -1,3 +1,6 @@
+import { loadPreflight } from "./preflight";
+import { livePostingEnabled } from "./production-policy";
+import { randomUUID } from "node:crypto";
 import { resolveWebhook } from "@/lib/sports/discord";
 import { getSql, dbSource } from "@/lib/db";
 import { buildCalibration } from "@/lib/sports/calibration";
@@ -301,6 +304,9 @@ export async function upsertGames(games: GameCard[]): Promise<void> {
         home_score, away_score, home_record, away_record, venue, odds_json, rank_json, model_inputs_json, updated_at
       ) values ${values.join(", ")}
       on conflict (id) do update set
+        start_at = excluded.start_at,
+        home_team = excluded.home_team,
+        away_team = excluded.away_team,
         status = excluded.status,
         home_score = excluded.home_score,
         away_score = excluded.away_score,
@@ -335,7 +341,6 @@ export async function loadPicks(): Promise<PickRow[]> {
     from picks p
     left join games g on g.id = p.game_id
     order by p.created_at desc
-    limit 200
   `;
   return rows.map(pickFromRow);
 }
@@ -348,8 +353,10 @@ export async function loadRecord(): Promise<DeskRecord> {
     pushes: unknown;
     units: unknown;
     pending: unknown;
+    risked: unknown;
   }>`
     select
+      coalesce(sum(units) filter (where status = 'graded' and result in ('WIN','LOSS','PUSH')), 0) as risked,
       count(*) filter (where result = 'WIN' and status = 'graded') as wins,
       count(*) filter (where result = 'LOSS' and status = 'graded') as losses,
       count(*) filter (where result = 'PUSH' and status = 'graded') as pushes,
@@ -362,6 +369,7 @@ export async function loadRecord(): Promise<DeskRecord> {
   `;
   const r = rows[0];
   return {
+    riskedUnits: num(r?.risked),
     wins: num(r?.wins),
     losses: num(r?.losses),
     pushes: num(r?.pushes),
@@ -426,7 +434,7 @@ export async function addLog(kind: string, message: string, sport?: string | nul
 export async function touchScan(kind: "scan" | "desk"): Promise<void> {
   const sql = await getSql();
   if (kind === "desk") {
-    await sql`update desk_meta set last_scan_at = now(), last_desk_at = now(), updated_at = now() where id = 1`;
+    await sql`update desk_meta set last_desk_at = now(), updated_at = now() where id = 1`;
   } else {
     await sql`update desk_meta set last_scan_at = now(), updated_at = now() where id = 1`;
   }
@@ -582,7 +590,7 @@ export async function readDesk(opts: { operator?: boolean } = {}): Promise<DeskS
     operator: false,
     soccerDesk: "off",
     pinFromEnv: Boolean(process.env.BOATBOYZ_PIN?.trim()),
-    calibration: operator ? buildCalibration(picks.filter((p) => p.ledger !== "paper")) : null,
+    calibration: operator ? buildCalibration(picks.filter((p) => p.ledger !== "paper" && p.pickSource === "auto" && p.officialKey)) : null,
     health: buildDeskHealth({
       lastTickAt: meta.lastTickAt,
       lastScanAt: meta.lastScanAt,
@@ -594,6 +602,8 @@ export async function readDesk(opts: { operator?: boolean } = {}): Promise<DeskS
       freeBeta: isFreeBetaMode(),
     }),
     researchModels,
+    preflight: operator ? await loadPreflight(meta.lastTickAt, await readWebhook()) : null,
+    livePosting: livePostingEnabled(),
     paperMode: isPaperMode(),
     paperRecord,
   };
@@ -603,7 +613,8 @@ export async function loadTodayOfficial(now = new Date()): Promise<PickRow[]> {
   const sql = await getSql();
   const rows = await sql<PickDb>`
     select * from picks
-    where status in ('queued','posting','posted','graded')
+    where status in ('queued','posting','posted','graded','delivery_unknown')
+      and coalesce(pick_source, 'auto') = 'auto'
       and official_key is not null
       and coalesce(ledger, 'official') = ${activeLedger()}
       and start_at >= now() - interval '2 days'
@@ -621,7 +632,7 @@ export async function loadLatestPicksByGames(gameIds: string[]): Promise<Map<str
   const sql = await getSql();
   const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
   const rows = await sql.query<PickDb>(
-    `select * from picks where game_id in (${placeholders}) order by created_at desc`,
+    `select * from picks where game_id in (${placeholders}) and coalesce(pick_source, 'auto') = 'auto' and coalesce(ledger, 'official') = '${activeLedger()}' order by created_at desc`,
     ids,
   );
   for (const row of rows) {
@@ -629,28 +640,6 @@ export async function loadLatestPicksByGames(gameIds: string[]): Promise<Map<str
     if (!map.has(pick.gameId)) map.set(pick.gameId, pick);
   }
   return map;
-}
-
-export async function livePickForSport(sport: string): Promise<PickRow | null> {
-  const sql = await getSql();
-  const rows = await sql<PickDb>`
-    select * from picks
-    where sport = ${sport} and status in ('queued','posting','posted') and result is null
-    order by created_at desc
-    limit 1
-  `;
-  return rows[0] ? pickFromRow(rows[0]) : null;
-}
-
-export async function pickByGame(gameId: string): Promise<PickRow | null> {
-  const sql = await getSql();
-  const rows = await sql<PickDb>`
-    select * from picks
-    where game_id = ${gameId} and status in ('queued','posting','posted','skipped','graded')
-    order by created_at desc
-    limit 1
-  `;
-  return rows[0] ? pickFromRow(rows[0]) : null;
 }
 
 export async function readWebhook(): Promise<string> {
@@ -664,18 +653,19 @@ export async function writeWebhook(url: string): Promise<void> {
   await sql`update desk_meta set discord_webhook = ${url || null}, updated_at = now() where id = 1`;
 }
 
-export async function tryWorkerLock(): Promise<boolean> {
+export async function tryWorkerLock(): Promise<string | null> {
   const sql = await getSql();
+  const token = randomUUID();
   const rows = await sql<{ id: number }>`
     update desk_meta
-    set worker_lock_until = now() + interval '3 minutes'
+    set worker_lock_until = now() + interval '6 minutes', worker_lock_token = ${token}
     where id = 1 and (worker_lock_until is null or worker_lock_until < now())
     returning id
   `;
-  return rows.length > 0;
+  return rows.length > 0 ? token : null;
 }
 
-export async function clearWorkerLock(): Promise<void> {
+export async function clearWorkerLock(token: string): Promise<void> {
   const sql = await getSql();
-  await sql`update desk_meta set worker_lock_until = null where id = 1`;
+  await sql`update desk_meta set worker_lock_until = null, worker_lock_token = null where id = 1 and worker_lock_token = ${token}`;
 }

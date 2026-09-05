@@ -1,3 +1,6 @@
+import { isFreshTimestamp } from "../desk/production-policy.ts";
+import { LEAGUE_BY_ID } from "./leagues.ts";
+import { twoWayMarket } from "./odds.ts";
 import { isPlayableRank, LOW_DATA_QUALITY } from "./data-quality.ts";
 import { gameFreshness } from "./freshness.ts";
 import { buildFreezeSnapshot, type FreezeSnapshot } from "./freeze.ts";
@@ -54,15 +57,23 @@ export function startersMissingInWindow(live: GameCard, now = Date.now()): boole
 export function gradeTruth(
   pick: { status: string; gameId: string; league: string; freezeJson?: string | null; homeAbbr?: string | null; awayAbbr?: string | null },
   game: GameCard,
+  now = Date.now(),
 ): { ok: true } | { ok: false; reason: PassReason; detail: string } {
   if (pick.status !== "posted") return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Only posted tickets grade." };
   if (pick.gameId !== game.id) return { ok: false, reason: "PASS_GAME_MISMATCH", detail: "Grade game id mismatch." };
   if (pick.league && pick.league !== game.league) return { ok: false, reason: "PASS_GAME_MISMATCH", detail: "Grade league mismatch." };
+  if (pick.freezeJson) {
+    try {
+      const frozen = JSON.parse(pick.freezeJson) as FreezeSnapshot;
+      if ((frozen.homeTeam && frozen.homeTeam !== game.home.name) || (frozen.awayTeam && frozen.awayTeam !== game.away.name))
+        return { ok: false, reason: "PASS_GAME_MISMATCH", detail: "Frozen teams disagree with final event." };
+    } catch { return { ok: false, reason: "PASS_DATA_CONFLICT", detail: "Unreadable frozen ticket." }; }
+  }
   if (game.status === "postponed") return { ok: false, reason: "PASS_POSTPONED", detail: "void" };
   if (game.status === "cancelled") return { ok: false, reason: "PASS_CANCELLED", detail: "void" };
   if (game.status === "suspended") return { ok: false, reason: "PASS_DATA_CONFLICT", detail: "suspended" };
   if (game.status !== "final") return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Not final." };
-  if (game.home.score == null || game.away.score == null) {
+  if (!isFreshTimestamp(game.fetchedAt, 30 * 60_000, now) || game.home.score == null || game.away.score == null || !Number.isFinite(game.home.score) || !Number.isFinite(game.away.score) || game.home.score < 0 || game.away.score < 0) {
     return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Final score missing." };
   }
   return { ok: true };
@@ -86,6 +97,7 @@ export function prePostTruthCheck(input: {
   if (!live) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Game missing from slate." };
   if (live.id !== queued.gameId) return { ok: false, reason: "PASS_EVENT_ID_CONFLICT", detail: "Live id does not match ticket." };
   if (live.league !== queued.league) return { ok: false, reason: "PASS_GAME_MISMATCH", detail: "League mismatch." };
+  if ([live.home.name, live.away.name].some(name => !name || /^TBD$/i.test(name))) return { ok: false, reason: "PASS_GAME_MISMATCH", detail: "Unknown participant" };
   if (live.home.name !== queued.homeName || live.away.name !== queued.awayName) {
     return { ok: false, reason: "PASS_GAME_MISMATCH", detail: "Team names do not match." };
   }
@@ -103,12 +115,20 @@ export function prePostTruthCheck(input: {
     return { ok: false, reason: "PASS_GAME_STARTED", detail: "Game already started." };
   }
   if (live.status !== "scheduled") return { ok: false, reason: "PASS_DATA_CONFLICT", detail: `Status ${live.status}` };
+  if (!LEAGUE_BY_ID[live.league]?.official || !isFreshTimestamp(live.fetchedAt, 15 * 60_000, now)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Unapproved model or stale game data" };
+  if (!isFreshTimestamp(live.injuriesFetchedAt, 180 * 60_000, now)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Injury report was not successfully fetched" };
   if (!isDraftKingsLine(live.odds)) return { ok: false, reason: "PASS_DK_UNAVAILABLE", detail: "Line is not verified DraftKings." };
   const dkAge = live.odds.capturedAt ? now - new Date(live.odds.capturedAt).getTime() : null;
   if (!isFreshOfficialDkCache(dkAge)) return { ok: false, reason: "PASS_DK_STALE", detail: "DraftKings capturedAt too old." };
 
   if (startersMissingInWindow(live, now)) {
     return { ok: false, reason: "PASS_MISSING_STARTER", detail: "Both MLB starters required in the post window." };
+  }
+  if (live.league === "mlb" && liveStart - now <= STARTER_WINDOW_MS &&
+      (!isFreshTimestamp(live.startersFetchedAt, 15 * 60_000, now) ||
+       live.home.starter?.era == null || live.away.starter?.era == null ||
+       !Number.isFinite(live.home.starter.era) || !Number.isFinite(live.away.starter.era))) {
+    return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Fresh starter identities and pitching inputs required" };
   }
   if (startersChanged(queued, live) && startersMissingInWindow(live, now)) {
     return { ok: false, reason: "PASS_STARTER_CHANGED", detail: "Starter changed and current arms are missing." };
@@ -126,9 +146,20 @@ export function prePostTruthCheck(input: {
     if (rank.confidence < input.minConf) return { ok: false, reason: "PASS_LOW_CONFIDENCE", detail: `Confidence ${rank.confidence}.` };
     return { ok: false, reason: "PASS_EDGE_DIED", detail: `Fresh DK edge ${rank.edgePct.toFixed(1)}% below ${input.minEdge}.` };
   }
+  if (rank.market !== queued.market || rank.model !== `v2-${live.league}`) return { ok: false, reason: "PASS_DATA_CONFLICT", detail: "Market/model changed; requeue and reverify" };
   const lockedOdds = priceFor(live.odds, rank.market, rank.side);
   if (lockedOdds == null) return { ok: false, reason: "PASS_DK_UNAVAILABLE", detail: "Selected market missing on fresh DK." };
   const lockedLine = lineFor(live.odds, rank.market, rank.side);
+  if (rank.market !== "moneyline" && lockedLine == null) return { ok: false, reason: "PASS_DK_UNAVAILABLE", detail: "Exact line missing" };
+  const opposite = rank.side === "home" ? "away" : rank.side === "away" ? "home" : rank.side === "over" ? "under" : "over";
+  const otherPrice = priceFor(live.odds, rank.market, opposite);
+  if (otherPrice == null) return { ok: false, reason: "PASS_DK_UNAVAILABLE", detail: "Opposing price missing" };
+  const pair = twoWayMarket(lockedOdds, otherPrice);
+  const edge = (rank.probability - pair.noVigA) * 100;
+  if (!Number.isFinite(edge) || edge < input.minEdge) return { ok: false, reason: "PASS_EDGE_DIED", detail: "Fresh two-way edge below threshold" };
+  rank.edgePct = edge;
+  rank.noVigImplied = pair.noVigA;
+  rank.rawImplied = pair.rawA;
   const units = unitsFor(rank.confidence);
   const selection = selectionLabel({
     market: rank.market,
@@ -152,6 +183,10 @@ export function prePostTruthCheck(input: {
     league: live.league,
     marketProbability: rank.noVigImplied ?? null,
     freshness: gameFreshness(live, now),
+    gameStatus: live.status,
+    starters: { home: live.home.starter, away: live.away.starter },
+    rawMarketProbability: rank.rawImplied,
+    sourceFetchedAt: live.fetchedAt,
   });
   if (freeze.llmFacts !== false) return { ok: false, reason: "PASS_DATA_CONFLICT", detail: "LLM facts blocked on freeze." };
   return { ok: true, rank, freeze, units, selection, lockedOdds, lockedLine };

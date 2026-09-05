@@ -23,7 +23,8 @@ export function stamp(source: string, capturedAt: string | null | undefined, max
   if (!capturedAt) return { source, capturedAt: null, ageMinutes: null, freshnessStatus: "missing" };
   const t = new Date(capturedAt).getTime();
   if (!Number.isFinite(t)) return { source, capturedAt, ageMinutes: null, freshnessStatus: "missing" };
-  const age = Math.max(0, now - t);
+  if (t > now) return { source, capturedAt, ageMinutes: null, freshnessStatus: "missing" };
+  const age = now - t;
   return {
     source,
     capturedAt,
@@ -34,7 +35,7 @@ export function stamp(source: string, capturedAt: string | null | undefined, max
 
 export function gameFreshness(game: GameCard, now = Date.now()): Record<string, FieldFreshness> {
   return {
-    schedule: stamp("espn", game.startAt, TTL_MS.schedule, now),
+    schedule: stamp("espn", game.fetchedAt, TTL_MS.schedule, now),
     market: stamp(game.odds.book || game.odds.source, game.odds.capturedAt, TTL_MS.marketOfficial, now),
     starter: stamp("espn-probable", game.home.starter?.name || game.away.starter?.name ? game.fetchedAt ?? null : null, TTL_MS.starter, now),
     injuries: stamp("espn-injury", game.injuriesFetchedAt ?? ((game.injuries?.length ?? 0) > 0 ? game.fetchedAt ?? null : null), TTL_MS.injury, now),

@@ -24,7 +24,7 @@ export function whyBullets(game: GameCard, rank: Pick<RankPick, "side"> & Partia
   const other = otherTeam(game, side);
 
   if (side === "home") bullets.push(`${game.home.name} are playing at home`);
-  if (side === "away") bullets.push(`${game.away.name} still grade as the side despite the road spot`);
+  if (side === "away") bullets.push(`${game.away.name} are playing away at ${game.home.name}`);
   if (side === "over" || side === "under") bullets.push(`lean is ${side} on the total`);
 
   if (picked?.starter?.name) {
@@ -42,13 +42,11 @@ export function whyBullets(game: GameCard, rank: Pick<RankPick, "side"> & Partia
 
   const oppOut = other ? injuryNotes(game, side === "home" ? "away" : "home") : [];
   if (oppOut[0]) {
-    const player = oppOut[0].replace(/\s+(OUT|DOUBTFUL)$/i, "");
-    bullets.push(`opponent is missing ${player}`);
+    bullets.push(`opponent report: ${oppOut[0]}`);
   }
   const ownOut = picked ? injuryNotes(game, side === "away" ? "away" : "home") : [];
   if (ownOut[0] && side !== "over" && side !== "under") {
-    const player = ownOut[0].replace(/\s+(OUT|DOUBTFUL)$/i, "");
-    bullets.push(`${picked?.name ?? "this side"} has ${player} listed out/doubtful`);
+    bullets.push(`${picked?.name ?? "Selected team"} report: ${ownOut[0]}`);
   }
 
   if (game.weather && outdoor(game)) bullets.push(`weather ${game.weather}`);
@@ -61,14 +59,6 @@ export function whyBullets(game: GameCard, rank: Pick<RankPick, "side"> & Partia
     bullets.push(`records ${game.away.record} @ ${game.home.record}`);
   }
 
-  if (bullets.length < 2) {
-    const first = String(rank.why ?? "")
-      .split(/[.;]/)
-      .map((s) => s.trim())
-      .find((s) => s.length > 12);
-    if (first) bullets.push(first);
-  }
-
   const uniq = [...new Set(bullets.map((b) => b.replace(/\s+/g, " ").trim()))].filter(Boolean);
   return uniq.slice(0, 5);
 }
@@ -78,31 +68,11 @@ export function whyWriteup(game: GameCard, rank: Pick<RankPick, "side"> & Partia
   const home = game.home.name;
   const away = game.away.name;
   const bits: string[] = [];
-  const favorite =
-    game.odds?.homeMl != null && game.odds?.awayMl != null
-      ? game.odds.homeMl <= game.odds.awayMl
-        ? "home"
-        : "away"
-      : side === "away"
-        ? "away"
-        : "home";
-
-  if (side === "home") {
-    bits.push(
-      favorite === "home"
-        ? `${home} are favored to win at home against ${away}.`
-        : `${home} get the home spot as an underdog against ${away}.`,
-    );
-  } else if (side === "away") {
-    bits.push(
-      favorite === "away"
-        ? `${away} are favored to win on the road at ${home}.`
-        : `${away} are the road underdog at ${home}, and the number still looks like value.`,
-    );
-  } else if (side === "over" || side === "under") {
-    bits.push(`This is a ${side} on ${away} at ${home}.`);
-  } else {
-    bits.push(`${away} visit ${home}.`);
+  if (side === "home") bits.push(`${home} host ${away}.`);
+  else if (side === "away") bits.push(`${away} visit ${home}.`);
+  else bits.push(`Total ${side}: ${away} at ${home}.`);
+  if (rank.probability != null && rank.noVigImplied != null && rank.edgePct != null) {
+    bits.push(`Model ${(rank.probability * 100).toFixed(1)}% vs market no-vig ${(rank.noVigImplied * 100).toFixed(1)}%: ${rank.edgePct.toFixed(1)} percentage points of estimated edge.`);
   }
 
   const starter = pickedTeam(game, side)?.starter?.name;
@@ -111,7 +81,7 @@ export function whyWriteup(game: GameCard, rank: Pick<RankPick, "side"> & Partia
   const opp = otherTeam(game, side);
   const oppOut = opp ? injuryNotes(game, side === "home" ? "away" : "home") : [];
   if (oppOut[0]) {
-    bits.push(`Opposite side is missing ${oppOut[0].replace(/\s+(OUT|DOUBTFUL)$/i, "")}.`);
+    bits.push(`Opponent report: ${oppOut[0]}.`);
   }
 
   const picked = pickedTeam(game, side);
@@ -120,7 +90,7 @@ export function whyWriteup(game: GameCard, rank: Pick<RankPick, "side"> & Partia
   }
 
   if (game.weather && outdoor(game)) bits.push(`Weather: ${game.weather}.`);
-  else if (!outdoor(game) && (side === "home" || side === "away")) bits.push("Indoor spot, so weather is not a factor.");
+
 
   return bits.join(" ").replace(/\s+/g, " ").trim();
 }

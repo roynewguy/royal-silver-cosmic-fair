@@ -140,7 +140,7 @@ export function resolveManualTicket(input: {
       line,
       price: odds,
     });
-  const needsManualGrade = !canAutoGradeManual({ market: input.market, side: input.side, lockedLine: line, lockedOdds: odds });
+  const needsManualGrade = Boolean(input.selection?.trim()) || !canAutoGradeManual({ market: input.market, side: input.side, lockedLine: line, lockedOdds: odds });
   const away = `${input.game.away.abbr} ${input.game.away.score ?? "—"}`;
   const home = `${input.game.home.abbr} ${input.game.home.score ?? "—"}`;
   return {

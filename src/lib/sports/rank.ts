@@ -1,10 +1,6 @@
 import { isOfficialDay } from "./day.ts";
 import { isPlayableRank } from "./data-quality.ts";
-import { isFreeBetaMode } from "./free-beta.ts";
 import { LEAGUE_BY_ID } from "./leagues.ts";
-import { hasUsableOdds } from "./odds.ts";
-import { isDraftKingsLine } from "./odds-api.ts";
-import { rankGeneric } from "./models/generic.ts";
 import { rankMlb } from "./models/mlb.ts";
 import { rankNba } from "./models/nba.ts";
 import { rankNcaaf } from "./models/ncaaf.ts";
@@ -12,7 +8,7 @@ import { rankNfl } from "./models/nfl.ts";
 import { rankNhl } from "./models/nhl.ts";
 import { rankUfc } from "./models/ufc.ts";
 import { rankWnba } from "./models/wnba.ts";
-import type { GameCard, RankPick, SportScan } from "./types.ts";
+import type { GameCard, RankPick } from "./types.ts";
 
 export function rankGame(game: GameCard): RankPick | null {
   const league = LEAGUE_BY_ID[game.league];
@@ -33,7 +29,7 @@ export function rankGame(game: GameCard): RankPick | null {
     case "ufc":
       return rankUfc(game);
     default:
-      return rankGeneric(game, league);
+      return null;
   }
 }
 
@@ -41,75 +37,6 @@ export function rankGames(games: GameCard[]): GameCard[] {
   return games.map((game) =>
     game.status === "scheduled" ? { ...game, rank: rankGame(game) } : { ...game, rank: game.rank ?? null },
   );
-}
-
-export function bestPerSport(
-  games: GameCard[],
-  minEdge = 3,
-  minConf = 58,
-  now = new Date(),
-): { pick: GameCard; skip: SportScan }[] {
-  const bySport = new Map<string, GameCard[]>();
-  for (const g of games) {
-    const list = bySport.get(g.league) ?? [];
-    list.push(g);
-    bySport.set(g.league, list);
-  }
-  const out: { pick: GameCard; skip: SportScan }[] = [];
-  for (const league of Object.values(LEAGUE_BY_ID)) {
-    const all = bySport.get(league.id) ?? [];
-    if (!league.official) {
-      out.push({
-        pick: all[0] ?? ({ league: league.id, sport: league.sport } as GameCard),
-        skip: {
-          league: league.id,
-          sport: league.sport,
-          active: false,
-          gameCount: all.length,
-          skipped: true,
-          skipReason: "Soccer desk dark until 3-way markets ship.",
-        },
-      });
-      continue;
-    }
-    const slate = all.filter((g) => g.status === "scheduled" && isOfficialDay(g.startAt, now));
-    const playable = slate.filter((g) => isPlayableRank(g.rank, minEdge, minConf));
-    playable.sort((a, b) => (b.rank?.edgePct ?? 0) - (a.rank?.edgePct ?? 0));
-    const top = playable[0];
-    if (!top) {
-      out.push({
-        pick: slate[0] ?? ({ league: league.id, sport: league.sport } as GameCard),
-        skip: {
-          league: league.id,
-          sport: league.sport,
-          active: slate.length > 0,
-          gameCount: slate.length,
-          skipped: true,
-          skipReason:
-            slate.length === 0
-              ? "No games on today's PT card."
-              : !isFreeBetaMode() && slate.every((g) => !isDraftKingsLine(g.odds))
-                ? "PASS: DraftKings line unavailable."
-                : slate.every((g) => !hasUsableOdds(g.odds))
-                  ? "No listed odds — pass."
-                  : "No play meets the edge threshold.",
-        },
-      });
-    } else {
-      out.push({
-        pick: top,
-        skip: {
-          league: league.id,
-          sport: league.sport,
-          active: true,
-          gameCount: slate.length,
-          skipped: false,
-          skipReason: null,
-        },
-      });
-    }
-  }
-  return out;
 }
 
 export function unitsFor(confidence: number): number {
@@ -152,12 +79,12 @@ export function dailyPickTarget(deskMax: number, _env?: NodeJS.ProcessEnv): numb
 }
 
 export function countsTowardDailyCap(status: string): boolean {
-  return status === "queued" || status === "posting" || status === "posted" || status === "graded";
+  return status === "queued" || status === "delivery_unknown" || status === "posting" || status === "posted" || status === "graded";
 }
 
 /** Locked tickets are sacred. Queued stays rotatable until posting starts. */
 export function isLockedOfficialStatus(status: string): boolean {
-  return status === "posting" || status === "posted" || status === "graded";
+  return status === "delivery_unknown" || status === "posting" || status === "posted" || status === "graded";
 }
 
 export const ROTATE_SKIP_REASON = "Rotated off daily card — stronger play ranked higher.";
@@ -233,15 +160,4 @@ export function bestOnSlate(
       return isPlayableRank(g.rank, minEdge, minConf);
     })
     .sort((a, b) => (b.rank?.edgePct ?? 0) - (a.rank?.edgePct ?? 0));
-}
-
-export function takeTopPlays<T extends { skip: { skipped: boolean }; pick: { rank?: { edgePct: number; passReason?: string | null } | null } }>(
-  decisions: T[],
-  maxPicks = 3,
-): { take: T[]; rest: T[] } {
-  const cap = clampDailyPicks(maxPicks);
-  const playable = decisions
-    .filter((d) => !d.skip.skipped && isPlayableRank(d.pick.rank ?? null, 3, 58))
-    .sort((a, b) => (b.pick.rank?.edgePct ?? 0) - (a.pick.rank?.edgePct ?? 0));
-  return { take: playable.slice(0, cap), rest: playable.slice(cap) };
 }

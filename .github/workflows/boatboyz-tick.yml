@@ -12,10 +12,15 @@ on:
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: boatboyz-production-tick
+  cancel-in-progress: false
 jobs:
   tick:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - name: POST /api/cron/tick
         env:
@@ -36,9 +41,8 @@ jobs:
 
           URL="${APP_URL%/}/api/cron/tick"
           echo "Contacting deployed BoatBoyz: ${URL}"
-          echo "Authorization: Bearer *** (CRON_SECRET length ${#CRON_SECRET})"
 
-          code=$(curl -sS -L --max-time 90 -o /tmp/boatboyz-tick.json -w "%{http_code}" \
+          code=$(curl -sS --max-time 310 -o /tmp/boatboyz-tick.json -w "%{http_code}" \
             -X POST "${URL}" \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             -H "Content-Type: application/json" \

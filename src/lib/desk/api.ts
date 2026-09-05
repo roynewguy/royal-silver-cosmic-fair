@@ -1,41 +1,18 @@
+import { recordEvent } from "./telemetry";
+import { isFreshTimestamp } from "./production-policy";
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
 import { buildManualPickMessage, buildOperatorPost, buildTestPreviewMessage, deleteWebhookMessage, discordWebhookOk, postWebhook, resolveWebhook } from "@/lib/sports/discord";
 import type { Market, Side } from "@/lib/sports/types";
 import { canPostGame, manualFreezeJson, NO_INVENTED_LINE, resolveManualTicket } from "@/lib/sports/manual-post";
-import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
+import { changePin, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
 import { alertOwner } from "./alerts";
 import { postPickById, refreshSlate, runTick, sqlLocker } from "./cycle";
 import { sendOnce } from "./post-pipeline";
 import { redactDesk } from "./redact";
-import { addLog, loadGames, loadMeta, pickFromRow, readDesk, writeDeskSettings, writeMaxDailyPicks, writeWebhook } from "./store";
-import { shouldStartInProcessWorker } from "./worker-policy";
+import { addLog, loadGames, loadMeta, pickFromRow, readDesk, writeDeskSettings, writeMaxDailyPicks, writeWebhook, tryWorkerLock, clearWorkerLock } from "./store";
+import { channelWebhook } from "../sports/discord-routing";
 
-const g = globalThis as typeof globalThis & {
-  __boatboyzWorker?: ReturnType<typeof setInterval>;
-  __boatboyzBoot?: ReturnType<typeof setTimeout>;
-};
-
-export function ensureWorkerStarted() {
-  if (typeof setInterval === "undefined") return;
-  if (!shouldStartInProcessWorker()) return;
-  if (g.__boatboyzWorker) return;
-  g.__boatboyzWorker = setInterval(() => {
-    void runTick("interval", { research: false }).catch((err) => {
-      void addLog("scan", `Worker error: ${err instanceof Error ? err.message : String(err)}`);
-    });
-  }, 10 * 60 * 1000);
-  g.__boatboyzBoot = setTimeout(() => {
-    void runTick("boot", { research: true }).catch((err) => {
-      void addLog("scan", `Boot tick failed: ${err instanceof Error ? err.message : String(err)}`);
-    });
-  }, 5000);
-}
-
-export async function tickDesk(source: string, research = true) {
-  ensureWorkerStarted();
-  return runTick(source, { research });
-}
 
 async function deskForClient() {
   const operator = await isOperator();
@@ -44,7 +21,6 @@ async function deskForClient() {
 }
 
 export const getDesk = createServerFn({ method: "GET" }).handler(async () => {
-  ensureWorkerStarted();
   return deskForClient();
 });
 
@@ -99,13 +75,18 @@ export const pushPick = createServerFn({ method: "POST" })
     if (!resolved.url) return { ok: false as const, error: "No Discord webhook configured." };
     if (pick.status === "queued" || pick.status === "posting") {
       const meta = await loadMeta();
-      const result = await postPickById(
+      const lease = await tryWorkerLock();
+      if (!lease) return { ok: false as const, error: "Desk already running. Wait for it to finish." };
+      let result;
+      try {
+      result = await postPickById(
         pick.id,
         await loadGames(),
         meta.minEdgePct,
         meta.minConfidence,
-        { ignoreWindow: true, refresh: true, allowLive: data.allowLive },
+        { ignoreWindow: true, refresh: true, allowLive: data.allowLive, workerToken: lease },
       );
+      } finally { await clearWorkerLock(lease); }
       if (result.pickId !== pick.id) return { ok: false as const, error: "Wrong pick." };
       if (!result.ok) return { ok: false as const, error: result.error ?? "Post failed." };
       if (!result.posted) return { ok: false as const, error: result.error ?? "Pick was not posted." };
@@ -127,7 +108,7 @@ export const postTestPreview = createServerFn({ method: "POST" })
     if (game.status === "final" || game.status === "cancelled" || game.status === "postponed") {
       return { ok: false as const, error: `This game is ${game.status} and cannot be previewed.` };
     }
-    const hook = resolveWebhook(await (await import("./store")).readWebhook()).url;
+    const hook = channelWebhook("test", await (await import("./store")).readWebhook());
     if (!hook) return { ok: false as const, error: "No Discord webhook configured." };
     const result = await postWebhook(hook, buildTestPreviewMessage(game));
     if (!result.ok) return { ok: false as const, error: result.error ?? "Test post failed." };
@@ -163,7 +144,8 @@ export const postManualPick = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const gate = await requireOperator();
     if (!gate.ok) return { ok: false as const, error: gate.error };
-    const requestId = data.requestId || crypto.randomUUID();
+    const requestId = data.requestId;
+    if (!/^[a-zA-Z0-9-]{16,100}$/.test(requestId)) return { ok: false as const, error: "Missing request identity. Reopen the posting form." };
     if (!["spread", "moneyline", "total"].includes(data.market)) {
       return { ok: false as const, error: "Choose a valid market." };
     }
@@ -171,12 +153,9 @@ export const postManualPick = createServerFn({ method: "POST" })
       return { ok: false as const, error: "Choose a valid side." };
     }
 
-    const games = await loadGames();
-    let game = games.find((item) => item.id === data.gameId);
-    if (!game) {
-      const fresh = await refreshSlate();
-      game = fresh.find((item) => item.id === data.gameId);
-    }
+    const games = await refreshSlate();
+    const game = games.find((item) => item.id === data.gameId);
+    if (game && !isFreshTimestamp(game.fetchedAt, 2 * 60_000)) return { ok: false as const, error: "Fresh game status unavailable. Try again after a successful scan." };
     if (!game) return { ok: false as const, error: "Game not found. Scan odds and try again." };
     if (!canPostGame(game)) {
       return { ok: false as const, error: `This game is ${game.status} and cannot be posted.` };
@@ -198,7 +177,7 @@ export const postManualPick = createServerFn({ method: "POST" })
       return { ok: false as const, error: err instanceof Error ? err.message : NO_INVENTED_LINE };
     }
 
-    const hook = resolveWebhook(await (await import("./store")).readWebhook()).url;
+    const hook = channelWebhook("manual", await (await import("./store")).readWebhook());
     if (!hook) return { ok: false as const, error: "No Discord webhook configured." };
 
     const matchup = `${game.away.name} @ ${game.home.name}`;
@@ -210,7 +189,7 @@ export const postManualPick = createServerFn({ method: "POST" })
     if (existing[0]?.status === "posted") {
       return { ok: true as const, state: await deskForClient(), duplicate: true };
     }
-    if (existing[0]?.status === "posting" || existing[0]?.status === "skipped") {
+    if (existing[0]?.status === "posting" || existing[0]?.status === "skipped" || existing[0]?.status === "delivery_unknown") {
       return { ok: false as const, error: "This pick was already sent or is uncertain — not retried." };
     }
 
@@ -239,7 +218,7 @@ export const postManualPick = createServerFn({ method: "POST" })
       } catch {
         const again = await sql<{ id: number; status: string }>`select id, status from picks where manual_post_id = ${requestId} limit 1`;
         if (again[0]?.status === "posted") return { ok: true as const, state: await deskForClient(), duplicate: true };
-        if (again[0]?.status === "posting" || again[0]?.status === "skipped") {
+        if (again[0]?.status === "posting" || again[0]?.status === "skipped" || again[0]?.status === "delivery_unknown") {
           return { ok: false as const, error: "This pick was already sent or is uncertain — not retried." };
         }
         id = again[0]?.id;
@@ -283,19 +262,20 @@ export const postManualPick = createServerFn({ method: "POST" })
     if (result.uncertain || (result.sent && result.status !== "posted")) {
       await sql`
         update picks
-        set status = 'skipped', skip_reason = ${"Discord send uncertain — not retried."},
+        set status = 'delivery_unknown', skip_reason = ${"DELIVERY_UNKNOWN"},
             posting_at = null, posting_started_at = null, posting_token = null
         where id = ${id} and status = 'posting' and discord_message_id is null
       `;
       await addLog("post", `Discord send uncertain, not retried · ${ticket.selection}`, game.sport);
-      void alertOwner("DISCORD_FAIL", result.error ?? "timeout after send");
+      await alertOwner("DISCORD_FAIL", result.error ?? "timeout after send");
       return { ok: false as const, error: result.error ?? "Discord send uncertain — not retried." };
     }
     if (!result.sent) {
       await addLog("post", `Discord failed, still queued: ${result.error ?? "send failed"}`, game.sport);
-      void alertOwner("DISCORD_FAIL", result.error ?? "send failed");
+      await alertOwner("DISCORD_FAIL", result.error ?? "send failed");
       return { ok: false as const, error: result.error ?? "Discord post failed." };
     }
+    await recordEvent("discord_manual_success");
     await addLog("post", `Posted · ${ticket.selection} · ${game.sport}`, game.sport);
     return { ok: true as const, state: await deskForClient() };
   });
@@ -309,10 +289,11 @@ export const sendDiscordNote = createServerFn({ method: "POST" })
     if (!gate.ok) return { ok: false as const, error: gate.error };
     const message = buildOperatorPost(data.message);
     if (!message) return { ok: false as const, error: "Type a message first." };
-    const hook = resolveWebhook(await (await import("./store")).readWebhook()).url;
+    const hook = channelWebhook("test", await (await import("./store")).readWebhook());
     if (!hook) return { ok: false as const, error: "No Discord webhook configured." };
     const sent = await postWebhook(hook, message);
     if (!sent.ok) return { ok: false as const, error: sent.error ?? "Discord post failed." };
+    await recordEvent("discord_test_success");
     await addLog("post", `Operator Discord post sent (${message.length} chars).`);
     return { ok: true as const, state: await deskForClient() };
   });
@@ -324,12 +305,12 @@ export const deleteDiscordPost = createServerFn({ method: "POST" })
     if (!gate.ok) return { ok: false as const, error: gate.error };
     const sql = await getSql();
     const rows = await sql<{ id: number; sport: string; selection: string; discord_message_id: string | null }>`
-      select id, sport, selection, discord_message_id from picks where id = ${data.pickId} and status = 'posted'
+      select id, sport, selection, discord_message_id from picks where id = ${data.pickId} and status = 'posted' and coalesce(pick_source, 'auto') <> 'auto'
     `;
     const pick = rows[0];
     if (!pick) return { ok: false as const, error: "Posted pick not found." };
     if (!pick.discord_message_id) return { ok: false as const, error: "This pick has no Discord message to delete." };
-    const resolved = resolveWebhook(await (await import("./store")).readWebhook());
+    const resolved = { url: channelWebhook("manual", await (await import("./store")).readWebhook()) };
     if (!resolved.url) return { ok: false as const, error: "No Discord webhook configured." };
     const result = await deleteWebhookMessage(resolved.url, pick.discord_message_id);
     if (!result.ok) return { ok: false as const, error: result.error ?? "Discord delete failed." };
@@ -346,7 +327,7 @@ export const saveWebhook = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const gate = await requireOperator();
     if (!gate.ok) return { ok: false as const, error: gate.error };
-    if (process.env.DISCORD_WEBHOOK_URL?.trim()) {
+    if (process.env.DISCORD_PICKS_WEBHOOK?.trim() || process.env.DISCORD_WEBHOOK_URL?.trim()) {
       return { ok: false as const, error: "Webhook is set via DISCORD_WEBHOOK_URL. Leave GitHub out of it." };
     }
     if (data.webhookUrl && !discordWebhookOk(data.webhookUrl)) {
@@ -420,4 +401,43 @@ export const replayPaperDay = createServerFn({ method: "POST" })
     return { ok: true as const, report };
   });
 
-export { cronAuthorized, refreshSlate };
+
+
+/** Audited settlement only for tickets the automatic grader explicitly referred for review. */
+export const settleReviewedPick = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const x = input as { pickId?: number; result?: string; evidence?: string };
+    return { pickId: Number(x.pickId), result: String(x.result ?? ""), evidence: String(x.evidence ?? "").trim().slice(0, 1000) };
+  })
+  .handler(async ({ data }) => {
+    const gate = await requireOperator();
+    if (!gate.ok) return { ok: false, error: gate.error };
+    if (!["WIN", "LOSS", "PUSH", "VOID"].includes(data.result) || data.evidence.length < 20)
+      return { ok: false, error: "Choose a result and include the verified settlement source and reason (at least 20 characters)." };
+    const lease = await tryWorkerLock();
+    if (!lease) return { ok: false, error: "Worker is running. Try again shortly." };
+    try {
+      const sql = await getSql();
+      const rows = await sql`select * from picks where id = ${data.pickId} and status = 'posted' and needs_manual_grade = true and result is null`;
+      if (!rows[0]) return { ok: false, error: "Only pending tickets marked NEEDS_MANUAL_GRADE may be settled here." };
+      const pick = pickFromRow(rows[0] as never);
+      if (data.result !== "VOID") {
+        const games = await refreshSlate();
+        const game = games.find(g => g.id === pick.gameId);
+        const { gradeTruth } = await import("../sports/truth-gate");
+        if (!game || !gradeTruth(pick, game).ok) return { ok: false, error: "A verified final event and score are required." };
+      }
+      const { settle } = await import("../sports/grade");
+      const result = data.result as import("../sports/types").PickResult;
+      const { profit } = settle(pick, result);
+      const updated = await sql<{id:number}>`update picks set status = 'graded', result = ${result}, profit_units = ${profit}, graded_at = now(),
+        settlement_evidence = ${data.evidence}, result_message = ${`REVIEWED ${result} · ${pick.selection} · ${profit.toFixed(2)}U`},
+        result_delivery = ${pick.ledger === 'paper' ? null : 'queued'}
+        where id = ${pick.id} and status = 'posted' and result is null returning id`;
+      if (!updated.length) return { ok: false, error: "Ticket already settled." };
+      await recordEvent("grade_success", "Operator-reviewed settlement");
+      const { flushResultRecaps } = await import("./result-delivery");
+      await flushResultRecaps();
+      return { ok: true };
+    } finally { await clearWorkerLock(lease); }
+  });

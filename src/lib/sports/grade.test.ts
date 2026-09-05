@@ -126,11 +126,11 @@ test("NFL moneyline tie is a push", () => {
 });
 
 test("postponed game voids the ticket", () => {
-  assert.equal(gradePick(pick(), game({ status: "postponed" })), "VOID");
+  assert.equal(gradePick(pick(), game({ status: "postponed" })), null);
 });
 
 test("cancelled game voids the ticket", () => {
-  assert.equal(gradePick(pick(), game({ status: "cancelled" })), "VOID");
+  assert.equal(gradePick(pick(), game({ status: "cancelled" })), null);
 });
 
 test("in-progress does not grade", () => {

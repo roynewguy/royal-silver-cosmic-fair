@@ -6,7 +6,7 @@ import type { DeskState, PickRow } from "@/lib/sports/types";
 
 test("queued never grades; posted can grade", () => {
   assert.equal(gradeDisposition("queued", true, "scheduled"), "skip-unposted");
-  assert.equal(gradeDisposition("posting", true, "in_progress"), "skip-unposted");
+  assert.equal(gradeDisposition("posting", true, "in_progress"), "wait");
   assert.equal(gradeDisposition("posted", true, "final"), "grade");
   assert.equal(gradeDisposition("queued", false, "scheduled"), "wait");
 });
@@ -18,7 +18,7 @@ test("posting claim is exclusive", () => {
   assert.equal(applyPostEvent("posting", "success"), "posted");
   assert.equal(applyPostEvent("posting", "fail"), "queued");
   assert.equal(applyPostEvent("queued", "fail"), null);
-  assert.equal(applyPostEvent("posting", "stale"), "skipped");
+  assert.equal(applyPostEvent("posting", "stale"), "delivery_unknown");
 });
 
 test("non-operators cannot see queued picks, ranks, or logs", () => {

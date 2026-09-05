@@ -9,7 +9,7 @@ import { buildManualPickMessage, buildTestPreviewMessage } from "@/lib/sports/di
 import { canPostGame, NO_INVENTED_LINE, resolveManualTicket } from "@/lib/sports/manual-post";
 import { DiscordComposer } from "@/components/desk/discord-composer";
 import { formatKick } from "@/lib/utils";
-import { replayPaperDay } from "@/lib/desk/api";
+import { replayPaperDay, settleReviewedPick } from "@/lib/desk/api";
 import type { CalibrationReport, GameCard, Market, PickRow, Side } from "@/lib/sports/types";
 
 export function AdvancedBoard() {
@@ -49,6 +49,12 @@ export function AdvancedBoard() {
         <p className="mt-2 max-w-xl text-sm text-muted">Technical controls. Normal days live on Home.</p>
       </div>
 
+      {desk.data.preflight ? <section className="space-y-3">
+        <h2 className="font-display text-xl">Launch readiness / Preflight</h2>
+        <p className="text-sm text-muted">Paper: {desk.data.preflight.paper ? "ON" : "OFF"}. Missing evidence stays unverified. Counts begin when audit logging is deployed.</p>
+        <div className="grid gap-2 sm:grid-cols-2">{desk.data.preflight.checks.map(c => <div key={c.name} className="rounded-lg bg-surface p-3"><p>{c.name} · <strong>{c.status}</strong></p><p className="text-xs text-muted">{c.detail}</p></div>)}</div>
+        <details><summary>Last 24 hours</summary><dl className="grid gap-2 sm:grid-cols-3">{Object.entries(desk.data.preflight.counts).map(([name, count]) => <div key={name} className="p-2"><dt>{name.replaceAll("_", " ")}</dt><dd>{count}</dd></div>)}</dl></details>
+      </section> : null}
       <section className="space-y-3">
         <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">Automation settings</h2>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -75,6 +81,7 @@ export function AdvancedBoard() {
         </Button>
       </section>
 
+
       <section className="space-y-3">
         <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">Manual tools</h2>
         <div className="flex flex-wrap gap-2">
@@ -91,7 +98,9 @@ export function AdvancedBoard() {
           </Button>
         </div>
         <ManualPick games={manualGames} />
+        <SettlementReview picks={desk.data.picks.filter(p => p.status === "posted" && p.needsManualGrade)} />
       </section>
+
 
       <section className="space-y-3">
         <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">Paper / replay</h2>
@@ -103,6 +112,7 @@ export function AdvancedBoard() {
         ) : null}
         <ReplayBox />
       </section>
+
 
       <section className="space-y-3">
         <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">Discord</h2>
@@ -213,6 +223,7 @@ export function AdvancedBoard() {
       </section>
 
       {desk.data.calibration ? <CalibrationPanel report={desk.data.calibration} /> : null}
+
 
       <section className="space-y-3">
         <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">Logs</h2>
@@ -501,4 +512,29 @@ function ReplayBox() {
       {note ? <p className="text-xs text-muted">{note}</p> : null}
     </form>
   );
+}
+
+function SettlementReview({ picks }: { picks: PickRow[] }) {
+  const [id, setId] = useState("");
+  const [result, setResult] = useState("VOID");
+  const [evidence, setEvidence] = useState("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!picks.length) return null;
+  return <section className="space-y-2">
+    <h3>Settlement review</h3>
+    <p className="text-sm text-muted">Use verified sportsbook settlement information. Recorded results cannot be rewritten.</p>
+    <select aria-label="Ticket to settle" value={id} onChange={e => setId(e.target.value)} className="w-full bg-surface p-2">
+      <option value="">Choose a ticket</option>{picks.map(p => <option key={p.id} value={p.id}>{p.selection} · {p.matchup}</option>)}
+    </select>
+    <select aria-label="Verified result" value={result} onChange={e => setResult(e.target.value)} className="bg-surface p-2">{["VOID","WIN","LOSS","PUSH"].map(r => <option key={r}>{r}</option>)}</select>
+    <Input aria-label="Settlement evidence" placeholder="Verified source, settlement time and reason" value={evidence} onChange={e => setEvidence(e.target.value)} />
+    <Button disabled={!id || busy || evidence.trim().length < 20} onClick={async () => {
+      setBusy(true);
+      try { const res = await settleReviewedPick({data:{pickId:Number(id),result,evidence}}); setMessage(res.ok ? "Settlement recorded. The record refreshes automatically." : res.error ?? "Settlement failed."); }
+      catch { setMessage("Settlement status unavailable. Refresh before trying again."); }
+      finally { setBusy(false); }
+    }}>Record verified settlement</Button>
+    <p role="status">{message}</p>
+  </section>;
 }

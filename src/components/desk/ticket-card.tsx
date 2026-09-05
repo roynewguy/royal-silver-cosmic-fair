@@ -17,7 +17,8 @@ export function TicketCard({ pick, game, operator = false }: { pick: PickRow; ga
   const label = ticketLabel(pick);
   const locked = label === "official" || label === "win" || label === "loss" || label === "push" || label === "void";
   const rank = game?.rank;
-  const prob = Math.round((pick.modelProbability ?? rank?.probability ?? pick.confidence / 100) * 100);
+  const probability = pick.modelProbability ?? (!locked ? rank?.probability : null);
+  const prob = probability == null ? "—" : Math.round(probability * 100);
   const noVig = rank?.noVigImplied;
   const dq = rank?.dataQuality;
   return (

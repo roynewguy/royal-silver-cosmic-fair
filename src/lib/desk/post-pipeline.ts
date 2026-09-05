@@ -3,7 +3,7 @@ import type { PickStatus } from "@/lib/sports/types";
 
 export const STALE_POSTING_MS = 4 * 60 * 1000;
 
-export type DiscordSend = () => Promise<{ ok: boolean; id?: string; error?: string }>;
+export type DiscordSend = () => Promise<{ ok: boolean; id?: string; error?: string; uncertain?: boolean }>;
 
 export type CompletePayload = {
   freezeJson: string;
@@ -27,6 +27,8 @@ export type CompletePayload = {
 
 export type ClaimStore = {
   claim: (id: number) => Promise<string | null>;
+  prepare: (id: number, token: string, payload: Omit<CompletePayload, "discordMessageId">) => Promise<boolean>;
+  unknown: (id: number, token: string) => Promise<void>;
   release: (id: number, token: string) => Promise<void>;
   complete: (id: number, token: string, payload: CompletePayload) => Promise<boolean>;
   status: (id: number) => Promise<PickStatus | null>;
@@ -69,7 +71,9 @@ export async function sendOnce(
     return { sent: false, claimed: false, status: await store.status(pickId) };
   }
   try {
+    if (!await store.prepare(pickId, token, payload)) throw new Error("Ticket could not be frozen before send");
     const res = await send();
+    if (res.uncertain) throw new Error(res.error ?? "DELIVERY_UNKNOWN");
     if (!res.ok) {
       await store.release(pickId, token);
       return { sent: false, claimed: true, status: "queued", error: res.error };
@@ -79,20 +83,23 @@ export async function sendOnce(
       discordMessageId: res.id ?? null,
     });
     if (!ok) {
+      await store.unknown(pickId, token);
       return {
         sent: true,
         claimed: true,
+        uncertain: true,
         status: await store.status(pickId),
-        error: "Could not freeze after Discord.",
+        error: "Discord acknowledgement could not be stored; do not resend.",
       };
     }
     return { sent: true, claimed: true, status: "posted" };
   } catch (err) {
+    try { await store.unknown(pickId, token); } catch { /* durable posting claim still prevents resend */ }
     return {
       sent: false,
       claimed: true,
       uncertain: true,
-      status: "posting",
+      status: "delivery_unknown",
       error: err instanceof Error ? err.message : "Discord send timed out.",
     };
   }
@@ -147,7 +154,7 @@ export function createMemoryLocker(
           if (row.discordId) {
             row.status = "posted";
           } else {
-            row.status = "skipped";
+            row.status = "delivery_unknown";
           }
           row.token = null;
           row.postingStartedAt = null;
@@ -165,11 +172,22 @@ export function createMemoryLocker(
         row.postingStartedAt = Date.now();
         return row.token;
       }),
+    prepare: (id, token, payload) => withGate(() => {
+      const row = rows.get(id);
+      if (!row || row.status !== "posting" || row.token !== token) return false;
+      row.freezeJson = payload.freezeJson;
+      return true;
+    }),
+    unknown: (id, token) => withGate(() => {
+      const row = rows.get(id);
+      if (row?.status === "posting" && row.token === token) row.status = "delivery_unknown";
+    }),
     release: (id, token) =>
       withGate(() => {
         const row = rows.get(id);
-        if (row && row.status === "posting" && !row.freezeJson && row.token === token) {
+        if (row && row.status === "posting" && row.token === token) {
           row.status = "queued";
+          row.freezeJson = null;
           row.token = null;
           row.postingStartedAt = null;
         }
@@ -177,7 +195,7 @@ export function createMemoryLocker(
     complete: (id, token, payload) =>
       withGate(() => {
         const row = rows.get(id);
-        if (!row || row.status !== "posting" || row.freezeJson || row.token !== token) return false;
+        if (!row || row.status !== "posting" || row.token !== token) return false;
         row.status = "posted";
         row.freezeJson = payload.freezeJson;
         row.discordId = payload.discordMessageId;

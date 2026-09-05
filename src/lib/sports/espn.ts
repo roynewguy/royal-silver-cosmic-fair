@@ -69,15 +69,15 @@ type EspnEvent = {
 export const INJURY_CACHE_MS = 60 * 60_000;
 
 function mapStatus(raw?: string, state?: string, completed?: boolean): GameStatus {
-  if (completed || state === "post") return "final";
+
   const s = `${raw ?? ""} ${state ?? ""}`.toLowerCase();
   if (s.includes("postpone")) return "postponed";
   if (s.includes("cancel")) return "cancelled";
   if (s.includes("suspend")) return "suspended";
   if (s.includes("delay")) return "delayed";
-  if (s.includes("final") || s.includes("complete") || s.includes("status_final")) return "final";
+  if (completed === true || s.includes("final") || s.includes("complete") || s.includes("status_final")) return "final";
   if (s.includes("in_progress") || s.includes("in-progress") || s.includes("halftime") || s.includes("end_of") || state === "in") return "in_progress";
-  return "scheduled";
+  return state === "pre" || /scheduled/.test(s) ? "scheduled" : "delayed";
 }
 
 function pickEspnOdds(list?: EspnOdds[]): EspnOdds | undefined {
@@ -144,6 +144,8 @@ function splitOf(comp: EspnCompetitor | undefined, type: string): string | null 
 function starterFrom(comp: EspnCompetitor | undefined): Starter | null {
   const p = comp?.probables?.[0];
   if (!p) return null;
+  const name = p.displayName ?? p.athlete?.displayName;
+  if (!name || /^(TBD|unknown|TBA)$/i.test(name)) return null;
   const stats = p.statistics ?? [];
   const num = (names: string[]) => {
     const hit = stats.find((s) => names.includes((s.name ?? s.abbreviation ?? "").toLowerCase()));
@@ -152,7 +154,7 @@ function starterFrom(comp: EspnCompetitor | undefined): Starter | null {
     return Number.isFinite(n) ? n : null;
   };
   return {
-    name: p.displayName ?? p.athlete?.displayName ?? "TBD",
+    name,
     era: num(["era", "earned run average"]),
     whip: num(["whip"]),
     savePct: num(["savepercentage", "sv%", "svpct", "save pct"]),
@@ -243,11 +245,11 @@ function eventToGames(event: EspnEvent, league: LeagueConfig, fetchedAt: string)
     const competitors = comp.competitors ?? [];
     const home = competitors.find((c) => c.homeAway === "home") ?? competitors[1];
     const away = competitors.find((c) => c.homeAway === "away") ?? competitors[0];
-    if (!home && !away) continue;
+    if (!home || !away) continue;
     const espnId = String(comp.id ?? event.id ?? "");
     if (!espnId) continue;
     const startAt = comp.date ?? event.date;
-    if (!startAt) continue;
+    if (!startAt || !Number.isFinite(Date.parse(startAt))) continue;
     const status = mapStatus(
       comp.status?.type?.name ?? event.status?.type?.name,
       comp.status?.type?.state ?? event.status?.type?.state,
@@ -272,6 +274,9 @@ function eventToGames(event: EspnEvent, league: LeagueConfig, fetchedAt: string)
       period: comp.status?.period ?? event.status?.period ?? null,
       shortDetail: comp.status?.type?.shortDetail ?? event.status?.type?.shortDetail ?? null,
       fetchedAt,
+      injuriesFetchedAt: Array.isArray(home.injuries) && Array.isArray(away.injuries) ? fetchedAt : null,
+      startersFetchedAt: Array.isArray(home.probables) && Array.isArray(away.probables) ? fetchedAt : null,
+      weatherFetchedAt: comp.weather ? fetchedAt : null,
     });
   }
   return cards;
@@ -353,7 +358,7 @@ async function poolMap<T, R>(items: T[], limit: number, fn: (item: T) => Promise
 }
 
 export function scoreboardUrl(league: LeagueConfig, dateKey: string): string {
-  return `https://site.api.espn.com/apis/site/v2/sports/${league.espnSport}/${league.espnLeague}/scoreboard?dates=${dateKey}`;
+  return `https://site.api.espn.com/apis/site/v2/sports/${league.espnSport}/${league.espnLeague}/scoreboard?dates=${dateKey}&limit=1000`;
 }
 
 export function urlsFor(league: LeagueConfig, now = new Date()): string[] {
@@ -361,11 +366,12 @@ export function urlsFor(league: LeagueConfig, now = new Date()): string[] {
 }
 
 export function espnScoreboardUrlCount(now = new Date()): number {
-  return LEAGUES.filter((l) => l.official).reduce((n, l) => n + urlsFor(l, now).length, 0);
+  return LEAGUES.reduce((n, l) => n + urlsFor(l, now).length, 0);
 }
 
 function absorb(payload: unknown, league: LeagueConfig, byId: Map<string, GameCard>, fetchedAt = new Date().toISOString()) {
-  const events = (payload as { events?: EspnEvent[] })?.events ?? [];
+  const events = (payload as { events?: EspnEvent[] })?.events;
+  if (!Array.isArray(events)) { scanStats.errors.push(`${league.id}: scoreboard schema unavailable`); return; }
   for (const event of events) {
     for (const game of eventToGames(event, league, fetchedAt)) {
       byId.set(game.id, game);
@@ -395,7 +401,7 @@ export async function fetchLeagueSlate(league: LeagueConfig, now = new Date()): 
 }
 
 export async function fetchAllSlates(now = new Date()): Promise<GameCard[]> {
-  const leagues = LEAGUES.filter((l) => l.official);
+  const leagues = LEAGUES;
   const settled = await poolMap(leagues, 6, (l) => fetchLeagueSlate(l, now));
   const games: GameCard[] = [];
   settled.forEach((result) => {
@@ -430,10 +436,11 @@ async function fetchInjuryBoard(league: LeagueConfig): Promise<{ rows: BoardInj[
         }[];
       }[];
     };
+    if (!Array.isArray(payload.teams)) { scanStats.errors.push(`${league.id}: injury schema unavailable`); return null; } // Unavailable, not empty.
     const rows: BoardInj[] = [];
     for (const team of payload.teams ?? []) {
       const abbr = team.team?.abbreviation;
-      if (!abbr) continue;
+      if (!abbr || !Array.isArray(team.injuries)) return null;
       for (const inj of team.injuries ?? []) {
         if (!inj.athlete?.displayName) continue;
         rows.push({

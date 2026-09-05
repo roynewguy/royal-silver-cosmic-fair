@@ -39,10 +39,10 @@ test("operator board always loads tomorrow even on an empty weekly day", () => {
 test("normal tick scoreboard plan includes tomorrow without exploding", () => {
   const now = new Date("2026-09-04T19:00:00-07:00");
   const official = LEAGUES.filter((l) => l.official).length;
-  assert.equal(official, 8);
+  assert.equal(official, 7);
   const count = espnScoreboardUrlCount(now);
-  assert.equal(count, 27);
-  assert.ok(count < 32);
+  assert.equal(count, 33);
+  assert.ok(count < 40);
   assert.equal(INJURY_CACHE_MS, 60 * 60_000);
 });
 

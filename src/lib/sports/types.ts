@@ -23,7 +23,7 @@ export type Market = "spread" | "moneyline" | "total";
 
 export type Side = "home" | "away" | "over" | "under";
 
-export type PickStatus = "queued" | "posting" | "posted" | "skipped" | "graded";
+export type PickStatus = "queued" | "posting" | "posted" | "skipped" | "graded" | "delivery_unknown";
 
 export type PickResult = "WIN" | "LOSS" | "PUSH" | "VOID";
 
@@ -42,6 +42,9 @@ export type OddsSnapshot = {
   openHomeSpread: number | null;
   openTotal: number | null;
   openHomeMl: number | null;
+  eventId?: string | null;
+  eventStartAt?: string | null;
+  sportKey?: string | null;
   source: "odds-api" | "espn" | "unknown";
   capturedAt: string | null;
 };
@@ -139,6 +142,8 @@ export type GameCard = {
   shortDetail?: string | null;
   fetchedAt?: string | null;
   injuriesFetchedAt?: string | null;
+  startersFetchedAt?: string | null;
+  weatherFetchedAt?: string | null;
 };
 
 export type SportScan = {
@@ -203,6 +208,7 @@ export type PickRow = {
 };
 
 export type DeskRecord = {
+  riskedUnits?: number;
   wins: number;
   losses: number;
   pushes: number;
@@ -308,6 +314,8 @@ export type DeskState = {
     } | null;
     audit?: string[];
   } | null;
+  preflight?: import("../desk/preflight").Preflight | null;
+  livePosting?: boolean;
   paperMode?: boolean;
   paperRecord?: DeskRecord | null;
 };

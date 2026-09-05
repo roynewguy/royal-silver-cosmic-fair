@@ -14,7 +14,7 @@ export function RecordBoard() {
   const [sport, setSport] = useState("ALL");
   const [result, setResult] = useState<"ALL" | PickResult>("ALL");
   const [source, setSource] = useState<"ALL" | "AUTO" | "PLAYS" | "LIVE">("AUTO");
-  const pool = desk.data.picks.filter((p) => p.status === "posted" || p.status === "graded");
+  const pool = desk.data.picks.filter((p) => p.ledger !== "paper" && (p.status === "posted" || p.status === "graded"));
   const official = pool.filter((p) => {
     if (source === "AUTO") return Boolean(p.officialKey) && p.pickSource !== "manual" && p.pickSource !== "manual_live";
     if (source === "PLAYS") return p.pickSource === "manual";
@@ -25,7 +25,8 @@ export function RecordBoard() {
   const graded = official.filter((p) => p.result);
   const decided = graded.filter((p) => p.result === "WIN" || p.result === "LOSS");
   const risked = decided.reduce((s, p) => s + p.units, 0);
-  const roi = risked ? desk.data.record.units / risked : 0;
+  const totalUnits = graded.reduce((s,p) => s + (p.profitUnits ?? 0), 0);
+  const roi = risked ? totalUnits / risked : 0;
   const clvs = graded.map((p) => p.clv).filter((n): n is number => n != null);
   const avgClv = clvs.length ? clvs.reduce((a, b) => a + b, 0) / clvs.length : null;
 
@@ -55,8 +56,8 @@ export function RecordBoard() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-4">
-        <Stat label="Overall" value={`${desk.data.record.wins}-${desk.data.record.losses}-${desk.data.record.pushes}`} />
-        <Stat label="Units" value={formatUnits(desk.data.record.units)} hot={desk.data.record.units} />
+        <Stat label="Overall" value={`${graded.filter(p => p.result === "WIN").length}-${graded.filter(p => p.result === "LOSS").length}-${graded.filter(p => p.result === "PUSH").length}`} />
+        <Stat label="Units" value={formatUnits(totalUnits)} hot={totalUnits} />
         <Stat label="ROI" value={risked ? `${(roi * 100).toFixed(1)}%` : "—"} hot={roi} />
         <Stat label="Avg CLV" value={avgClv == null ? "—" : `${avgClv >= 0 ? "+" : ""}${(avgClv * 100).toFixed(1)}%`} />
       </div>

@@ -301,7 +301,7 @@ test("manual Discord writeup matches the pick card and never labels operator ent
   assert.match(msg, /BOATBOYZ PLAY/);
   assert.match(msg, /DET ML/);
   assert.match(msg, /WHY BOATBOYZ LIKES IT/);
-  assert.match(msg, /favored to win on the road/);
+  assert.match(msg, /Detroit Tigers visit Cleveland Guardians/);
   assert.match(msg, /Skubal|playing at home|road/i);
   assert.doesNotMatch(msg, /operator/i);
   assert.doesNotMatch(msg, /manual/i);
@@ -315,6 +315,7 @@ test("double tap uses the same request id so only one unique manual_post_id exis
 
 test("manual live spread stores the exact line and grades from it, not a later board line", () => {
   const pick = {
+    gameId: "nba:1",
     market: "spread",
     side: "home",
     lockedLine: 4.5,

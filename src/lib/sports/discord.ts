@@ -1,5 +1,5 @@
+import { channelWebhook } from "./discord-routing.ts";
 import { formatAmerican, formatKick, formatUnits } from "../utils.ts";
-import { impliedFromAmerican } from "./odds.ts";
 import { parseWhy, previewNotes, defaultPlayReason } from "./why.ts";
 import type { DeskRecord, GameCard, PickResult, PickRow } from "./types.ts";
 
@@ -16,11 +16,8 @@ export function discordWebhookOk(url: string): boolean {
 }
 
 export function resolveWebhook(stored?: string | null): { url: string; source: "env" | "desk" | "none" } {
-  const env = process.env.DISCORD_WEBHOOK_URL?.trim() ?? "";
-  if (discordWebhookOk(env)) return { url: env, source: "env" };
-  const desk = stored?.trim() ?? "";
-  if (discordWebhookOk(desk)) return { url: desk, source: "desk" };
-  return { url: "", source: "none" };
+  const url = channelWebhook("picks", stored ?? "");
+  return { url, source: !url ? "none" : process.env.DISCORD_PICKS_WEBHOOK || process.env.DISCORD_WEBHOOK_URL ? "env" : "desk" };
 }
 
 function waitUrl(url: string) {
@@ -29,53 +26,22 @@ function waitUrl(url: string) {
   return u.toString();
 }
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-export async function postWebhook(
-  url: string,
-  content: string,
-): Promise<{ ok: boolean; id?: string; error?: string }> {
-  if (!discordWebhookOk(url)) return { ok: false, error: "Webhook URL is not a Discord webhook." };
-
-  let last = "Discord failed";
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      const res = await fetch(waitUrl(url), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(12_000),
-        body: JSON.stringify({
-          username: "Boat Boyz Picks",
-          content: content.slice(0, 1900),
-          allowed_mentions: { parse: [] },
-          flags: 4,
-        }),
-      });
-      if (res.status === 429) {
-        const retry = Number(res.headers.get("retry-after") ?? "1");
-        last = "Discord 429";
-        await sleep(Math.min(8_000, Math.max(400, retry * 1000)) * (attempt + 1));
-        continue;
-      }
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        last = `Discord ${res.status}${text ? `: ${text.slice(0, 120)}` : ""}`;
-        if (res.status >= 500) {
-          await sleep(400 * 2 ** attempt);
-          continue;
-        }
-        return { ok: false, error: last };
-      }
-      const body = (await res.json().catch(() => ({}))) as { id?: string };
-      return { ok: true, id: body.id };
-    } catch (err) {
-      last = err instanceof Error ? err.message : "Discord timeout";
-      await sleep(400 * 2 ** attempt);
-    }
+export async function postWebhook(url: string, content: string): Promise<{ ok: boolean; id?: string; error?: string; uncertain?: boolean }> {
+  if (!discordWebhookOk(url)) return { ok: false, error: "Invalid Discord webhook." };
+  try {
+    const res = await fetch(waitUrl(url), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(12_000),
+      body: JSON.stringify({ username: "BoatBoyz", content: content.slice(0, 1900), allowed_mentions: { parse: [] }, flags: 4 }),
+    });
+    // 5xx/transport failures may occur AFTER Discord accepted the message.
+    if (!res.ok) return { ok: false, uncertain: res.status >= 500, error: `Discord HTTP ${res.status}` };
+    const body = await res.json() as { id?: string };
+    if (!body.id) return { ok: false, uncertain: true, error: "Discord confirmation missing message id" };
+    return { ok: true, id: body.id };
+  } catch {
+    return { ok: false, uncertain: true, error: "DELIVERY_UNKNOWN: Discord transport/confirmation failed" };
   }
-  return { ok: false, error: last };
 }
 
 export async function deleteWebhookMessage(
@@ -211,13 +177,14 @@ export function scoreLine(game?: GameCard | null): string {
 }
 
 export function favoredLine(pick: PickRow): string {
-  const p = pick.modelProbability ?? pick.confidence / 100;
+  const p = pick.modelProbability;
+  if (p == null) return "BoatBoyz Probability: unavailable";
   const pct = Math.round(Math.max(0, Math.min(1, p)) * 100);
   return `BoatBoyz Probability: ${pct}%`;
 }
 
 export function currentLine(pick: PickRow): string {
-  const book = pick.lockedOddsJson.book || "DraftKings";
+  const book = pick.lockedOddsJson.book || "Unverified book";
   const odds = formatAmerican(pick.lockedOdds);
   const line = pick.lockedLine == null || !Number.isFinite(pick.lockedLine)
     ? ""
@@ -244,8 +211,10 @@ export function vsLine(pick: PickRow, game?: GameCard | null): string {
 
 export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): string {
   const kick = formatKick(pick.startAt, "America/Los_Angeles");
-  const modelPct = Math.round((pick.modelProbability ?? pick.confidence / 100) * 100);
-  const marketPct = pctLabel(impliedFromAmerican(pick.lockedOdds));
+  const modelPct = pick.modelProbability == null ? "unavailable" : Math.round(pick.modelProbability * 100);
+  let frozen: { marketProbability?: number } = {};
+  try { frozen = JSON.parse(pick.freezeJson ?? "{}"); } catch { /* show missing */ }
+  const marketPct = frozen.marketProbability == null ? "unavailable" : pctLabel(frozen.marketProbability);
   const edge = pick.modelEdge ?? pick.edgePct;
   const verifiedAt = pick.postedAt ? formatKick(pick.postedAt, "America/Los_Angeles") : pick.lockedOddsJson.capturedAt ? formatKick(pick.lockedOddsJson.capturedAt, "America/Los_Angeles") : "pending";
   const dkLine = pick.lockedLine == null || !Number.isFinite(pick.lockedLine) ? formatAmerican(pick.lockedOdds) : `${formatAmerican(pick.lockedOdds)} · ${pick.lockedLine}`;
@@ -257,7 +226,7 @@ export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): stri
     vsLine(pick, game),
     "",
     `DraftKings: ${dkLine}`,
-    `BoatBoyz ${modelPct}% · Market ${marketPct} · Edge ${edgeLabel(edge)}`,
+    `BoatBoyz Probability: ${modelPct}%\nMarket No-Vig: ${marketPct}\nEstimated Edge: ${edgeLabel(edge)}`,
     `Confidence ${Math.round(pick.confidence)} · ${stakeLabel(pick.units)}`,
     "",
     ...whyBlock(pick.reason),
@@ -270,7 +239,7 @@ export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): stri
 }
 
 export function buildRecapMessage(pick: PickRow, game: GameCard, result: PickResult, profit: number, record: DeskRecord): string {
-  const tag = result === "WIN" ? "CASH" : result === "LOSS" ? "LOSS" : result === "PUSH" ? "PUSH" : "VOID";
+  const tag = result === "WIN" ? "WIN" : result === "LOSS" ? "LOSS" : result === "PUSH" ? "PUSH" : "VOID";
   const final = game.home.score != null && game.away.score != null ? `Final ${game.away.abbr} ${game.away.score} @ ${game.home.abbr} ${game.home.score}` : game.status.toUpperCase();
-  return [`**${tag}** · ${pick.sport}`, pick.selection, final, `${formatUnits(profit)} · this ticket`, `Desk ${record.wins}-${record.losses}-${record.pushes}  ${formatUnits(record.units)}`].join("\n");
+  return [`**${tag}** · ${pick.sport}${pick.pickSource && pick.pickSource !== "auto" ? " · MANUAL" : ""}`, pick.selection, final, `${formatUnits(profit)} · this ticket`, `Auto record ${record.wins}-${record.losses}-${record.pushes} · ${formatUnits(record.units)}${record.riskedUnits ? ` · ROI ${(record.units / record.riskedUnits * 100).toFixed(1)}%` : ""}`].join("\n");
 }
