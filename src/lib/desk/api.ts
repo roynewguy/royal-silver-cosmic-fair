@@ -78,6 +78,12 @@ export const pushPick = createServerFn({ method: "POST" })
     }>`select id, discord_message, selection, matchup, sport, status from picks where id = ${data.pickId}`;
     const pick = rows[0];
     if (!pick) return { ok: false as const, error: "Pick not found." };
+    if (pick.status === "skipped") {
+      return { ok: false as const, error: "This pick no longer qualifies. Run the desk again." };
+    }
+    if (!["queued", "posting", "posted", "graded"].includes(pick.status)) {
+      return { ok: false as const, error: `This pick is ${pick.status} and cannot be posted.` };
+    }
     if (data.webhookUrl) {
       if (!discordWebhookOk(data.webhookUrl)) return { ok: false as const, error: "Webhook URL is not a Discord webhook." };
       await writeWebhook(data.webhookUrl);

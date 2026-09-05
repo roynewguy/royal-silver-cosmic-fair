@@ -64,7 +64,20 @@ function useDeskController(): DeskApi {
     mutationFn: () => runDesk(),
     onSuccess: (data) => {
       qc.setQueryData(["desk"], data);
-      toast.success("Desk run complete.");
+      const queued = data.picks.filter((pick) => pick.status === "queued" || pick.status === "posting");
+      const recentMessages = data.log.slice(0, 6).map((entry) => entry.message);
+      const discordPost = recentMessages.some((message) => message.includes("Discord confirmed"));
+      const noPickReason = recentMessages.find(
+        (message) => message.includes("PASS") || message.includes("DraftKings line unavailable"),
+      );
+
+      if (discordPost) {
+        toast.success("Official pick posted to Discord.");
+      } else if (queued.length > 0) {
+        toast.success(`${queued.length} pick${queued.length === 1 ? "" : "s"} queued. It will post at the time shown.`);
+      } else {
+        toast.info(noPickReason ? `${noPickReason} Nothing was sent to Discord.` : "No pick qualified. Nothing was sent to Discord.");
+      }
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Desk run failed."),
   });
