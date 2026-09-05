@@ -3,7 +3,7 @@ import { getSql } from "@/lib/db";
 import { buildManualPickMessage, buildOperatorPost, buildTestPreviewMessage, deleteWebhookMessage, discordWebhookOk, postWebhook, resolveWebhook } from "@/lib/sports/discord";
 import type { Market, Side } from "@/lib/sports/types";
 import { canPostGame, manualFreezeJson, NO_INVENTED_LINE, resolveManualTicket } from "@/lib/sports/manual-post";
-import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
+import { changePin, authorizeCron, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
 import { alertOwner } from "./alerts";
 import { postPickById, refreshSlate, runTick, sqlLocker } from "./cycle";
 import { sendOnce } from "./post-pipeline";
@@ -420,4 +420,4 @@ export const replayPaperDay = createServerFn({ method: "POST" })
     return { ok: true as const, report };
   });
 
-export { cronAuthorized, refreshSlate };
+export { cronAuthorized, authorizeCron, refreshSlate };

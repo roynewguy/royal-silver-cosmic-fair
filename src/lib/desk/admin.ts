@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { deleteCookie, getCookie, getRequest, setCookie } from "@tanstack/react-start/server";
 import { getSql } from "@/lib/db";
-import { cronAuthorized } from "./cron-auth";
+import { cronAuthorized, authorizeCron } from "./cron-auth";
 import {
   envSecretMatches,
   hashOperatorSecret,
@@ -9,7 +9,7 @@ import {
   verifyOperatorSecret,
 } from "./operator-secret";
 
-export { cronAuthorized };
+export { cronAuthorized, authorizeCron };
 
 const COOKIE = "boatboyz_op";
 const IP_FAILS = 5;

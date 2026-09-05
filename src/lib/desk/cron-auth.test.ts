@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cronAuthorized } from "./cron-auth.ts";
+import { authorizeCron, cronAuthorized, githubOidcClaimsOk } from "./cron-auth.ts";
 
 function req(headers: Record<string, string>) {
   return new Request("https://example.com/api/cron/tick", { headers });
@@ -34,4 +34,34 @@ test("accepts Authorization Bearer CRON_SECRET", () => {
 test("rejects wrong bearer token", () => {
   process.env.CRON_SECRET = "super-secret-token";
   assert.equal(cronAuthorized(req({ authorization: "Bearer nope" })), false);
+});
+
+test("authorizeCron accepts CRON_SECRET without hitting OIDC", async () => {
+  process.env.CRON_SECRET = "super-secret-token";
+  assert.equal(await authorizeCron(req({ authorization: "Bearer super-secret-token" })), true);
+  assert.equal(await authorizeCron(req({ authorization: "Bearer nope" })), false);
+});
+
+test("GitHub OIDC claims must be this repo, this workflow, main", () => {
+  const now = Date.parse("2026-09-05T14:00:00.000Z");
+  const good = {
+    iss: "https://token.actions.githubusercontent.com",
+    aud: "boatboyz-tick",
+    repository: "roynewguy/royal-silver-cosmic-fair",
+    ref: "refs/heads/main",
+    job_workflow_ref: "roynewguy/royal-silver-cosmic-fair/.github/workflows/boatboyz-tick.yml@refs/heads/main",
+    exp: now / 1000 + 60,
+  };
+  assert.equal(githubOidcClaimsOk(good, now), true);
+  assert.equal(githubOidcClaimsOk({ ...good, repository: "evil/fork" }, now), false);
+  assert.equal(githubOidcClaimsOk({ ...good, ref: "refs/heads/feat" }, now), false);
+  assert.equal(githubOidcClaimsOk({ ...good, aud: "https://github.com/roynewguy/royal-silver-cosmic-fair" }, now), false);
+  assert.equal(
+    githubOidcClaimsOk(
+      { ...good, job_workflow_ref: "roynewguy/royal-silver-cosmic-fair/.github/workflows/ci.yml@refs/heads/main" },
+      now,
+    ),
+    false,
+  );
+  assert.equal(githubOidcClaimsOk({ ...good, exp: now / 1000 - 1 }, now), false);
 });

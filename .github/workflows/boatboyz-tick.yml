@@ -1,46 +1,66 @@
 # BoatBoyz 24/7 tick — Vercel Hobby cron is once/day, so GitHub does */10.
 #
-# Required GitHub repo secrets (Settings → Secrets and variables → Actions):
-#   APP_URL     = https://your-app.vercel.app   (no trailing slash)
-#   CRON_SECRET = EXACT same value as Vercel env CRON_SECRET
+# Auth (no GitHub secrets required):
+#   1. GitHub OIDC from this workflow on main  (default)
+#   2. Optional override: secrets.CRON_SECRET must match Vercel CRON_SECRET
+#   3. Optional override: secrets.APP_URL if the live host is not the default
 #
 # The Action POSTs:
 #   ${APP_URL}/api/cron/tick
-#   Authorization: Bearer ${CRON_SECRET}
+#   Authorization: Bearer <OIDC or CRON_SECRET>
 name: BoatBoyz tick
 on:
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
 jobs:
   tick:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: POST /api/cron/tick
         env:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
-            echo "::error title=BoatBoyz 24/7 is NOT armed::GitHub secrets APP_URL and/or CRON_SECRET are empty. This run did NOT call BoatBoyz."
-            echo "Set them now: GitHub repo → Settings → Secrets and variables → Actions → New repository secret"
-            echo "  APP_URL      = https://YOUR-APP.vercel.app     (no trailing slash)"
-            echo "  CRON_SECRET  = the SAME random string you put on Vercel as CRON_SECRET"
-            echo "Then: Actions → BoatBoyz tick → Run workflow"
-            echo "A good run prints HTTP 200 and contacted: true"
-            exit 1
+          APP="${APP_URL:-https://royal-silver-cosmic-fair.vercel.app}"
+          APP="${APP%/}"
+          URL="${APP}/api/cron/tick"
+
+          if [ -n "${CRON_SECRET:-}" ]; then
+            AUTH="Bearer ${CRON_SECRET}"
+            echo "Auth: CRON_SECRET (length ${#CRON_SECRET})"
+          else
+            if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+              echo "::error title=OIDC unavailable::This job needs id-token: write (or set GitHub secret CRON_SECRET to match Vercel)."
+              exit 1
+            fi
+            echo "Auth: GitHub OIDC"
+            raw=$(curl -sS --fail --max-time 20 \
+              -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+              -H "Accept: application/json; api-version=2.0" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=boatboyz-tick")
+            TOKEN=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$raw")
+            if [ -z "${TOKEN:-}" ]; then
+              echo "::error::Could not mint a GitHub OIDC token."
+              echo "$raw"
+              exit 1
+            fi
+            AUTH="Bearer ${TOKEN}"
           fi
 
-          URL="${APP_URL%/}/api/cron/tick"
           echo "Contacting deployed BoatBoyz: ${URL}"
-          echo "Authorization: Bearer *** (CRON_SECRET length ${#CRON_SECRET})"
 
           code=$(curl -sS -L --max-time 90 -o /tmp/boatboyz-tick.json -w "%{http_code}" \
             -X POST "${URL}" \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Authorization: ${AUTH}" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json")
 
@@ -50,7 +70,7 @@ jobs:
           echo
 
           if [ "${code}" != "200" ]; then
-            echo "::error::Tick did not reach a healthy BoatBoyz. HTTP ${code}. Host CRON_SECRET must match this GitHub secret. DATABASE_URL and FREE_BETA_MODE=true must be set on Vercel."
+            echo "::error::Tick did not reach a healthy BoatBoyz. HTTP ${code}. Deploy the OIDC-aware tick, or set CRON_SECRET on both GitHub and Vercel."
             exit 1
           fi
           if ! grep -q '"contacted":true' /tmp/boatboyz-tick.json && ! grep -q '"contacted": true' /tmp/boatboyz-tick.json; then
