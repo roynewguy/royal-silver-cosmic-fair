@@ -172,8 +172,35 @@ test("missing model probability is not invented on the Discord body", () => {
   assert.match(msg, /LIVE PLAY/);
   assert.doesNotMatch(msg, /BoatBoyz Probability/);
   assert.doesNotMatch(msg, /Model Edge/);
-  assert.match(msg, /Not a verified DraftKings line/);
+  assert.match(msg, /not an auto pick/);
   assert.equal(pick.modelProbability, null);
+});
+
+test("operator can post even with no qualifying feed line", () => {
+  const blank = game({
+    odds: {
+      book: "—",
+      details: null,
+      homeMl: null,
+      awayMl: null,
+      homeSpread: null,
+      awaySpread: null,
+      homeSpreadOdds: null,
+      awaySpreadOdds: null,
+      total: null,
+      overOdds: null,
+      underOdds: null,
+      openHomeSpread: null,
+      openTotal: null,
+      openHomeMl: null,
+      source: "unknown",
+      capturedAt: null,
+    },
+    rank: null,
+  });
+  const t = resolveManualTicket({ game: blank, market: "moneyline", side: "home" });
+  assert.equal(t.odds, -110);
+  assert.ok(t.selection.includes("LAL") || t.selection.includes("ML"));
 });
 
 test("double tap uses the same request id so only one unique manual_post_id exists", () => {

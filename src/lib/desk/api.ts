@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
 import { buildManualPickMessage, buildOperatorPost, buildTestPreviewMessage, deleteWebhookMessage, discordWebhookOk, postWebhook, resolveWebhook } from "@/lib/sports/discord";
 import type { Market, Side } from "@/lib/sports/types";
+import { resolveManualTicket } from "@/lib/sports/manual-post";
 import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
 import { postPickById, refreshSlate, runTick } from "./cycle";
 import { redactDesk } from "./redact";
@@ -35,8 +36,8 @@ export async function tickDesk(source: string, research = true) {
 }
 
 async function deskForClient() {
-  const state = await readDesk();
   const operator = await isOperator();
+  const state = await readDesk({ operator });
   return redactDesk({ ...state, operator, pinFromEnv: pinFromEnv() }, operator);
 }
 
@@ -179,22 +180,16 @@ export const postManualPick = createServerFn({ method: "POST" })
       return { ok: false as const, error: `This game is ${game.status} and cannot be posted.` };
     }
 
-    const { resolveManualTicket } = await import("@/lib/sports/manual-post");
-    let ticket;
-    try {
-      ticket = resolveManualTicket({
-        game,
-        market: data.market,
-        side: data.side,
-        selection: data.selection,
-        line: data.line,
-        odds: data.odds,
-        units: data.units,
-        note: data.note,
-      });
-    } catch (err) {
-      return { ok: false as const, error: err instanceof Error ? err.message : "Could not build that play." };
-    }
+    const ticket = resolveManualTicket({
+      game,
+      market: data.market,
+      side: data.side,
+      selection: data.selection,
+      line: data.line,
+      odds: data.odds,
+      units: data.units,
+      note: data.note,
+    });
 
     const hook = resolveWebhook(await (await import("./store")).readWebhook()).url;
     if (!hook) return { ok: false as const, error: "No Discord webhook configured." };

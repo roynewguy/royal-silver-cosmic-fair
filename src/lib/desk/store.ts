@@ -552,17 +552,19 @@ export function scansFrom(games: GameCard[], picks: PickRow[]): SportScan[] {
   });
 }
 
-export async function readDesk(): Promise<DeskState> {
+export async function readDesk(opts: { operator?: boolean } = {}): Promise<DeskState> {
+  const operator = opts.operator === true;
   const [games, picks, record, log, meta] = await Promise.all([
     loadGames(),
     loadPicks(),
     loadRecord(),
-    loadLog(),
+    operator ? loadLog() : Promise.resolve([]),
     loadMeta(),
   ]);
   const hook = resolveWebhook(await readWebhook());
-  const espnErrors = log.filter((l) => l.kind === "scan" && /error/i.test(l.message)).length;
-  const researchModels = await loadResearchSummary();
+  const espnErrors = operator ? log.filter((l) => l.kind === "scan" && /error/i.test(l.message)).length : 0;
+  const researchModels = operator ? await loadResearchSummary() : null;
+  const paperRecord = operator ? await loadPaperRecord() : null;
   return {
     record,
     games,
@@ -580,7 +582,7 @@ export async function readDesk(): Promise<DeskState> {
     operator: false,
     soccerDesk: "off",
     pinFromEnv: Boolean(process.env.BOATBOYZ_PIN?.trim()),
-    calibration: buildCalibration(picks.filter((p) => p.ledger !== "paper")),
+    calibration: operator ? buildCalibration(picks.filter((p) => p.ledger !== "paper")) : null,
     health: buildDeskHealth({
       lastTickAt: meta.lastTickAt,
       lastScanAt: meta.lastScanAt,
@@ -593,7 +595,7 @@ export async function readDesk(): Promise<DeskState> {
     }),
     researchModels,
     paperMode: isPaperMode(),
-    paperRecord: await loadPaperRecord(),
+    paperRecord,
   };
 }
 

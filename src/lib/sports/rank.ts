@@ -38,7 +38,9 @@ export function rankGame(game: GameCard): RankPick | null {
 }
 
 export function rankGames(games: GameCard[]): GameCard[] {
-  return games.map((game) => ({ ...game, rank: rankGame(game) }));
+  return games.map((game) =>
+    game.status === "scheduled" ? { ...game, rank: rankGame(game) } : { ...game, rank: game.rank ?? null },
+  );
 }
 
 export function bestPerSport(

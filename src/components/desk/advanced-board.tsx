@@ -5,12 +5,12 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDesk } from "@/lib/desk/use-desk";
-import { lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
-import { buildTestPreviewMessage } from "@/lib/sports/discord";
+import { buildManualPickMessage, buildTestPreviewMessage } from "@/lib/sports/discord";
+import { resolveManualTicket } from "@/lib/sports/manual-post";
 import { DiscordComposer } from "@/components/desk/discord-composer";
 import { formatKick } from "@/lib/utils";
 import { replayPaperDay } from "@/lib/desk/api";
-import type { CalibrationReport, GameCard, Market, Side } from "@/lib/sports/types";
+import type { CalibrationReport, GameCard, Market, PickRow, Side } from "@/lib/sports/types";
 
 export function AdvancedBoard() {
   const desk = useDesk();
@@ -265,21 +265,66 @@ function ManualPick({ games }: { games: GameCard[] }) {
 
   if (!game) return <p className="text-sm text-muted">No games on the board.</p>;
 
-  const feedPrice = priceFor(game.odds, market, side);
-  const feedLine = lineFor(game.odds, market, side);
-  const shownOdds = odds.trim() || (feedPrice != null ? String(feedPrice) : "");
-  const shownLine = line.trim() || (feedLine != null ? String(feedLine) : "");
-  const shownSel =
-    selection.trim() ||
-    selectionLabel({
-      market,
-      side,
-      homeAbbr: game.home.abbr,
-      awayAbbr: game.away.abbr,
-      line: feedLine,
-      price: feedPrice ?? -110,
-    });
-  const source = odds.trim() || line.trim() ? "Manual Entry" : game.odds.source === "odds-api" && /draft/i.test(game.odds.book) ? "DraftKings" : game.odds.source === "espn" ? "ESPN" : "Odds API";
+  const ticket = resolveManualTicket({
+    game,
+    market,
+    side,
+    selection,
+    line,
+    odds,
+    units,
+    note,
+  });
+  const source = ticket.lineSource === "manual-entry" ? "Manual Entry" : ticket.lineSource === "draftkings" ? "DraftKings" : ticket.lineSource === "espn" ? "ESPN" : "Odds API";
+  const previewPick = {
+    id: 0,
+    gameId: game.id,
+    sport: game.sport,
+    league: game.league,
+    matchup: `${game.away.name} @ ${game.home.name}`,
+    market,
+    selection: ticket.selection,
+    side,
+    lockedLine: ticket.line,
+    lockedOdds: ticket.odds,
+    lockedOddsJson: game.odds,
+    reason: ticket.reason,
+    research: null,
+    confidence: 0,
+    edgePct: 0,
+    units: ticket.units,
+    status: "queued" as const,
+    result: null,
+    profitUnits: null,
+    startAt: game.startAt,
+    postAt: new Date().toISOString(),
+    postedAt: new Date().toISOString(),
+    gradedAt: null,
+    discordMessage: null,
+    discordMessageId: null,
+    officialKey: null,
+    skipReason: null,
+    modelVersion: null,
+    modelProbability: null,
+    modelEdge: null,
+    freezeJson: null,
+    selectedOdds: ticket.odds,
+    postedOdds: ticket.odds,
+    closingOdds: null,
+    clv: null,
+    createdAt: new Date().toISOString(),
+    pickSource: ticket.pickSource,
+    lineSource: ticket.lineSource,
+    postedScore: ticket.postedScore,
+    postedState: ticket.postedState,
+    homeLogo: game.home.logo,
+    awayLogo: game.away.logo,
+    homeAbbr: game.home.abbr,
+    awayAbbr: game.away.abbr,
+    homeScore: game.home.score,
+    awayScore: game.away.score,
+    gameStatus: game.status,
+  } satisfies PickRow;
 
   return (
     <div className="space-y-3 rounded-xl bg-surface p-4 shadow-border">
@@ -346,14 +391,7 @@ function ManualPick({ games }: { games: GameCard[] }) {
       <p className="text-xs text-subtle">Source: {source}{source === "Manual Entry" ? " · not verified DraftKings" : ""}</p>
       {preview ? (
         <pre className="whitespace-pre-wrap rounded-lg bg-bg-elevated p-3 font-mono text-xs text-muted">
-          {live ? "🔴 LIVE" : "PREGAME"}
-          {"\n"}
-          {game.sport} · {shownSel}
-          {"\n"}
-          Odds {shownOdds || "—"} · Line {shownLine || "—"} · {units || "1"}U
-          {"\n"}
-          {live ? `Score ${game.away.abbr} ${game.away.score ?? "—"} · ${game.home.abbr} ${game.home.score ?? "—"}\n` : ""}
-          Source: {source}
+          {buildManualPickMessage(previewPick, game)}
         </pre>
       ) : null}
       <div className="grid grid-cols-2 gap-2">
@@ -362,7 +400,7 @@ function ManualPick({ games }: { games: GameCard[] }) {
         </Button>
         <Button
           className="min-h-12"
-          disabled={desk.posting || !shownOdds}
+          disabled={desk.posting}
           onClick={() => {
             if (desk.posting) return;
             desk.manualPost({

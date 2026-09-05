@@ -195,6 +195,27 @@ function Meta({ label, value }: { label: string; value: ReactNode }) {
 
 type MarketChoice = { market: Market; side: Side; label: string; line: number | null; price: number };
 
+function postChoices(game: GameCard): MarketChoice[] {
+  const real = availableChoices(game);
+  if (real.length) return real;
+  return [
+    {
+      market: "moneyline",
+      side: "home",
+      line: null,
+      price: -110,
+      label: `${game.home.abbr} ML`,
+    },
+    {
+      market: "moneyline",
+      side: "away",
+      line: null,
+      price: -110,
+      label: `${game.away.abbr} ML`,
+    },
+  ];
+}
+
 function availableChoices(game: GameCard): MarketChoice[] {
   const choices: MarketChoice[] = [];
   const markets: Array<{ market: Market; sides: Side[] }> = [
@@ -239,7 +260,7 @@ function Upcoming({
   onManualPost: (input: { gameId: string; market: Market; side: Side }) => void;
 }) {
   const upcoming = games
-    .filter((g) => g.status === "scheduled" || g.status === "delayed")
+    .filter((g) => g.status === "scheduled" || g.status === "delayed" || g.status === "in_progress")
     .slice()
     .sort((a, b) => +new Date(a.startAt) - +new Date(b.startAt));
   if (upcoming.length === 0) return null;
@@ -268,7 +289,7 @@ function UpcomingRow({
   onManualPost: (input: { gameId: string; market: Market; side: Side }) => void;
 }) {
   const [choosing, setChoosing] = useState(false);
-  const choices = availableChoices(game);
+  const choices = postChoices(game);
   return (
     <li className="px-4 py-3">
       <div className="flex items-center gap-3">
@@ -280,6 +301,7 @@ function UpcomingRow({
             {game.away.abbr} @ {game.home.abbr}
           </p>
           <p className="text-xs text-subtle">
+            {game.status === "in_progress" ? "LIVE · " : ""}
             {game.sport} · {formatKick(game.startAt, "America/Los_Angeles")} PT
           </p>
         </div>
@@ -289,8 +311,8 @@ function UpcomingRow({
           </span>
           {operator ? (
             <>
-              <Button variant="secondary" size="sm" onClick={() => setChoosing((open) => !open)} disabled={!choices.length}>
-                {choosing ? "Close" : "Choose pick"}
+              <Button variant="secondary" size="sm" onClick={() => setChoosing((open) => !open)}>
+                {choosing ? "Close" : "Post pick"}
               </Button>
               <Button variant="ghost" size="sm" onClick={() => onTestPost(game.id)}>
                 Test post

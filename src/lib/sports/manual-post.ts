@@ -102,9 +102,8 @@ export function resolveManualTicket(input: {
   const customOdds = parseAmerican(input.odds);
   const customLine = parseLine(input.line);
   const overridden = customOdds != null || customLine != null || Boolean(input.selection?.trim());
-  const odds = customOdds ?? feedPrice;
-  if (odds == null) throw new Error("Enter odds for this play.");
-  const line = input.market === "moneyline" ? customLine ?? feedLine : customLine ?? feedLine;
+  const odds = customOdds ?? feedPrice ?? -110;
+  const line = customLine ?? feedLine;
   const selection =
     input.selection?.trim() ||
     selectionLabel({
