@@ -10,7 +10,8 @@ import { PickTicket } from "@/components/desk/pick-ticket";
 import { SportRail } from "@/components/desk/sport-rail";
 import { useDesk } from "@/lib/desk/use-desk";
 import { formatKick, relativeTo } from "@/lib/utils";
-import type { CalibrationReport, GameCard } from "@/lib/sports/types";
+import { lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
+import type { CalibrationReport, GameCard, Market, Side } from "@/lib/sports/types";
 
 export function DeskHq() {
   const desk = useDesk();
@@ -141,7 +142,12 @@ export function DeskHq() {
             </div>
           )}
 
-          <Upcoming games={desk.data.games} operator={op} onTestPost={(gameId) => desk.testPost(gameId)} />
+          <Upcoming
+            games={desk.data.games}
+            operator={op}
+            onTestPost={(gameId) => desk.testPost(gameId)}
+            onManualPost={(input) => desk.manualPost(input)}
+          />
           {op && desk.data.calibration ? <CalibrationPanel report={desk.data.calibration} /> : null}
         </div>
 
@@ -187,40 +193,127 @@ function Meta({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function Upcoming({ games, operator, onTestPost }: { games: GameCard[]; operator: boolean; onTestPost: (gameId: string) => void }) {
+type MarketChoice = { market: Market; side: Side; label: string; line: number | null; price: number };
+
+function availableChoices(game: GameCard): MarketChoice[] {
+  const choices: MarketChoice[] = [];
+  const markets: Array<{ market: Market; sides: Side[] }> = [
+    { market: "moneyline", sides: ["away", "home"] },
+    { market: "spread", sides: ["away", "home"] },
+    { market: "total", sides: ["over", "under"] },
+  ];
+  for (const { market, sides } of markets) {
+    for (const side of sides) {
+      const price = priceFor(game.odds, market, side);
+      const line = lineFor(game.odds, market, side);
+      if (price == null || !Number.isFinite(price)) continue;
+      if (market !== "moneyline" && (line == null || !Number.isFinite(line))) continue;
+      choices.push({
+        market,
+        side,
+        line,
+        price,
+        label: selectionLabel({
+          market,
+          side,
+          homeAbbr: game.home.abbr,
+          awayAbbr: game.away.abbr,
+          line,
+          price,
+        }),
+      });
+    }
+  }
+  return choices;
+}
+
+function Upcoming({
+  games,
+  operator,
+  onTestPost,
+  onManualPost,
+}: {
+  games: GameCard[];
+  operator: boolean;
+  onTestPost: (gameId: string) => void;
+  onManualPost: (input: { gameId: string; market: Market; side: Side }) => void;
+}) {
   const upcoming = games
     .filter((g) => g.status === "scheduled")
     .slice()
     .sort((a, b) => +new Date(a.startAt) - +new Date(b.startAt))
-    .slice(0, 8);
+    .slice(0, 40);
   if (upcoming.length === 0) return null;
   return (
     <section>
       <h2 className="mb-3 font-display text-sm tracking-[0.18em] text-muted uppercase">Next kickoffs</h2>
       <ul className="divide-y divide-border overflow-hidden rounded-xl bg-surface shadow-border">
         {upcoming.map((g) => (
-          <li key={g.id} className="flex items-center gap-3 px-4 py-3">
-            <TeamMark src={g.away.logo} name={g.away.abbr} />
-            <span className="text-xs text-subtle">@</span>
-            <TeamMark src={g.home.logo} name={g.home.abbr} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-fg">
-                {g.away.abbr} @ {g.home.abbr}
-              </p>
-              <p className="text-xs text-subtle">
-                {g.sport} · {formatKick(g.startAt)}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="max-w-[9rem] truncate font-mono text-xs text-muted tabular-nums sm:max-w-none">
-                {g.odds.details ?? "No line"}
-              </span>
-              {operator ? <Button variant="ghost" size="sm" onClick={() => onTestPost(g.id)}>Test post</Button> : null}
-            </div>
-          </li>
+          <UpcomingRow key={g.id} game={g} operator={operator} onTestPost={onTestPost} onManualPost={onManualPost} />
         ))}
       </ul>
     </section>
+  );
+}
+
+function UpcomingRow({
+  game,
+  operator,
+  onTestPost,
+  onManualPost,
+}: {
+  game: GameCard;
+  operator: boolean;
+  onTestPost: (gameId: string) => void;
+  onManualPost: (input: { gameId: string; market: Market; side: Side }) => void;
+}) {
+  const [choosing, setChoosing] = useState(false);
+  const choices = availableChoices(game);
+  return (
+    <li className="px-4 py-3">
+      <div className="flex items-center gap-3">
+        <TeamMark src={game.away.logo} name={game.away.abbr} />
+        <span className="text-xs text-subtle">@</span>
+        <TeamMark src={game.home.logo} name={game.home.abbr} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm text-fg">
+            {game.away.abbr} @ {game.home.abbr}
+          </p>
+          <p className="text-xs text-subtle">
+            {game.sport} · {formatKick(game.startAt)}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="max-w-[9rem] truncate font-mono text-xs text-muted tabular-nums sm:max-w-none">
+            {game.odds.details ?? "No line"}
+          </span>
+          {operator ? (
+            <>
+              <Button variant="secondary" size="sm" onClick={() => setChoosing((open) => !open)} disabled={!choices.length}>
+                {choosing ? "Close" : "Choose pick"}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => onTestPost(game.id)}>
+                Test post
+              </Button>
+            </>
+          ) : null}
+        </div>
+      </div>
+      {operator && choosing ? (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+          {choices.map((choice) => (
+            <Button
+              key={`${choice.market}-${choice.side}`}
+              variant="ghost"
+              size="sm"
+              onClick={() => onManualPost({ gameId: game.id, market: choice.market, side: choice.side })}
+            >
+              Post {choice.label}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+    </li>
   );
 }
 
