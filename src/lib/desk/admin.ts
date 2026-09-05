@@ -86,19 +86,20 @@ export async function loginWithPin(pin: string): Promise<{ ok: true } | { ok: fa
   const blocked = await unlockBlocked(ip);
   if (blocked) return { ok: false, error: blocked };
 
-  if (secretTooShort(pin)) {
+  const secret = pin.trim();
+  if (secretTooShort(secret)) {
     await recordAttempt(ip, false);
     return { ok: false, error: "Operator secret must be at least 8 characters." };
   }
 
-  const result = await verifyConfigured(pin);
+  const result = await verifyConfigured(secret);
   if (result === "missing") {
     await recordAttempt(ip, false);
-    return { ok: false, error: "BOATBOYZ_PIN is not set. Add it in hosting secrets." };
+    return { ok: false, error: "BOATBOYZ_PIN is not set on this deploy. Add it on Vercel Production, then Redeploy." };
   }
   if (!result) {
     await recordAttempt(ip, false);
-    return { ok: false, error: "Unlock failed." };
+    return { ok: false, error: "Unlock failed. Use the exact BOATBOYZ_PIN from Vercel — not Discord." };
   }
 
   await recordAttempt(ip, true);

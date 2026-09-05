@@ -48,24 +48,31 @@ export function DeskHq() {
             </>
           ) : (
             <form
-              className="flex min-w-0 gap-2"
+              className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center"
               onSubmit={(e) => {
                 e.preventDefault();
                 desk.unlock(pin);
               }}
             >
-              <Input
-                type="password"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="Operator secret"
-                className="min-h-12 w-44"
-                autoComplete="off"
-                minLength={8}
-              />
-              <Button type="submit" className="min-h-12">
-                Unlock
-              </Button>
+              <div className="flex min-w-0 gap-2">
+                <Input
+                  type="password"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  placeholder="Operator secret"
+                  className="min-h-12 w-44"
+                  autoComplete="off"
+                  minLength={8}
+                />
+                <Button type="submit" className="min-h-12">
+                  Unlock
+                </Button>
+              </div>
+              <p className="max-w-xs text-[11px] leading-snug text-subtle">
+                {desk.data.pinFromEnv
+                  ? "Use BOATBOYZ_PIN from Vercel. Unlock on the live site, not Discord."
+                  : "This deploy has no BOATBOYZ_PIN. Add it on Vercel → Production, then Redeploy."}
+              </p>
             </form>
           )}
         </div>

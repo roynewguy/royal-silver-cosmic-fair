@@ -116,6 +116,7 @@ function useDeskController(): DeskApi {
       if ("state" in res && res.state) qc.setQueryData(["desk"], res.state);
       toast.success("Desk unlocked.");
     },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Unlock failed."),
   });
 
   const lock = useMutation({

@@ -22,7 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
       <Toaster
         theme="dark"
-        position="bottom-right"
+        position="top-center"
         toastOptions={{
           classNames: {
             toast: "bg-surface text-fg border-border",
