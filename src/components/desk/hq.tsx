@@ -162,7 +162,10 @@ export function DeskHq() {
                 placeholder="https://discord.com/api/webhooks/…"
                 value={webhook}
                 onChange={(e) => setWebhook(e.target.value)}
-                onBlur={() => desk.saveHook(webhook)}
+                onBlur={() => {
+                  const value = webhook.trim();
+                  if (value) desk.saveHook(value);
+                }}
               />
             ) : null}
           </div>
