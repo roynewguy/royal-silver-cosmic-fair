@@ -200,6 +200,26 @@ export type CalibrationReport = {
   note: string;
 };
 
+export type AutomationStatus = "online" | "delayed" | "offline" | "unarmed";
+export type ServiceLevel = "ok" | "warn" | "bad";
+
+export type DeskHealth = {
+  automation: AutomationStatus;
+  lastTickAt: string | null;
+  lastScanAt: string | null;
+  nextScanAt: string | null;
+  db: ServiceLevel;
+  dbLabel: string;
+  espn: ServiceLevel;
+  discord: ServiceLevel;
+  discordLabel: string;
+  odds: ServiceLevel;
+  oddsLabel: string;
+  oddsRemaining: number | null;
+  oddsUsed: number | null;
+  freeBeta: boolean;
+};
+
 export type DeskState = {
   record: DeskRecord;
   games: GameCard[];
@@ -218,4 +238,5 @@ export type DeskState = {
   soccerDesk: "off";
   pinFromEnv: boolean;
   calibration: CalibrationReport | null;
+  health: DeskHealth;
 };

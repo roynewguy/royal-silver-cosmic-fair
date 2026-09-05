@@ -1,7 +1,9 @@
 import { resolveWebhook } from "@/lib/sports/discord";
-import { getSql } from "@/lib/db";
+import { getSql, dbSource } from "@/lib/db";
 import { buildCalibration } from "@/lib/sports/calibration";
 import { applyModelInputs, packModelInputs } from "@/lib/sports/model-inputs";
+import { isFreeBetaMode } from "@/lib/sports/free-beta";
+import { buildDeskHealth } from "./health.ts";
 import type {
   DeskLog,
   DeskRecord,
@@ -359,7 +361,7 @@ export async function loadLog(): Promise<DeskLog[]> {
     sport: string | null;
     message: string;
     created_at: unknown;
-  }>`select id, kind, sport, message, created_at from desk_log order by id desc limit 24`;
+  }>`select id, kind, sport, message, created_at from desk_log order by id desc limit 80`;
   return rows.map((r) => ({
     id: num(r.id),
     kind: r.kind,
@@ -385,20 +387,30 @@ export async function touchScan(kind: "scan" | "desk"): Promise<void> {
   }
 }
 
+export async function touchCronTick(source: string): Promise<void> {
+  if (source !== "cron") return;
+  const sql = await getSql();
+  await sql`update desk_meta set last_tick_at = now(), last_tick_source = ${source}, updated_at = now() where id = 1`;
+}
+
 export async function loadMeta(): Promise<{
   lastScanAt: string | null;
   lastDeskAt: string | null;
+  lastTickAt: string | null;
   minEdgePct: number;
   minConfidence: number;
   postLeadMinutes: number;
   maxDailyPicks: number;
   hasWebhook: boolean;
   autoRun: boolean;
+  oddsRemaining: number | null;
+  oddsUsed: number | null;
 }> {
   const sql = await getSql();
   const rows = await sql<{
     last_scan_at: unknown;
     last_desk_at: unknown;
+    last_tick_at: unknown;
     min_edge_pct: unknown;
     min_confidence: unknown;
     post_lead_minutes: unknown;
@@ -406,12 +418,15 @@ export async function loadMeta(): Promise<{
     daily_picks_source: string | null;
     discord_webhook: string | null;
     auto_run: unknown;
-  }>`select last_scan_at, last_desk_at, min_edge_pct, min_confidence, post_lead_minutes, max_daily_picks, daily_picks_source, discord_webhook, auto_run from desk_meta where id = 1`;
+    odds_remaining: unknown;
+    odds_used: unknown;
+  }>`select last_scan_at, last_desk_at, last_tick_at, min_edge_pct, min_confidence, post_lead_minutes, max_daily_picks, daily_picks_source, discord_webhook, auto_run, odds_remaining, odds_used from desk_meta where id = 1`;
   const r = rows[0];
   const rawCap = Math.round(num(r?.max_daily_picks) || 3);
   return {
     lastScanAt: r?.last_scan_at ? iso(r.last_scan_at) : null,
     lastDeskAt: r?.last_desk_at ? iso(r.last_desk_at) : null,
+    lastTickAt: r?.last_tick_at ? iso(r.last_tick_at) : null,
     minEdgePct: num(r?.min_edge_pct) || 3,
     minConfidence: Math.round(num(r?.min_confidence) || 58),
     postLeadMinutes: Math.round(num(r?.post_lead_minutes) || 150),
@@ -421,7 +436,29 @@ export async function loadMeta(): Promise<{
     }),
     hasWebhook: Boolean(r?.discord_webhook && String(r.discord_webhook).trim()),
     autoRun: r?.auto_run !== false,
+    oddsRemaining: numOrNull(r?.odds_remaining),
+    oddsUsed: numOrNull(r?.odds_used),
   };
+}
+
+export async function writeDeskSettings(input: {
+  minEdgePct?: number;
+  minConfidence?: number;
+  postLeadMinutes?: number;
+}): Promise<void> {
+  const sql = await getSql();
+  const edge = input.minEdgePct;
+  const conf = input.minConfidence;
+  const lead = input.postLeadMinutes;
+  if (edge != null && Number.isFinite(edge)) {
+    await sql`update desk_meta set min_edge_pct = ${Math.max(0, Math.min(20, edge))}, updated_at = now() where id = 1`;
+  }
+  if (conf != null && Number.isFinite(conf)) {
+    await sql`update desk_meta set min_confidence = ${Math.round(Math.max(50, Math.min(90, conf)))}, updated_at = now() where id = 1`;
+  }
+  if (lead != null && Number.isFinite(lead)) {
+    await sql`update desk_meta set post_lead_minutes = ${Math.round(Math.max(30, Math.min(360, lead)))}, updated_at = now() where id = 1`;
+  }
 }
 
 export async function writeMaxDailyPicks(n: number): Promise<number> {
@@ -479,6 +516,7 @@ export async function readDesk(): Promise<DeskState> {
     loadMeta(),
   ]);
   const hook = resolveWebhook(await readWebhook());
+  const espnErrors = log.filter((l) => l.kind === "scan" && /error/i.test(l.message)).length;
   return {
     record,
     games,
@@ -497,6 +535,16 @@ export async function readDesk(): Promise<DeskState> {
     soccerDesk: "off",
     pinFromEnv: Boolean(process.env.BOATBOYZ_PIN?.trim()),
     calibration: buildCalibration(picks),
+    health: buildDeskHealth({
+      lastTickAt: meta.lastTickAt,
+      lastScanAt: meta.lastScanAt,
+      hasWebhook: hook.source !== "none",
+      dbSource,
+      espnErrors,
+      oddsRemaining: meta.oddsRemaining,
+      oddsUsed: meta.oddsUsed,
+      freeBeta: isFreeBetaMode(),
+    }),
   };
 }
 

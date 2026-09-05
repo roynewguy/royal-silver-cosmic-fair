@@ -7,7 +7,7 @@ import type { Market, Side } from "@/lib/sports/types";
 import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
 import { postPickById, refreshSlate, runTick } from "./cycle";
 import { redactDesk } from "./redact";
-import { addLog, loadGames, loadMeta, pickFromRow, readDesk, writeMaxDailyPicks, writeWebhook } from "./store";
+import { addLog, loadGames, loadMeta, pickFromRow, readDesk, writeDeskSettings, writeMaxDailyPicks, writeWebhook } from "./store";
 import { shouldStartInProcessWorker } from "./worker-policy";
 
 const g = globalThis as typeof globalThis & {
@@ -287,6 +287,23 @@ export const saveDailyPicks = createServerFn({ method: "POST" })
     if (!gate.ok) return { ok: false as const, error: gate.error };
     const count = await writeMaxDailyPicks(data.count);
     await addLog("desk", `Daily card set to ${count} play${count === 1 ? "" : "s"}.`);
+    return { ok: true as const, state: await deskForClient() };
+  });
+
+export const saveDeskSettings = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const data = input as { minEdgePct?: number; minConfidence?: number; postLeadMinutes?: number };
+    return {
+      minEdgePct: Number(data.minEdgePct),
+      minConfidence: Number(data.minConfidence),
+      postLeadMinutes: Number(data.postLeadMinutes),
+    };
+  })
+  .handler(async ({ data }) => {
+    const gate = await requireOperator();
+    if (!gate.ok) return { ok: false as const, error: gate.error };
+    await writeDeskSettings(data);
+    await addLog("desk", "Automation settings saved.");
     return { ok: true as const, state: await deskForClient() };
   });
 

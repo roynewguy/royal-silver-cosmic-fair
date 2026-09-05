@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { DeskHq } from "@/components/desk/hq";
+import { HomeBoard } from "@/components/desk/home-board";
 import { DeskShell } from "@/components/desk/shell";
 
 export const Route = createFileRoute("/")({ component: Home });
@@ -7,7 +7,7 @@ export const Route = createFileRoute("/")({ component: Home });
 function Home() {
   return (
     <DeskShell>
-      <DeskHq />
+      <HomeBoard />
     </DeskShell>
   );
 }

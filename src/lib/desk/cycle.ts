@@ -38,6 +38,7 @@ import {
   readDesk,
   readWebhook,
   touchScan,
+  touchCronTick,
   tryWorkerLock,
   upsertGames,
 } from "./store";
@@ -652,6 +653,7 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
       meta.maxDailyPicks,
     );
     const posted = await flushDuePosts(games, meta.minEdgePct, meta.minConfidence);
+    if (source === "cron") await touchCronTick(source);
     const espn = espnScanStats();
     const espnErrors = espn.espn_error_count
       ? ` · errors ${espn.espn_error_count}${espn.espn_last_error ? ` (${espn.espn_last_error})` : ""}`

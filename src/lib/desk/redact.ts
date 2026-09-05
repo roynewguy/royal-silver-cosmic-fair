@@ -1,4 +1,5 @@
 import type { DeskState, GameCard, PickRow, SportScan } from "@/lib/sports/types";
+import { EMPTY_HEALTH } from "./health.ts";
 
 function publicPick(pick: PickRow): PickRow {
   const posted = pick.status === "posted" || pick.status === "graded";
@@ -52,5 +53,6 @@ export function redactDesk(state: DeskState, operator: boolean): DeskState {
     maxDailyPicks: 0,
     lastDeskAt: null,
     calibration: null,
+    health: state.health ?? EMPTY_HEALTH,
   };
 }

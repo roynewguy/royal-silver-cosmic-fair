@@ -3,7 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, type ReactNode } from "react";
 import { toast } from "sonner";
-import { deleteDiscordPost, getDesk, lockDesk, postManualPick, postTestPreview, pushPick, refreshBoard, runDesk, saveDailyPicks, saveWebhook, unlockDesk } from "@/lib/desk/api";
+import { deleteDiscordPost, getDesk, lockDesk, postManualPick, postTestPreview, pushPick, refreshBoard, runDesk, saveDailyPicks, saveDeskSettings, saveWebhook, unlockDesk } from "@/lib/desk/api";
+import { EMPTY_HEALTH } from "@/lib/desk/health";
 import type { DeskState, Market, Side } from "@/lib/sports/types";
 
 const empty: DeskState = {
@@ -24,6 +25,7 @@ const empty: DeskState = {
   soccerDesk: "off",
   pinFromEnv: false,
   calibration: null,
+  health: EMPTY_HEALTH,
 };
 
 type DeskApi = {
@@ -39,9 +41,11 @@ type DeskApi = {
   testPost: (gameId: string) => void;
   deletePost: (pickId: number) => void;
   saveHook: (webhookUrl: string) => void;
+  saveSettings: (input: { minEdgePct: number; minConfidence: number; postLeadMinutes: number }) => void;
   setDailyPicks: (count: number) => void;
   unlock: (pin: string) => void;
   lock: () => void;
+  testing: boolean;
 };
 
 const DeskContext = createContext<DeskApi | null>(null);
@@ -53,6 +57,8 @@ function useDeskController(): DeskApi {
     queryKey: ["desk"],
     queryFn: () => getDesk(),
     refetchInterval: 60_000,
+    staleTime: 20_000,
+    placeholderData: (prev) => prev,
   });
 
   const refresh = useMutation({
@@ -149,6 +155,19 @@ function useDeskController(): DeskApi {
     },
   });
 
+  const saveSettings = useMutation({
+    mutationFn: (input: { minEdgePct: number; minConfidence: number; postLeadMinutes: number }) =>
+      saveDeskSettings({ data: input }),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        toast.error(res.error ?? "Could not save settings.");
+        return;
+      }
+      if (res.state) qc.setQueryData(["desk"], res.state);
+      toast.success("Settings saved.");
+    },
+  });
+
   const savePlays = useMutation({
     mutationFn: (count: number) => saveDailyPicks({ data: { count } }),
     onSuccess: (res) => {
@@ -184,7 +203,8 @@ function useDeskController(): DeskApi {
     loading: query.isLoading,
     scanning: refresh.isPending,
     running: run.isPending,
-    posting: push.isPending,
+    posting: push.isPending || manualPost.isPending,
+    testing: testPost.isPending,
     refresh: () => refresh.mutate(),
     run: () => run.mutate(),
     push: (input) => push.mutate(input),
@@ -192,6 +212,7 @@ function useDeskController(): DeskApi {
     manualPost: (input) => manualPost.mutate(input),
     deletePost: (pickId) => deletePost.mutate(pickId),
     saveHook: (webhookUrl) => saveHook.mutate(webhookUrl),
+    saveSettings: (input) => saveSettings.mutate(input),
     setDailyPicks: (count) => savePlays.mutate(count),
     unlock: (pin) => unlock.mutate(pin),
     lock: () => lock.mutate(),
