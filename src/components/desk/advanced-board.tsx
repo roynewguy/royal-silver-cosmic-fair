@@ -142,21 +142,32 @@ export function AdvancedBoard() {
         <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">Models</h2>
         <p className="text-xs text-subtle">Research only. Backtests are not a live record and never auto-promote.</p>
         {desk.data.researchModels ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl bg-surface p-4 shadow-border">
-              <p className="text-[10px] tracking-[0.16em] text-win uppercase">Production</p>
-              <p className="mt-1 font-display text-2xl">{desk.data.researchModels.production}</p>
-              <p className="text-xs text-muted">Live official picks</p>
+          <div className="space-y-3">
+            <div className="overflow-x-auto rounded-xl bg-surface p-3 shadow-border">
+              <table className="w-full text-left text-xs">
+                <thead className="text-[10px] tracking-[0.14em] text-muted uppercase">
+                  <tr>
+                    <th className="py-1">Sport</th>
+                    <th>Production</th>
+                    <th>Shadow</th>
+                    <th>n</th>
+                    <th>Brier</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(desk.data.researchModels.sports ?? []).map((s) => (
+                    <tr key={s.league} className="border-t border-white/5">
+                      <td className="py-1.5 font-medium">{s.league}</td>
+                      <td className="font-mono text-win">{s.production}</td>
+                      <td className="font-mono text-push">{s.shadow ?? "—"}</td>
+                      <td>{s.testN ?? "—"}</td>
+                      <td>{s.brier == null ? "—" : s.brier.toFixed(3)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="rounded-xl bg-surface p-4 shadow-border">
-              <p className="text-[10px] tracking-[0.16em] text-push uppercase">Shadow</p>
-              <p className="mt-1 font-display text-2xl">{desk.data.researchModels.shadow ?? "—"}</p>
-              <p className="font-mono text-xs text-muted">
-                n {desk.data.researchModels.testN ?? "—"} · Brier{" "}
-                {desk.data.researchModels.brier == null ? "—" : desk.data.researchModels.brier.toFixed(3)} · ROI{" "}
-                {desk.data.researchModels.roi == null ? "—" : `${(desk.data.researchModels.roi * 100).toFixed(1)}%`}
-              </p>
-            </div>
+            <p className="text-[11px] text-subtle">{desk.data.researchModels.note}</p>
           </div>
         ) : (
           <p className="text-sm text-muted">No V3 artifact. Ingest and train offline first.</p>

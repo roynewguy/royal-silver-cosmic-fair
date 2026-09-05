@@ -1,8 +1,8 @@
 export type HistoricalGame = {
   gameId: string;
   espnId: string;
-  sport: "MLB";
-  league: "mlb";
+  sport: string;
+  league: string;
   season: number;
   startAt: string;
   homeTeam: string;
@@ -46,8 +46,9 @@ export type TeamFeat = {
   restDays: number | null;
 };
 
-export type MlbRow = {
+export type TrainingRow = {
   gameId: string;
+  league: string;
   season: number;
   startAt: string;
   homeAbbr: string;
@@ -72,11 +73,14 @@ export type MlbRow = {
   };
 };
 
+/** @deprecated use TrainingRow */
+export type MlbRow = TrainingRow;
+
 export type Split = "train" | "valid" | "test";
 
 export type LogRegArtifact = {
   modelVersion: string;
-  sport: "MLB";
+  sport: string;
   target: "home_win";
   trainedAt: string;
   trainFrom: string;

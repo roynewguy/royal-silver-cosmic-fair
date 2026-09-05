@@ -1,21 +1,40 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { parseWinPct } from "../sports/odds.ts";
 import type { GameCard } from "../sports/types.ts";
 import { applyStandard, clampProb, predictLogReg } from "./logreg.ts";
 import { canQueueOfficial } from "./registry.ts";
 import type { LogRegArtifact } from "./types.ts";
 
-let cached: LogRegArtifact | null | undefined;
+let cached: Map<string, LogRegArtifact> | null = null;
 
-export async function loadShadowArtifact(path = "src/lib/models-v3/artifacts/latest.json"): Promise<LogRegArtifact | null> {
-  if (cached !== undefined) return cached;
+export async function loadShadowArtifacts(dir = "src/lib/models-v3/artifacts"): Promise<Map<string, LogRegArtifact>> {
+  if (cached) return cached;
+  const map = new Map<string, LogRegArtifact>();
   try {
-    cached = JSON.parse(await readFile(path, "utf8")) as LogRegArtifact;
-    return cached;
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      try {
+        const art = JSON.parse(await readFile(join(dir, e.name, "latest.json"), "utf8")) as LogRegArtifact;
+        if (!canQueueOfficial(art.modelVersion)) map.set(e.name, art);
+      } catch {
+        /* missing sport artifact */
+      }
+    }
+    if (!map.has("mlb")) {
+      try {
+        const art = JSON.parse(await readFile(join(dir, "latest.json"), "utf8")) as LogRegArtifact;
+        if (!canQueueOfficial(art.modelVersion)) map.set("mlb", art);
+      } catch {
+        /* none */
+      }
+    }
   } catch {
-    cached = null;
-    return null;
+    /* no artifacts dir */
   }
+  cached = map;
+  return map;
 }
 
 export function liveFeatureVector(game: GameCard): number[] | null {
@@ -28,15 +47,19 @@ export function liveFeatureVector(game: GameCard): number[] | null {
   return [1, hw - aw, 0, 0, 0, 0, missing ? 0 : (eraA ?? 0) - (eraH ?? 0), missing];
 }
 
-export function shadowPredictMlb(game: GameCard, artifact: LogRegArtifact): {
+export function shadowPredict(game: GameCard, artifact: LogRegArtifact): {
   modelVersion: string;
   probability: number;
   official: false;
 } | null {
-  if (game.league !== "mlb") return null;
   if (canQueueOfficial(artifact.modelVersion)) return null;
   const x = liveFeatureVector(game);
   if (!x) return null;
   const p = clampProb(predictLogReg(applyStandard(x, artifact.means, artifact.stds), artifact.weights));
   return { modelVersion: artifact.modelVersion, probability: p, official: false };
+}
+
+export function shadowPredictMlb(game: GameCard, artifact: LogRegArtifact) {
+  if (game.league !== "mlb") return null;
+  return shadowPredict(game, artifact);
 }

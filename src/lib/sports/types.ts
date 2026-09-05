@@ -247,5 +247,14 @@ export type DeskState = {
     logLoss: number | null;
     roi: number | null;
     note: string;
+    sports?: Array<{
+      league: string;
+      production: string;
+      shadow: string | null;
+      testN: number | null;
+      brier: number | null;
+      logLoss: number | null;
+      roi: number | null;
+    }>;
   } | null;
 };

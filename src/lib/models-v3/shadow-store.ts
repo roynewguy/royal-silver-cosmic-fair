@@ -1,17 +1,23 @@
 import { getSql } from "@/lib/db";
 import { impliedFromAmerican } from "../sports/odds.ts";
 import type { GameCard } from "../sports/types.ts";
-import { loadShadowArtifact, shadowPredictMlb } from "./shadow.ts";
+import { loadShadowArtifacts, shadowPredict } from "./shadow.ts";
 import { canQueueOfficial } from "./registry.ts";
 
 export async function recordMlbShadow(games: GameCard[]): Promise<void> {
+  await recordShadowPredictions(games);
+}
+
+export async function recordShadowPredictions(games: GameCard[]): Promise<void> {
   try {
-    const art = await loadShadowArtifact();
-    if (!art || canQueueOfficial(art.modelVersion)) return;
+    const arts = await loadShadowArtifacts();
+    if (!arts.size) return;
     const sql = await getSql();
     for (const game of games) {
-      if (game.league !== "mlb" || game.status !== "scheduled") continue;
-      const pred = shadowPredictMlb(game, art);
+      if (game.status !== "scheduled") continue;
+      const art = arts.get(game.league);
+      if (!art || canQueueOfficial(art.modelVersion)) continue;
+      const pred = shadowPredict(game, art);
       if (!pred) continue;
       const market = game.odds.homeMl != null ? impliedFromAmerican(game.odds.homeMl) : null;
       const edge = market != null ? pred.probability - market : null;
@@ -33,4 +39,3 @@ export async function recordMlbShadow(games: GameCard[]): Promise<void> {
     /* shadow must never affect production */
   }
 }
-

@@ -19,6 +19,8 @@
     "test": "node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/sports/*.test.ts src/lib/sports/models/*.test.ts src/lib/desk/*.test.ts src/lib/db-mode.test.ts src/lib/models-v3/*.test.ts src/lib/models-v3/mlb/*.test.ts",
     "dataset:mlb": "node --experimental-strip-types src/lib/models-v3/mlb/cli-dataset.ts",
     "train:mlb": "node --experimental-strip-types src/lib/models-v3/mlb/cli-train.ts",
+    "dataset": "node --experimental-strip-types src/lib/models-v3/cli.ts dataset",
+    "train": "node --experimental-strip-types src/lib/models-v3/cli.ts train",
     "test:template": "node --test 'scripts/**/*.test.mjs'",
     "lint": "eslint .",
     "format": "prettier --write ."

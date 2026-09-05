@@ -1,0 +1,239 @@
+{
+  "modelVersion": "v3-ufc-logreg-2026-09-05",
+  "sport": "UFC",
+  "target": "home_win",
+  "trainedAt": "2026-09-05T03:18:16.578Z",
+  "trainFrom": "2024-05-05T02:00Z",
+  "trainTo": "2025-12-14T03:00Z",
+  "validFrom": "2026-01-24T22:30Z",
+  "validTo": "2026-03-29T00:00Z",
+  "testFrom": "2026-04-04T21:00Z",
+  "testTo": "2026-08-29T10:00Z",
+  "featureNames": [
+    "bias",
+    "winpct_diff",
+    "last5_diff",
+    "last10_diff",
+    "rdiff_diff",
+    "rest_diff",
+    "era_diff",
+    "era_missing"
+  ],
+  "means": [
+    0,
+    0.12669533412415973,
+    0.12704626334519567,
+    0.12669533412415973,
+    0.25339066824831946,
+    -8.57473309608541,
+    0,
+    1
+  ],
+  "stds": [
+    1,
+    0.5031391689173382,
+    0.5030816601863078,
+    0.5031391689173382,
+    1.0036224463928176,
+    117.81705434260317,
+    0.04218245406095978,
+    0.04218245406095978
+  ],
+  "weights": [
+    0.2596818733245664,
+    0.03578622764410072,
+    0.1289783592348063,
+    0.03578622764410072,
+    0.035880928929507325,
+    -0.1367529194205397,
+    0,
+    0
+  ],
+  "metrics": {
+    "train": {
+      "split": "train",
+      "n": 562,
+      "accuracy": 0.5818505338078291,
+      "brier": 0.24029185205980677,
+      "logLoss": 0.6733687179148251,
+      "calibration": [
+        {
+          "key": "50-55",
+          "n": 205,
+          "predicted": 0.5268027569553501,
+          "actual": 0.5414634146341464
+        },
+        {
+          "key": "55-60",
+          "n": 178,
+          "predicted": 0.5723162526591805,
+          "actual": 0.5674157303370787
+        },
+        {
+          "key": "60-65",
+          "n": 101,
+          "predicted": 0.6196693546264755,
+          "actual": 0.5643564356435643
+        },
+        {
+          "key": "65-70",
+          "n": 62,
+          "predicted": 0.6701027015215401,
+          "actual": 0.8064516129032258
+        },
+        {
+          "key": "70+",
+          "n": 16,
+          "predicted": 0.7160329775579872,
+          "actual": 0.5
+        }
+      ],
+      "backtest": {
+        "edge2": {
+          "n": 0,
+          "units": 0,
+          "roi": null,
+          "avgClv": null
+        },
+        "edge3": {
+          "n": 0,
+          "units": 0,
+          "roi": null,
+          "avgClv": null
+        },
+        "edge5": {
+          "n": 0,
+          "units": 0,
+          "roi": null,
+          "avgClv": null
+        }
+      }
+    },
+    "valid": {
+      "split": "valid",
+      "n": 107,
+      "accuracy": 0.616822429906542,
+      "brier": 0.23149766663302393,
+      "logLoss": 0.6551519559354299,
+      "calibration": [
+        {
+          "key": "50-55",
+          "n": 32,
+          "predicted": 0.5303002597818854,
+          "actual": 0.53125
+        },
+        {
+          "key": "55-60",
+          "n": 29,
+          "predicted": 0.5745674120497403,
+          "actual": 0.5862068965517241
+        },
+        {
+          "key": "60-65",
+          "n": 27,
+          "predicted": 0.6171233268409331,
+          "actual": 0.6666666666666666
+        },
+        {
+          "key": "65-70",
+          "n": 14,
+          "predicted": 0.6698926222980254,
+          "actual": 0.7857142857142857
+        },
+        {
+          "key": "70+",
+          "n": 5,
+          "predicted": 0.7371169366727213,
+          "actual": 0.6
+        }
+      ],
+      "backtest": {
+        "edge2": {
+          "n": 0,
+          "units": 0,
+          "roi": null,
+          "avgClv": null
+        },
+        "edge3": {
+          "n": 0,
+          "units": 0,
+          "roi": null,
+          "avgClv": null
+        },
+        "edge5": {
+          "n": 0,
+          "units": 0,
+          "roi": null,
+          "avgClv": null
+        }
+      }
+    },
+    "test": {
+      "split": "test",
+      "n": 195,
+      "accuracy": 0.558974358974359,
+      "brier": 0.2417802580466415,
+      "logLoss": 0.6758822646843574,
+      "calibration": [
+        {
+          "key": "50-55",
+          "n": 57,
+          "predicted": 0.5243502840787485,
+          "actual": 0.49122807017543857
+        },
+        {
+          "key": "55-60",
+          "n": 68,
+          "predicted": 0.5737664875813148,
+          "actual": 0.5294117647058824
+        },
+        {
+          "key": "60-65",
+          "n": 49,
+          "predicted": 0.6231688356176606,
+          "actual": 0.5714285714285714
+        },
+        {
+          "key": "65-70",
+          "n": 17,
+          "predicted": 0.6701518042828696,
+          "actual": 0.7647058823529411
+        },
+        {
+          "key": "70+",
+          "n": 4,
+          "predicted": 0.7230493497745457,
+          "actual": 1
+        }
+      ],
+      "backtest": {
+        "edge2": {
+          "n": 0,
+          "units": 0,
+          "roi": null,
+          "avgClv": null
+        },
+        "edge3": {
+          "n": 0,
+          "units": 0,
+          "roi": null,
+          "avgClv": null
+        },
+        "edge5": {
+          "n": 0,
+          "units": 0,
+          "roi": null,
+          "avgClv": null
+        }
+      }
+    }
+  },
+  "notes": [
+    "Production remains v2-ufc. This artifact is shadow/research only.",
+    "Do not promote automatically.",
+    "UFC form rebuilt from prior finals only.",
+    "Historical moneylines are ESPN BET open/close, not verified DraftKings.",
+    "Min prior games per side: 1. Ties and non-finals dropped.",
+    "Production V2 is unchanged. This file is research-only."
+  ]
+}
