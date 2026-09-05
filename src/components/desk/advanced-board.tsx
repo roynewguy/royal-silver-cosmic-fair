@@ -170,6 +170,29 @@ export function AdvancedBoard() {
               </table>
             </div>
             <p className="text-[11px] text-subtle">{desk.data.researchModels.note}</p>
+            {desk.data.researchModels.shadowCompare ? (
+              <div className="rounded-xl bg-bg-elevated p-4">
+                <p className="text-[10px] tracking-[0.16em] text-muted uppercase">MLB shadow · overlapping games only</p>
+                <p className="mt-2 font-mono text-xs text-fg">
+                  n {desk.data.researchModels.shadowCompare.n} · V2 Brier{" "}
+                  {desk.data.researchModels.shadowCompare.v2.brier?.toFixed(3) ?? "—"} · V3 Brier{" "}
+                  {desk.data.researchModels.shadowCompare.v3.brier?.toFixed(3) ?? "—"}
+                </p>
+                <p className="mt-1 font-mono text-xs text-muted">
+                  V2 acc {desk.data.researchModels.shadowCompare.v2.accuracy == null ? "—" : `${(desk.data.researchModels.shadowCompare.v2.accuracy * 100).toFixed(1)}%`}
+                  {" · "}
+                  V3 acc {desk.data.researchModels.shadowCompare.v3.accuracy == null ? "—" : `${(desk.data.researchModels.shadowCompare.v3.accuracy * 100).toFixed(1)}%`}
+                </p>
+                <p className="mt-2 text-[11px] text-subtle">{desk.data.researchModels.shadowCompare.note}</p>
+              </div>
+            ) : null}
+            {desk.data.researchModels.audit?.length ? (
+              <ul className="list-disc space-y-1 pl-4 text-[11px] text-subtle">
+                {desk.data.researchModels.audit.slice(0, 4).map((line) => (
+                  <li key={line.slice(0, 40)}>{line}</li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ) : (
           <p className="text-sm text-muted">No V3 artifact. Ingest and train offline first.</p>

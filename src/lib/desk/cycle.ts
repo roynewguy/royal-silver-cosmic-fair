@@ -25,7 +25,7 @@ import {
 } from "@/lib/sports/research";
 import { confirmDraftKings, loadOddsRemaining, pruneFreeBetaCaches } from "./dk-verify";
 import { recordClosingResult, recordPostedPrediction, recordPregameSnapshots } from "./warehouse";
-import { recordMlbShadow } from "@/lib/models-v3/shadow-store";
+import { recordMlbShadow, gradeShadowPredictions } from "@/lib/models-v3/shadow-store";
 import { gradeDisposition, UNPOSTED_SKIP } from "./posting";
 import { sendOnce, type ClaimStore, type CompletePayload, newPostingToken } from "./post-pipeline";
 import type { GameCard, PickRow } from "@/lib/sports/types";
@@ -654,6 +654,7 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
     const meta = await loadMeta();
     const voided = await voidDeadGames(games);
     const graded = await gradeOpenPicks(games);
+    await gradeShadowPredictions(games);
     const research =
       !isFreeBetaMode() &&
       opts.research !== false &&

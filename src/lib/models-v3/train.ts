@@ -1,12 +1,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { accuracy, backtestSides, brier, calibrationBuckets, logLoss, type SideEval } from "./evaluate.ts";
+import { accuracy, backtestSides, brier, calibrationBuckets, honestBacktest, logLoss, type SideEval } from "./evaluate.ts";
 import { FEATURE_NAMES, featureVector } from "./features.ts";
 import { applyStandard, clampProb, fitLogReg, predictLogReg, standardize } from "./logreg.ts";
 import { assertChronological, chronologicalSplit } from "./splits.ts";
 import type { ResearchSport } from "./sports.ts";
 import type { LogRegArtifact, TrainingRow } from "./types.ts";
 import type { DatasetFile } from "./dataset.ts";
+import { BACKTEST_AUDIT } from "./integrity.ts";
 
 function toEval(rows: TrainingRow[], p: number[]): SideEval[] {
   return rows.map((row, i) => ({
@@ -18,6 +19,8 @@ function toEval(rows: TrainingRow[], p: number[]): SideEval[] {
     awayPrice: row.market.awayOpen ?? row.market.awayClose,
     closeHome: row.market.homeClose,
     closeAway: row.market.awayClose,
+    homeOpen: row.market.homeOpen,
+    awayOpen: row.market.awayOpen,
   }));
 }
 
@@ -38,6 +41,7 @@ function summarize(name: string, rows: TrainingRow[], probs: number[]) {
       edge2: backtestSides(ev, 0.02),
       edge3: backtestSides(ev, 0.03),
       edge5: backtestSides(ev, 0.05),
+      honestEdge3: honestBacktest(ev, 0.03),
     },
   };
 }
@@ -74,6 +78,9 @@ export async function trainSport(spec: ResearchSport, opts: { datasetFile: strin
     notes: [
       `Production remains ${spec.production}. This artifact is shadow/research only.`,
       "Do not promote automatically.",
+      BACKTEST_AUDIT.priceUsedForStake,
+      BACKTEST_AUDIT.vig,
+      BACKTEST_AUDIT.starterEra,
       ...data.notes,
     ],
   };

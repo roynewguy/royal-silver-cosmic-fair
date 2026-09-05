@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PRODUCTION_MODELS } from "./registry.ts";
 import { officialResearchSports } from "./sports.ts";
+import { loadShadowCompare } from "./compare.ts";
+import { BACKTEST_AUDIT } from "./integrity.ts";
 import type { LogRegArtifact } from "./types.ts";
 
 export type SportResearch = {
@@ -23,6 +25,8 @@ export async function loadResearchSummary(): Promise<{
   roi: number | null;
   note: string;
   sports: SportResearch[];
+  shadowCompare?: Awaited<ReturnType<typeof loadShadowCompare>>;
+  audit?: string[];
 } | null> {
   const dir = "src/lib/models-v3/artifacts";
   const sports: SportResearch[] = [];
@@ -51,6 +55,7 @@ export async function loadResearchSummary(): Promise<{
     });
   }
   const mlb = sports.find((s) => s.league === "MLB");
+  const shadowCompare = await loadShadowCompare("mlb");
   return {
     production: mlb?.production ?? PRODUCTION_MODELS.mlb,
     shadow: mlb?.shadow ?? null,
@@ -60,5 +65,13 @@ export async function loadResearchSummary(): Promise<{
     roi: mlb?.roi ?? null,
     note: "Research only. Backtests are not a live record and never auto-promote.",
     sports,
+    shadowCompare,
+    audit: [
+      BACKTEST_AUDIT.sportsbook,
+      BACKTEST_AUDIT.priceUsedForStake,
+      BACKTEST_AUDIT.vig,
+      BACKTEST_AUDIT.starterEra,
+      BACKTEST_AUDIT.honestRule,
+    ],
   };
 }

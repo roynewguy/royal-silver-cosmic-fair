@@ -256,5 +256,13 @@ export type DeskState = {
       logLoss: number | null;
       roi: number | null;
     }>;
+    shadowCompare?: {
+      league: string;
+      n: number;
+      v2: { n: number; brier: number | null; accuracy: number | null; avgClv: number | null };
+      v3: { n: number; brier: number | null; accuracy: number | null; avgClv: number | null };
+      note: string;
+    } | null;
+    audit?: string[];
   } | null;
 };

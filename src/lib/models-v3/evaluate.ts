@@ -1,4 +1,4 @@
-import { impliedFromAmerican } from "../sports/odds.ts";
+import { devig, impliedFromAmerican } from "../sports/odds.ts";
 import { clampProb } from "./logreg.ts";
 
 export type EvalRow = {
@@ -80,7 +80,14 @@ export function backtest(rows: EvalRow[], minEdge: number): { n: number; units: 
   };
 }
 
-export type SideEval = EvalRow & { homePrice: number | null; awayPrice: number | null; closeHome: number | null; closeAway: number | null };
+export type SideEval = EvalRow & {
+  homePrice: number | null;
+  awayPrice: number | null;
+  closeHome: number | null;
+  closeAway: number | null;
+  homeOpen?: number | null;
+  awayOpen?: number | null;
+};
 
 export function backtestSides(rows: SideEval[], minEdge: number): { n: number; units: number; roi: number | null; avgClv: number | null } {
   let n = 0;
@@ -107,3 +114,29 @@ export function backtestSides(rows: SideEval[], minEdge: number): { n: number; u
   }
   return { n, units, roi: n ? units / n : null, avgClv: clvs.length ? clvs.reduce((a, b) => a + b, 0) / clvs.length : null };
 }
+
+/** Requires both opening moneylines and de-vigs. Never stakes the closer. */
+export function honestBacktest(rows: SideEval[], minEdge: number): { n: number; units: number; roi: number | null; avgClv: number | null } {
+  let n = 0;
+  let units = 0;
+  const clvs: number[] = [];
+  for (const r of rows) {
+    const homeOpen = r.homeOpen ?? null;
+    const awayOpen = r.awayOpen ?? null;
+    if (homeOpen == null || awayOpen == null) continue;
+    const [fairHome] = devig(homeOpen, awayOpen);
+    const edgeHome = r.p - fairHome;
+    const edgeAway = 1 - r.p - (1 - fairHome);
+    const betHome = edgeHome >= edgeAway;
+    const edge = betHome ? edgeHome : edgeAway;
+    if (edge < minEdge) continue;
+    const price = betHome ? homeOpen : awayOpen;
+    const won = betHome ? r.y === 1 : r.y === 0;
+    n += 1;
+    units += profit(price, won);
+    const close = betHome ? r.closeHome : r.closeAway;
+    if (close != null) clvs.push(impliedFromAmerican(close) - impliedFromAmerican(price));
+  }
+  return { n, units, roi: n ? units / n : null, avgClv: clvs.length ? clvs.reduce((a, b) => a + b, 0) / clvs.length : null };
+}
+
