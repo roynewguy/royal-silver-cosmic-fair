@@ -24,6 +24,7 @@ import {
   type AiPlay,
 } from "@/lib/sports/research";
 import { confirmDraftKings, loadOddsRemaining, pruneFreeBetaCaches } from "./dk-verify";
+import { recordClosingResult, recordPostedPrediction, recordPregameSnapshots } from "./warehouse";
 import { gradeDisposition, UNPOSTED_SKIP } from "./posting";
 import { sendOnce, type ClaimStore, type CompletePayload, newPostingToken } from "./post-pipeline";
 import type { GameCard, PickRow } from "@/lib/sports/types";
@@ -143,6 +144,7 @@ export async function refreshSlate(): Promise<GameCard[]> {
   if (ranked.length) await upsertGames(ranked);
   const previous = await loadGames();
   const next = mergeFetchedSlate(ranked, previous);
+  await recordPregameSnapshots(next);
   await pruneFreeBetaCaches();
   await touchScan("scan");
   return next;
@@ -210,6 +212,7 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
     start_at: string;
     post_at: string;
     posted_odds: number | null;
+    model_version: string | null;
   }>`
     select * from picks
     where result is null and status in ('queued','posting','posted')
@@ -252,6 +255,7 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
       startAt: String(row.start_at),
       postAt: String(row.post_at),
       createdAt: new Date().toISOString(),
+      modelVersion: row.model_version,
     });
     const result = disp === "void" ? "VOID" : gradePick(fake, game);
     if (!result) continue;
@@ -268,6 +272,13 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
           closing_odds = ${closing}, clv = ${clv}
       where id = ${row.id} and status = 'posted'
     `;
+    await recordClosingResult({
+      game,
+      modelVersion: fake.modelVersion,
+      result,
+      closingPrice: closing,
+      postedPrice: postedOdds,
+    });
     const record = await loadRecord();
     await addLog(
       "grade",
@@ -445,6 +456,7 @@ export async function postPickById(
     return { ok: false, posted: false, pickId, error: result.error };
   }
   await addLog("post", `Discord confirmed ${selection} · ${pick.matchup} · ${freshRank.model}`, pick.sport);
+  await recordPostedPrediction(liveGame, freshRank);
   return { ok: true, posted: true, pickId };
 }
 
