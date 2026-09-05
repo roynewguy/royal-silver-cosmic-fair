@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildDiscordMessage, discordWebhookOk, favoredLine, resolveWebhook } from "./discord.ts";
+import {
+  buildDiscordMessage,
+  buildTestPreviewMessage,
+  discordWebhookOk,
+  favoredLine,
+  resolveWebhook,
+} from "./discord.ts";
 import type { GameCard, PickRow } from "./types.ts";
 
 test("rejects non-discord urls", () => {
@@ -38,7 +44,9 @@ test("play card has pick, favored %, units, score, and line", () => {
     modelProbability: 0.6,
     modelEdge: 3,
     edgePct: 3,
-    reason: "Why BoatBoyz likes it:\n* Lakers are playing at home\n* key starter is available",
+    modelVersion: "v2-nba",
+    reason:
+      "Lakers get the home spot against Warriors.\nWhy BoatBoyz likes it:\n* Lakers are playing at home\n* opponent is missing Stephen Curry",
     startAt: new Date("2026-09-04T02:30:00Z").toISOString(),
     lockedOddsJson: { book: "DraftKings", source: "odds-api" },
   } as PickRow;
@@ -50,12 +58,43 @@ test("play card has pick, favored %, units, score, and line", () => {
   const msg = buildDiscordMessage(pick, game);
   assert.equal(favoredLine(pick), "BoatBoyz Probability: 60%");
   assert.match(msg, /BOATBOYZ OFFICIAL PLAY/);
-  assert.match(msg, /Lakers ML vs Warriors/);
+  assert.match(msg, /Lakers ML/);
+  assert.match(msg, /vs Warriors/);
   assert.match(msg, /BoatBoyz Probability: 60%/);
+  assert.match(msg, /Market Implied:/);
+  assert.match(msg, /Model Edge:/);
   assert.match(msg, /DraftKings at posting: -135/);
   assert.match(msg, /Units: 1\.0U/);
+  assert.match(msg, /WHY BOATBOYZ LIKES IT/);
+  assert.match(msg, /playing at home/);
   assert.match(msg, /Score: Not started/);
+  assert.match(msg, /Model: v2-nba/);
   assert.doesNotMatch(msg, /Favored /);
   assert.doesNotMatch(msg, /current DK/i);
   assert.doesNotMatch(msg, /ESPN/);
+});
+
+test("test preview is labeled unofficial and includes desk notes", () => {
+  const game = {
+    sport: "MLB",
+    league: "mlb",
+    status: "scheduled",
+    startAt: new Date("2026-09-04T01:40:00Z").toISOString(),
+    away: { name: "Yankees", abbr: "NYY", score: null, record: "78-62", starter: { name: "Gerrit Cole", era: 3.2, whip: null, savePct: null, position: "P" } },
+    home: { name: "Padres", abbr: "SD", score: null, record: "76-64", homeSplit: "42-28", starter: { name: "Dylan Cease", era: 3.5, whip: null, savePct: null, position: "P" } },
+    odds: { details: "NYY -112", homeMl: 104, awayMl: -112, source: "espn" },
+    injuries: [{ team: "home", player: "Fernando Tatis Jr.", status: "out", position: "RF" }],
+    weather: "68° F, 8 mph",
+    venue: "Petco Park",
+    rank: null,
+  } as GameCard;
+  const msg = buildTestPreviewMessage(game);
+  assert.match(msg, /TEST PREVIEW — NOT AN OFFICIAL PICK/);
+  assert.match(msg, /MLB/);
+  assert.match(msg, /NYY @ SD/);
+  assert.match(msg, /Current odds: NYY -112/);
+  assert.match(msg, /DESK NOTES/);
+  assert.match(msg, /home/);
+  assert.match(msg, /Tatis|weather|Cease|Cole/i);
+  assert.match(msg, /not an official BoatBoyz play/i);
 });

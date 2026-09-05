@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
 import { buildManualPickMessage, buildTestPreviewMessage, deleteWebhookMessage, discordWebhookOk, postWebhook, resolveWebhook } from "@/lib/sports/discord";
+import { formatWhy } from "@/lib/sports/why";
 import { lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
 import type { Market, Side } from "@/lib/sports/types";
 import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
@@ -169,7 +170,11 @@ export const postManualPick = createServerFn({ method: "POST" })
       price,
     });
     const matchup = `${game.away.name} @ ${game.home.name}`;
-    const reason = "Selected from the current available line on the BoatBoyz desk.";
+    const reason = formatWhy(game, {
+      side: data.side,
+      market: data.market,
+      why: "Selected from the current available line on the BoatBoyz desk.",
+    });
     const now = new Date().toISOString();
     const sql = await getSql();
     const inserted = await sql<{ id: number }>`

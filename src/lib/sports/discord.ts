@@ -1,4 +1,6 @@
 import { formatAmerican, formatKick, formatUnits } from "../utils.ts";
+import { impliedFromAmerican } from "./odds.ts";
+import { parseWhy, previewNotes } from "./why.ts";
 import type { DeskRecord, GameCard, PickResult, PickRow } from "./types.ts";
 
 export function discordWebhookOk(url: string): boolean {
@@ -46,7 +48,7 @@ export async function postWebhook(
         signal: AbortSignal.timeout(12_000),
         body: JSON.stringify({
           username: "Boat Boyz Picks",
-          content: content.slice(0, 1800),
+          content: content.slice(0, 1900),
           allowed_mentions: { parse: [] },
           flags: 4,
         }),
@@ -95,32 +97,66 @@ export async function deleteWebhookMessage(
   }
 }
 
+function pctLabel(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const pct = n > 1.5 ? n : n * 100;
+  return `${Math.round(pct)}%`;
+}
+
+function edgeLabel(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const v = Math.abs(n) <= 1 && n !== 0 ? n * 100 : n;
+  const sign = v > 0 ? "+" : "";
+  return `${sign}${v.toFixed(1)}%`;
+}
+
+function whyBlock(reason: string, heading = "WHY BOATBOYZ LIKES IT"): string[] {
+  const parsed = parseWhy(reason);
+  const bullets = parsed.bullets.slice(0, 5).map((b) => `• ${b}`);
+  const body = [parsed.writeup, ...bullets].filter(Boolean);
+  if (!body.length) return [];
+  return [heading, ...body];
+}
+
 export function buildTestPreviewMessage(game: GameCard): string {
+  const notes = previewNotes(game);
+  const bullets = notes.bullets.map((b) => `• ${b}`);
+  const current = game.odds.details || game.rank?.selection || "No current line available";
   return [
     "🧪 BOATBOYZ TEST PREVIEW — NOT AN OFFICIAL PICK",
     "",
-    `${game.sport} · ${game.away.abbr} @ ${game.home.abbr}`,
-    `Current odds: ${game.odds.details ?? "No current line available"}`,
-    `Game: ${formatKick(game.startAt, "America/Los_Angeles")}`,
-    scoreLine(game),
-    "This message only verifies the Discord connection and current odds display.",
-  ].join("\n");
+    `${sportEmoji(game.sport)} ${game.sport}`,
+    `${game.away.abbr} @ ${game.home.abbr}`,
+    `Current odds: ${current}`,
+    `Game: ${formatKick(game.startAt, "America/Los_Angeles")} PT`,
+    scoreLine(game).replace("Score: not started", "Score: Not started"),
+    "",
+    "DESK NOTES",
+    notes.writeup,
+    ...bullets,
+    "",
+    "This message only verifies Discord + the current board. It is not an official BoatBoyz play.",
+  ]
+    .filter((line) => line !== undefined)
+    .join("\n");
 }
 
 export function buildManualPickMessage(pick: PickRow, game?: GameCard | null): string {
   const book = pick.lockedOddsJson.book || "Current market";
   const line = pick.lockedLine == null ? "" : ` · ${pick.lockedLine > 0 ? `+${pick.lockedLine}` : pick.lockedLine}`;
+  const reason = pick.reason || "Selected from the current available line on the BoatBoyz desk.";
   return [
     "🌊 BOATBOYZ MANUAL PICK",
     "",
-    `${pick.sport} · ${pick.selection}`,
-    `Selection mode: Operator choice`,
+    `${sportEmoji(pick.sport)} ${pick.sport}`,
+    `${pick.selection} ${vsLine(pick, game)}`,
     `${book} current line: ${formatAmerican(pick.lockedOdds)}${line}`,
     "",
-    "Why: Selected from the current available line on the BoatBoyz desk.",
-    `Game: ${formatKick(pick.startAt, "America/Los_Angeles")}`,
+    ...whyBlock(reason, "WHY THIS HIT THE BOARD"),
+    "",
+    `Game: ${formatKick(pick.startAt, "America/Los_Angeles")} PT`,
     scoreLine(game).replace("Score: not started", "Score: Not started"),
-    "This is a manually selected play; the line is recorded at posting.",
+    "Manually selected. Line recorded at posting. Not a model-frozen official play.",
   ].join("\n");
 }
 
@@ -174,35 +210,40 @@ export function vsLine(pick: PickRow, game?: GameCard | null): string {
 export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): string {
   const kick = formatKick(pick.startAt, "America/Los_Angeles");
   const modelPct = Math.round((pick.modelProbability ?? pick.confidence / 100) * 100);
+  const marketPct = pctLabel(impliedFromAmerican(pick.lockedOdds));
+  const edge = pick.modelEdge ?? pick.edgePct;
   const verifiedAt = pick.postedAt
     ? formatKick(pick.postedAt, "America/Los_Angeles")
     : pick.lockedOddsJson.capturedAt
       ? formatKick(pick.lockedOddsJson.capturedAt, "America/Los_Angeles")
       : "pending";
-  const bullets = pick.reason
-    .replace(/^Why BoatBoyz likes it:\s*/i, "")
-    .split(/\n/)
-    .map((s) => s.replace(/^[•*-]\s*/, "").trim())
-    .filter(Boolean)
-    .slice(0, 4);
-  const why = bullets.length ? bullets.map((b) => `• ${b}`).join("\n") : pick.reason;
+  const dkLine =
+    pick.lockedLine == null || !Number.isFinite(pick.lockedLine)
+      ? formatAmerican(pick.lockedOdds)
+      : `${formatAmerican(pick.lockedOdds)} · ${pick.lockedLine}`;
   return [
     "🌊 BOATBOYZ OFFICIAL PLAY",
     "",
-    pick.sport,
-    `${pick.selection} ${vsLine(pick, game)}`,
+    `${sportEmoji(pick.sport)} ${pick.sport}`,
+    pick.selection,
+    vsLine(pick, game),
     "",
+    `DraftKings at posting: ${dkLine}`,
     `BoatBoyz Probability: ${modelPct}%`,
-    `DraftKings at posting: ${formatAmerican(pick.lockedOdds)}${pick.lockedLine != null ? ` · ${pick.lockedLine}` : ""}`,
+    `Market Implied: ${marketPct}`,
+    `Model Edge: ${edgeLabel(edge)}`,
+    `Confidence: ${Math.round(pick.confidence)}/100`,
     `Units: ${Number(pick.units).toFixed(1)}U`,
     "",
-    "Why:",
-    why,
+    ...whyBlock(pick.reason),
     "",
-    `Game: ${kick}`,
+    `Game: ${kick} PT`,
     scoreLine(game).replace("Score: not started", "Score: Not started"),
-    `DK line verified: ${verifiedAt}`,
-  ].join("\n");
+    `Verified: ${verifiedAt} PT`,
+    pick.modelVersion ? `Model: ${pick.modelVersion}` : null,
+  ]
+    .filter((line): line is string => line != null)
+    .join("\n");
 }
 
 export function buildRecapMessage(
