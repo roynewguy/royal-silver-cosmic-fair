@@ -273,20 +273,32 @@ function eventToGames(event: EspnEvent, league: LeagueConfig): GameCard[] {
   return cards;
 }
 
-const scanStats = { requests: 0, started: 0 };
+const scanStats = { requests: 0, started: 0, errors: [] as string[] };
 const inflight = new Map<string, Promise<unknown>>();
 
 export function beginEspnScan(): void {
   scanStats.requests = 0;
   scanStats.started = Date.now();
+  scanStats.errors = [];
   inflight.clear();
 }
 
-export function espnScanStats(): { espn_request_count: number; scan_duration_ms: number } {
+export function espnScanStats(): {
+  espn_request_count: number;
+  scan_duration_ms: number;
+  espn_error_count: number;
+  espn_last_error: string | null;
+} {
   return {
     espn_request_count: scanStats.requests,
     scan_duration_ms: Date.now() - (scanStats.started || Date.now()),
+    espn_error_count: scanStats.errors.length,
+    espn_last_error: scanStats.errors.at(-1) ?? null,
   };
+}
+
+export function espnRequestHeaders(): Record<string, string> {
+  return { Accept: "application/json" };
 }
 
 async function fetchJsonUncached(url: string): Promise<unknown> {
@@ -296,13 +308,14 @@ async function fetchJsonUncached(url: string): Promise<unknown> {
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "Mozilla/5.0 (compatible; BoatBoyz/2.0)",
-      },
+      headers: espnRequestHeaders(),
     });
     if (!res.ok) throw new Error(`ESPN ${res.status}`);
     return await res.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "ESPN request failed";
+    if (scanStats.errors.length < 8) scanStats.errors.push(message);
+    throw error;
   } finally {
     clearTimeout(t);
   }
