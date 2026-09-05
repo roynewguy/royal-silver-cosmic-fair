@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { extraScanDateKeys } from "./day.ts";
 import { LEAGUE_BY_ID, LEAGUES } from "./leagues.ts";
-import { espnScoreboardUrlCount, INJURY_CACHE_MS, urlsFor } from "./espn.ts";
+import { espnRequestHeaders, espnScoreboardUrlCount, INJURY_CACHE_MS, urlsFor } from "./espn.ts";
+
+test("ESPN requests omit the custom user-agent rejected by the scoreboard API", () => {
+  const headers = espnRequestHeaders();
+  assert.equal(headers.Accept, "application/json");
+  assert.equal("User-Agent" in headers, false);
+});
 
 test("daily leagues fetch today + yesterday, not a third overlapping date", () => {
   const now = new Date("2026-09-04T21:01:00-07:00");
