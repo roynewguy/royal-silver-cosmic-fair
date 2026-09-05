@@ -6,13 +6,11 @@ import {
   fetchDraftKingsMarket,
   isDraftKingsLine,
   overlayDraftKings,
-  pairOddsEvents,
+  matchSingleOddsEvent,
   type OddsUsage,
 } from "@/lib/sports/odds-api.ts";
 import type { GameCard, Market, OddsSnapshot } from "@/lib/sports/types";
 import { addLog } from "./store";
-
-const STALE_DK = "PASS: DraftKings line unavailable or cache older than 20 minutes.";
 
 function jsonParse<T>(raw: unknown, fallback: T): T {
   if (raw && typeof raw === "object") return raw as T;
@@ -95,28 +93,28 @@ export async function confirmDraftKings(
   });
 
   if (action === "use-cache") {
-    if (!fresh || !cached) return { ok: false, error: STALE_DK };
+    if (!fresh || !cached) return { ok: false, error: "PASS_DK_STALE" };
     return { ok: true, game: { ...game, odds: applyDraftKingsSnapshot(game.odds, cached.odds) } };
   }
   if (action === "pass") {
-    return { ok: false, error: STALE_DK };
+    return { ok: false, error: "PASS_DK_STALE" };
   }
 
   const league = LEAGUE_BY_ID[game.league];
   const apiKey = process.env.ODDS_API_KEY?.trim();
   if (!league?.oddsApiKey || !apiKey) {
-    return { ok: false, error: "PASS: DraftKings line unavailable." };
+    return { ok: false, error: "PASS_DK_UNAVAILABLE" };
   }
 
   try {
     const { rows, usage } = await fetchDraftKingsMarket(league.oddsApiKey, apiKey, marketParam(market));
     await recordOddsUsage(usage);
-    const pairs = pairOddsEvents(
-      [{ id: game.id, home: game.home.name, away: game.away.name, startAt: game.startAt }],
+    const match = matchSingleOddsEvent(
+      { home: game.home.name, away: game.away.name, startAt: game.startAt },
       rows,
     );
-    const idx = pairs.get(game.id);
-    const hit = idx != null ? rows[idx] : undefined;
+    if (!match.ok) return { ok: false, error: match.reason };
+    const hit = rows[match.index];
     if (hit) {
       const next = overlayDraftKings(game, hit);
       if (next && isDraftKingsLine(next.odds)) {
@@ -128,7 +126,7 @@ export async function confirmDraftKings(
     await addLog("scan", `Odds API ${err instanceof Error ? err.message : "failed"}`, game.sport);
   }
 
-  return { ok: false, error: STALE_DK };
+  return { ok: false, error: "PASS_DK_UNAVAILABLE" };
 }
 
 export async function pruneFreeBetaCaches(force = false): Promise<void> {

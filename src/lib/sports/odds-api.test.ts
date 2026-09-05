@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isDraftKingsLine, pairOddsEvents } from "./odds-api.ts";
+import { isDraftKingsLine, pairOddsEvents, matchSingleOddsEvent } from "./odds-api.ts";
 import type { OddsSnapshot } from "./types.ts";
 
 test("doubleheader pairs each ESPN game to the closer commence_time", () => {
@@ -107,4 +107,34 @@ test("isDraftKingsLine requires Odds API + DraftKings book", () => {
   assert.equal(isDraftKingsLine(base), true);
   assert.equal(isDraftKingsLine({ ...base, source: "espn" }), false);
   assert.equal(isDraftKingsLine({ ...base, book: "ESPN BET" }), false);
+});
+
+test("official matching PASSes when two Odds events fit the same ESPN game", () => {
+  const match = matchSingleOddsEvent(
+    {
+      home: "Los Angeles Dodgers",
+      away: "San Diego Padres",
+      startAt: "2026-09-04T16:10:00Z",
+    },
+    [
+      { home_team: "Los Angeles Dodgers", away_team: "San Diego Padres", commence_time: "2026-09-04T16:05:00Z" },
+      { home_team: "Los Angeles Dodgers", away_team: "San Diego Padres", commence_time: "2026-09-04T16:40:00Z" },
+    ],
+  );
+  assert.equal(match.ok, false);
+  if (!match.ok) assert.equal(match.reason, "PASS_ODDS_EVENT_AMBIGUOUS");
+});
+
+test("official matching PASSes swapped teams and far commence times", () => {
+  const swapped = matchSingleOddsEvent(
+    { home: "Miami Marlins", away: "Chicago Cubs", startAt: "2026-09-04T23:10:00Z" },
+    [{ home_team: "Chicago Cubs", away_team: "Miami Marlins", commence_time: "2026-09-04T23:10:00Z" }],
+  );
+  assert.equal(swapped.ok, false);
+  const far = matchSingleOddsEvent(
+    { home: "Los Angeles Dodgers", away: "San Diego Padres", startAt: "2026-09-04T16:10:00Z" },
+    [{ home_team: "Los Angeles Dodgers", away_team: "San Diego Padres", commence_time: "2026-09-04T18:10:00Z" }],
+  );
+  assert.equal(far.ok, false);
+  if (!far.ok) assert.equal(far.reason, "PASS_START_TIME_MISMATCH");
 });

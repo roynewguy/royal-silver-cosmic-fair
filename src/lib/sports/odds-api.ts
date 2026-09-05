@@ -20,7 +20,8 @@ const cache: { byLeague: Map<string, { at: number; rows: OddsApiGame[] }> } = {
   byLeague: new Map(),
 };
 
-const MAX_START_DELTA_MS = 4 * 60 * 60 * 1000;
+export const SCAN_START_DELTA_MS = 4 * 60 * 60 * 1000;
+export const OFFICIAL_START_DELTA_MS = 90 * 60 * 1000;
 
 function norm(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -33,6 +34,45 @@ export function namesMatch(a: string, b: string): boolean {
   return na === nb || na.includes(nb) || nb.includes(na);
 }
 
+export function teamsSwapped(
+  event: { home_team?: string; away_team?: string },
+  game: { home: string; away: string },
+): boolean {
+  return namesMatch(event.home_team ?? "", game.away) && namesMatch(event.away_team ?? "", game.home);
+}
+
+export type OddsMatchResult =
+  | { ok: true; index: number }
+  | { ok: false; reason: "PASS_ODDS_EVENT_AMBIGUOUS" | "PASS_GAME_MISMATCH" | "PASS_START_TIME_MISMATCH" | "PASS_DK_UNAVAILABLE" };
+
+export function matchSingleOddsEvent(
+  game: { home: string; away: string; startAt: string },
+  events: { home_team?: string; away_team?: string; commence_time?: string }[],
+  maxDeltaMs = OFFICIAL_START_DELTA_MS,
+): OddsMatchResult {
+  const start = new Date(game.startAt).getTime();
+  if (Number.isNaN(start)) return { ok: false, reason: "PASS_START_TIME_MISMATCH" };
+  const named: number[] = [];
+  const swapped: number[] = [];
+  const timed: { i: number; delta: number }[] = [];
+  events.forEach((event, i) => {
+    if (teamsSwapped(event, game)) swapped.push(i);
+    const homeOk = namesMatch(event.home_team ?? "", game.home);
+    const awayOk = namesMatch(event.away_team ?? "", game.away);
+    if (!homeOk || !awayOk) return;
+    named.push(i);
+    const commence = new Date(event.commence_time ?? "").getTime();
+    if (Number.isNaN(commence)) return;
+    const delta = Math.abs(commence - start);
+    if (delta <= maxDeltaMs) timed.push({ i, delta });
+  });
+  if (swapped.length && !timed.length) return { ok: false, reason: "PASS_GAME_MISMATCH" };
+  if (timed.length > 1) return { ok: false, reason: "PASS_ODDS_EVENT_AMBIGUOUS" };
+  if (timed.length === 1) return { ok: true, index: timed[0]!.i };
+  if (named.length) return { ok: false, reason: "PASS_START_TIME_MISMATCH" };
+  return { ok: false, reason: "PASS_DK_UNAVAILABLE" };
+}
+
 export function isDraftKingsLine(odds: OddsSnapshot): boolean {
   if (odds.source !== "odds-api") return false;
   return /draft\s*kings/i.test(odds.book);
@@ -41,7 +81,7 @@ export function isDraftKingsLine(odds: OddsSnapshot): boolean {
 export function pairOddsEvents(
   games: { id: string; home: string; away: string; startAt: string }[],
   events: { home_team?: string; away_team?: string; commence_time?: string }[],
-  maxDeltaMs = MAX_START_DELTA_MS,
+  maxDeltaMs = SCAN_START_DELTA_MS,
 ): Map<string, number> {
   const used = new Set<number>();
   const out = new Map<string, number>();
