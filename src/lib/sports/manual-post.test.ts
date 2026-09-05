@@ -174,8 +174,8 @@ test("missing model probability is not invented on the Discord body", () => {
   assert.match(msg, /favored to win at home|playing at home/i);
   assert.doesNotMatch(msg, /BoatBoyz Probability/);
   assert.doesNotMatch(msg, /Model Edge/);
-  assert.doesNotMatch(msg, /Operator play/);
-  assert.doesNotMatch(msg, /Manual entry/);
+  assert.doesNotMatch(msg, /operator/i);
+  assert.doesNotMatch(msg, /manual/i);
   assert.equal(pick.modelProbability, null);
 });
 
@@ -273,9 +273,8 @@ test("manual Discord writeup matches the pick card and never labels operator ent
   assert.match(msg, /WHY BOATBOYZ LIKES IT/);
   assert.match(msg, /favored to win on the road/);
   assert.match(msg, /Skubal|playing at home|road/i);
-  assert.doesNotMatch(msg, /Operator play/);
-  assert.doesNotMatch(msg, /Manual entry/);
-  assert.doesNotMatch(msg, /not an auto pick/);
+  assert.doesNotMatch(msg, /operator/i);
+  assert.doesNotMatch(msg, /manual/i);
 });
 
 test("double tap uses the same request id so only one unique manual_post_id exists", () => {

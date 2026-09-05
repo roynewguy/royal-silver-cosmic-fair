@@ -13,11 +13,11 @@ export function RecordBoard() {
   const desk = useDesk();
   const [sport, setSport] = useState("ALL");
   const [result, setResult] = useState<"ALL" | PickResult>("ALL");
-  const [source, setSource] = useState<"ALL" | "AUTO" | "MANUAL" | "LIVE">("AUTO");
+  const [source, setSource] = useState<"ALL" | "AUTO" | "PLAYS" | "LIVE">("AUTO");
   const pool = desk.data.picks.filter((p) => p.status === "posted" || p.status === "graded");
   const official = pool.filter((p) => {
     if (source === "AUTO") return Boolean(p.officialKey) && p.pickSource !== "manual" && p.pickSource !== "manual_live";
-    if (source === "MANUAL") return p.pickSource === "manual";
+    if (source === "PLAYS") return p.pickSource === "manual";
     if (source === "LIVE") return p.pickSource === "manual_live";
     return true;
   });
@@ -51,7 +51,7 @@ export function RecordBoard() {
       <div>
         <p className="text-xs tracking-[0.22em] text-accent uppercase">Book</p>
         <h1 className="mt-1 font-display text-4xl tracking-wide">Record</h1>
-        <p className="mt-2 max-w-xl text-sm text-muted">Auto record is separate from operator plays. Losses stay.</p>
+        <p className="mt-2 max-w-xl text-sm text-muted">BoatBoyz auto card is the public book. Losses stay.</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-4">
@@ -90,7 +90,7 @@ export function RecordBoard() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {(["AUTO", "MANUAL", "LIVE", "ALL"] as const).map((s) => (
+        {(["AUTO", "PLAYS", "LIVE", "ALL"] as const).map((s) => (
           <Button key={s} size="sm" variant={source === s ? "primary" : "ghost"} onClick={() => setSource(s)}>
             {s}
           </Button>

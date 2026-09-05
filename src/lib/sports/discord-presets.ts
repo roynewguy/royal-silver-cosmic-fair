@@ -88,7 +88,7 @@ export function buildDiscordPresets(input: {
     {
       id: "record",
       label: "Record",
-      body: ["🌊 BOATBOYZ RECORD", "", recordLine(input.record), "", "Auto official plays only. Manual posts stay off this ledger."].join("\n"),
+      body: ["🌊 BOATBOYZ RECORD", "", recordLine(input.record), "", "Official auto card only."].join("\n"),
     },
     {
       id: "cash",
@@ -196,9 +196,8 @@ export function buildDiscordPresets(input: {
         "Odds: [LINE]",
         "Units: 1.0U",
         "",
-        "[short why — home, starter, injury, number]",
-        "",
-        "Operator post. Not an automated official pick.",
+        "WHY BOATBOYZ LIKES IT",
+        "[home / road, starter, injury, number]",
       ].join("\n"),
     },
   ];

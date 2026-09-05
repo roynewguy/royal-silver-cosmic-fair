@@ -275,7 +275,8 @@ function ManualPick({ games }: { games: GameCard[] }) {
     units,
     note,
   });
-  const source = ticket.lineSource === "manual-entry" ? "Manual Entry" : ticket.lineSource === "draftkings" ? "DraftKings" : ticket.lineSource === "espn" ? "ESPN" : "Odds API";
+  const source =
+    ticket.lineSource === "draftkings" ? "DraftKings" : ticket.lineSource === "espn" ? "ESPN" : ticket.lineSource === "odds-api" ? "Odds API" : "Current board";
   const previewPick = {
     id: 0,
     gameId: game.id,
@@ -328,7 +329,7 @@ function ManualPick({ games }: { games: GameCard[] }) {
 
   return (
     <div className="space-y-3 rounded-xl bg-surface p-4 shadow-border">
-      <p className="text-xs tracking-[0.14em] text-push uppercase">Operator override · not auto</p>
+      <p className="text-xs tracking-[0.14em] text-push uppercase">Post any play</p>
       <div className="flex flex-wrap gap-2">
         {sports.map((s) => (
           <Button key={s} size="sm" variant={sport === s ? "primary" : "ghost"} onClick={() => setSport(s)}>
@@ -388,7 +389,7 @@ function ManualPick({ games }: { games: GameCard[] }) {
         <Input placeholder="Units" value={units} onChange={(e) => setUnits(e.target.value)} />
       </div>
       <Input placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-      <p className="text-xs text-subtle">Source: {source}{source === "Manual Entry" ? " · not verified DraftKings" : ""}</p>
+      <p className="text-xs text-subtle">Line: {source}</p>
       {preview ? (
         <pre className="whitespace-pre-wrap rounded-lg bg-bg-elevated p-3 font-mono text-xs text-muted">
           {buildManualPickMessage(previewPick, game)}

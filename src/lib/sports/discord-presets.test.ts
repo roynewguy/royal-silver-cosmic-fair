@@ -50,12 +50,17 @@ test("presets fill from the live card and never look like official auto tickets"
   assert.match(rec.body, /\+3\.20u/);
   for (const p of presets) {
     assert.doesNotMatch(p.body, /BOATBOYZ OFFICIAL PLAY/);
+    assert.doesNotMatch(p.body, /operator/i);
+    assert.doesNotMatch(p.body, /manual/i);
   }
 });
 
 test("empty board still gives a PASS and blank custom template", () => {
   const presets = buildDiscordPresets({ record, picks: [], games: [] });
   assert.match(presets.find((p) => p.id === "pass")!.body, /No play on this window/);
-  assert.match(presets.find((p) => p.id === "custom")!.body, /Operator post/);
+  assert.match(presets.find((p) => p.id === "custom")!.body, /BOATBOYZ PLAY/);
+  assert.match(presets.find((p) => p.id === "custom")!.body, /WHY BOATBOYZ LIKES IT/);
+  assert.doesNotMatch(presets.find((p) => p.id === "custom")!.body, /Operator/i);
+  assert.doesNotMatch(presets.find((p) => p.id === "custom")!.body, /Manual/i);
   assert.match(presets.find((p) => p.id === "card")!.body, /No official plays locked yet/);
 });

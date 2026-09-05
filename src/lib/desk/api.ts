@@ -220,7 +220,7 @@ export const postManualPick = createServerFn({ method: "POST" })
             needs_manual_grade, manual_post_id
           ) values (
             ${game.id}, ${game.sport}, ${game.league}, ${matchup}, ${data.market}, ${ticket.selection}, ${data.side},
-            ${ticket.line}, ${ticket.odds}, ${JSON.stringify(game.odds)}, ${ticket.reason || "Operator play."}, null,
+            ${ticket.line}, ${ticket.odds}, ${JSON.stringify(game.odds)}, ${ticket.reason}, null,
             0, 0, ${ticket.units}, 'queued', ${game.startAt}, ${now},
             null, null, null, ${ticket.odds}, ${now},
             null, 'official', ${ticket.pickSource}, ${ticket.lineSource}, ${ticket.postedScore}, ${ticket.postedState},

@@ -55,7 +55,7 @@ export function ticketCopy(label: TicketLabel): string {
     case "rotated":
       return "ROTATED";
     case "manual":
-      return "MANUAL";
+      return "PLAY";
     default:
       return "PASS";
   }

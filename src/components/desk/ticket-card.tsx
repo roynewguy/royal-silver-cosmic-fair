@@ -29,14 +29,14 @@ export function TicketCard({ pick, game, operator = false }: { pick: PickRow; ga
           <p className="mt-0.5 text-sm text-muted">{vsLine(pick, game)}</p>
         </div>
         <Badge tone={pick.ledger === "paper" ? "push" : pick.pickSource === "manual_live" ? "live" : tone(label)}>
-          {pick.ledger === "paper" ? "PAPER" : pick.pickSource === "manual_live" ? "LIVE PLAY" : pick.pickSource === "manual" ? "MANUAL" : ticketCopy(label)}
+          {pick.ledger === "paper" ? "PAPER" : pick.pickSource === "manual_live" ? "LIVE PLAY" : pick.pickSource === "manual" ? "PLAY" : ticketCopy(label)}
         </Badge>
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 font-mono text-sm tabular-nums">
         {pick.pickSource === "manual" || pick.pickSource === "manual_live" ? (
           <div>
-            <dt className="text-[10px] tracking-[0.14em] text-subtle uppercase">Operator play</dt>
-            <dd className="text-fg">No model number</dd>
+            <dt className="text-[10px] tracking-[0.14em] text-subtle uppercase">Units</dt>
+            <dd className="text-fg">{Number(pick.units).toFixed(1)}U</dd>
           </div>
         ) : (
         <div>
@@ -45,7 +45,7 @@ export function TicketCard({ pick, game, operator = false }: { pick: PickRow; ga
         </div>
         )}
         <div>
-          <dt className="text-[10px] tracking-[0.14em] text-subtle uppercase">{pick.lineSource === "manual-entry" ? "Manual line" : locked ? "Line at posting" : "Current scan line"}</dt>
+          <dt className="text-[10px] tracking-[0.14em] text-subtle uppercase">{locked ? "Line at posting" : "Current scan line"}</dt>
           <dd className="text-fg">{formatAmerican(pick.postedOdds ?? pick.lockedOdds)}</dd>
         </div>
         {operator && !locked && pick.pickSource !== "manual" && pick.pickSource !== "manual_live" ? (
