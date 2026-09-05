@@ -1,10 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
-import { buildTestPreviewMessage, deleteWebhookMessage, discordWebhookOk, postWebhook, resolveWebhook } from "@/lib/sports/discord";
+import { buildManualPickMessage, buildTestPreviewMessage, deleteWebhookMessage, discordWebhookOk, postWebhook, resolveWebhook } from "@/lib/sports/discord";
+import { lineFor, priceFor, selectionLabel } from "@/lib/sports/odds";
+import type { Market, Side } from "@/lib/sports/types";
 import { changePin, cronAuthorized, isOperator, loginWithPin, logoutOperator, pinFromEnv, requireOperator } from "./admin";
 import { postPickById, refreshSlate, runTick } from "./cycle";
 import { redactDesk } from "./redact";
-import { addLog, loadGames, loadMeta, readDesk, writeMaxDailyPicks, writeWebhook } from "./store";
+import { addLog, loadGames, loadMeta, pickFromRow, readDesk, writeMaxDailyPicks, writeWebhook } from "./store";
 
 const g = globalThis as typeof globalThis & {
   __boatboyzWorker?: ReturnType<typeof setInterval>;
@@ -119,6 +121,91 @@ export const postTestPreview = createServerFn({ method: "POST" })
     const result = await postWebhook(hook, buildTestPreviewMessage(game));
     if (!result.ok) return { ok: false as const, error: result.error ?? "Test post failed." };
     await addLog("post", `Test preview posted · ${game.sport} ${game.away.abbr} @ ${game.home.abbr}`, game.sport);
+    return { ok: true as const, state: await deskForClient() };
+  });
+
+export const postManualPick = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const data = input as { gameId?: string; market?: string; side?: string };
+    const market = data.market as Market;
+    const side = data.side as Side;
+    return {
+      gameId: String(data.gameId ?? ""),
+      market,
+      side,
+    };
+  })
+  .handler(async ({ data }) => {
+    const gate = await requireOperator();
+    if (!gate.ok) return { ok: false as const, error: gate.error };
+    if (!["spread", "moneyline", "total"].includes(data.market)) {
+      return { ok: false as const, error: "Choose a valid market." };
+    }
+    if (!["home", "away", "over", "under"].includes(data.side)) {
+      return { ok: false as const, error: "Choose a valid side." };
+    }
+
+    const games = await refreshSlate();
+    const game = games.find((item) => item.id === data.gameId);
+    if (!game) return { ok: false as const, error: "Game not found. Scan odds and try again." };
+    if (game.status !== "scheduled" && game.status !== "in_progress") {
+      return { ok: false as const, error: `This game is ${game.status} and cannot be posted.` };
+    }
+    const price = priceFor(game.odds, data.market, data.side);
+    const line = lineFor(game.odds, data.market, data.side);
+    if (price == null || !Number.isFinite(price) || (data.market !== "moneyline" && (line == null || !Number.isFinite(line)))) {
+      return { ok: false as const, error: "That market does not have a current line." };
+    }
+
+    const hook = resolveWebhook(await (await import("./store")).readWebhook()).url;
+    if (!hook) return { ok: false as const, error: "No Discord webhook configured." };
+
+    const selection = selectionLabel({
+      market: data.market,
+      side: data.side,
+      homeAbbr: game.home.abbr,
+      awayAbbr: game.away.abbr,
+      line,
+      price,
+    });
+    const matchup = `${game.away.name} @ ${game.home.name}`;
+    const reason = "Selected from the current available line on the BoatBoyz desk.";
+    const now = new Date().toISOString();
+    const sql = await getSql();
+    const inserted = await sql<{ id: number }>`
+      insert into picks (
+        game_id, sport, league, matchup, market, selection, side,
+        locked_line, locked_odds, locked_odds_json, reason, research,
+        confidence, edge_pct, units, status, start_at, post_at,
+        model_version, model_probability, model_edge, selected_odds, selected_at
+      ) values (
+        ${game.id}, ${game.sport}, ${game.league}, ${matchup}, ${data.market}, ${selection}, ${data.side},
+        ${line}, ${price}, ${JSON.stringify(game.odds)}, ${reason}, null,
+        0, 0, 1, 'queued', ${game.startAt}, ${now},
+        'manual', null, 0, ${price}, ${now}
+      )
+      returning id
+    `;
+    const id = inserted[0]?.id;
+    if (!id) return { ok: false as const, error: "Could not create the manual pick." };
+
+    const rows = await sql`select * from picks where id = ${id}`;
+    const row = rows[0];
+    if (!row) return { ok: false as const, error: "Manual pick was not created." };
+    const pick = pickFromRow(row as never);
+    const message = buildManualPickMessage(pick, game);
+    const sent = await postWebhook(hook, message);
+    if (!sent.ok) {
+      await sql`update picks set status = 'skipped', skip_reason = ${sent.error ?? "Discord post failed."} where id = ${id}`;
+      return { ok: false as const, error: sent.error ?? "Discord post failed." };
+    }
+    await sql`
+      update picks set
+        status = 'posted', posted_at = now(), posted_odds = ${price},
+        discord_message = ${message}, discord_message_id = ${sent.id ?? null}
+      where id = ${id}
+    `;
+    await addLog("post", `Manual pick posted · ${selection} · ${game.sport}`, game.sport);
     return { ok: true as const, state: await deskForClient() };
   });
 

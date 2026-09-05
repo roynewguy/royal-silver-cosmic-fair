@@ -3,8 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, type ReactNode } from "react";
 import { toast } from "sonner";
-import { deleteDiscordPost, getDesk, lockDesk, postTestPreview, pushPick, refreshBoard, runDesk, saveDailyPicks, saveWebhook, unlockDesk } from "@/lib/desk/api";
-import type { DeskState } from "@/lib/sports/types";
+import { deleteDiscordPost, getDesk, lockDesk, postManualPick, postTestPreview, pushPick, refreshBoard, runDesk, saveDailyPicks, saveWebhook, unlockDesk } from "@/lib/desk/api";
+import type { DeskState, Market, Side } from "@/lib/sports/types";
 
 const empty: DeskState = {
   record: { wins: 0, losses: 0, pushes: 0, units: 0, pending: 0 },
@@ -35,6 +35,7 @@ type DeskApi = {
   refresh: () => void;
   run: () => void;
   push: (input: { pickId: number; webhookUrl?: string; allowLive?: boolean }) => void;
+  manualPost: (input: { gameId: string; market: Market; side: Side }) => void;
   testPost: (gameId: string) => void;
   deletePost: (pickId: number) => void;
   saveHook: (webhookUrl: string) => void;
@@ -123,6 +124,19 @@ function useDeskController(): DeskApi {
     onError: () => toast.error("Test post failed."),
   });
 
+  const manualPost = useMutation({
+    mutationFn: (input: { gameId: string; market: Market; side: Side }) => postManualPick({ data: input }),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        toast.error(res.error ?? "Manual post failed.");
+        return;
+      }
+      if (res.state) qc.setQueryData(["desk"], res.state);
+      toast.success("Pick posted to Discord and recorded.");
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Manual post failed."),
+  });
+
   const saveHook = useMutation({
     mutationFn: (webhookUrl: string) => saveWebhook({ data: { webhookUrl } }),
     onSuccess: (res) => {
@@ -175,6 +189,7 @@ function useDeskController(): DeskApi {
     run: () => run.mutate(),
     push: (input) => push.mutate(input),
     testPost: (gameId) => testPost.mutate(gameId),
+    manualPost: (input) => manualPost.mutate(input),
     deletePost: (pickId) => deletePost.mutate(pickId),
     saveHook: (webhookUrl) => saveHook.mutate(webhookUrl),
     setDailyPicks: (count) => savePlays.mutate(count),
