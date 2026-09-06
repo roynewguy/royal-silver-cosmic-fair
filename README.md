@@ -1,4 +1,4 @@
-# BoatBoyz
+# BoatBoyzPicks
 
 One deterministic desk. Up to three qualifying automated plays across the Pacific Time slate. Every official result stays recorded.
 

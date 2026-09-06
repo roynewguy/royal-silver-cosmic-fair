@@ -99,7 +99,7 @@ export function formatWhy(game: GameCard, rank: Pick<RankPick, "side"> & Partial
   const writeup = whyWriteup(game, rank);
   const lines = whyBullets(game, rank).map((b) => `* ${b}`);
   if (lines.length === 0 && !writeup) return rank.why || "Board notes only.";
-  return [writeup, "Why BoatBoyz likes it:", ...lines].filter(Boolean).join("\n");
+  return [writeup, "Why BoatBoyzPicks likes it:", ...lines].filter(Boolean).join("\n");
 }
 
 /** Default Discord writeup for any posted play. Operator notes get appended, never replace facts. */
@@ -107,7 +107,7 @@ export function defaultPlayReason(game: GameCard, side: Side, note?: string | nu
   const generated = formatWhy(game, { side });
   const extra = (note ?? "").trim();
   if (!extra) return generated;
-  if (/Why BoatBoyz likes it:/i.test(extra)) return extra;
+  if (/Why BoatBoyz(?:Picks)? likes it:/i.test(extra)) return extra;
   return `${generated}\n* ${extra}`;
 }
 
@@ -137,10 +137,10 @@ export function previewNotes(game: GameCard): { writeup: string; bullets: string
 
 export function parseWhy(reason: string): { writeup: string; bullets: string[] } {
   const raw = (reason || "").trim();
-  const idx = raw.search(/Why BoatBoyz likes it:/i);
+  const idx = raw.search(/Why BoatBoyz(?:Picks)? likes it:/i);
   if (idx >= 0) {
     const writeup = raw.slice(0, idx).trim();
-    const rest = raw.slice(idx).replace(/^Why BoatBoyz likes it:\s*/i, "");
+    const rest = raw.slice(idx).replace(/^Why BoatBoyz(?:Picks)? likes it:\s*/i, "");
     const bullets = rest
       .split(/\n/)
       .map((s) => s.replace(/^[•*-]\s*/, "").trim())

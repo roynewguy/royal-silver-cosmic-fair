@@ -174,9 +174,9 @@ test("missing model probability is not invented on the Discord body", () => {
   } as PickRow;
   const msg = buildManualPickMessage(pick, live);
   assert.match(msg, /LIVE PLAY/);
-  assert.match(msg, /WHY BOATBOYZ LIKES IT/);
+  assert.match(msg, /WHY BoatBoyzPicks LIKES IT/);
   assert.match(msg, /favored to win at home|playing at home/i);
-  assert.doesNotMatch(msg, /BoatBoyz Probability/);
+  assert.doesNotMatch(msg, /BoatBoyzPicks Probability/);
   assert.doesNotMatch(msg, /Model Edge/);
   assert.doesNotMatch(msg, /operator/i);
   assert.doesNotMatch(msg, /manual/i);
@@ -298,9 +298,9 @@ test("manual Discord writeup matches the pick card and never labels operator ent
     gameStatus: "scheduled",
   } as PickRow;
   const msg = buildManualPickMessage(pick, det);
-  assert.match(msg, /BOATBOYZ PLAY/);
+  assert.match(msg, /BoatBoyzPicks PLAY/);
   assert.match(msg, /DET ML/);
-  assert.match(msg, /WHY BOATBOYZ LIKES IT/);
+  assert.match(msg, /WHY BoatBoyzPicks LIKES IT/);
   assert.match(msg, /Detroit Tigers visit Cleveland Guardians/);
   assert.match(msg, /Skubal|playing at home|road/i);
   assert.doesNotMatch(msg, /operator/i);
