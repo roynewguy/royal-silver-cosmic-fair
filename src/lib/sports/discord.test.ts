@@ -89,7 +89,7 @@ test("play card has pick, favored %, units, score, and line", () => {
   } as GameCard;
   const msg = buildDiscordMessage(pick, game);
   assert.equal(favoredLine(pick), "BoatBoyzPicks Probability: 60%");
-  assert.match(msg, /BoatBoyzPicks LOCK/);
+  assert.match(msg, /OFFICIAL PLAY · LOCK/);
   assert.match(msg, /\*\*Lakers ML\*\*/);
   assert.match(msg, /vs Warriors/);
   assert.match(msg, /BoatBoyzPicks Probability: 60%/);
