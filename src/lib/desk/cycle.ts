@@ -30,6 +30,7 @@ import { recordClosingResult, recordPostedPrediction, recordPregameSnapshots } f
 import { recordV2Candidates } from "@/lib/sports/candidate-log";
 import { recordMlbShadow, gradeShadowPredictions } from "@/lib/models-v3/shadow-store";
 import { gradeDisposition, UNPOSTED_SKIP } from "./posting";
+import { queuePostAt } from "./queue-post-at";
 import { sendOnce } from "./post-pipeline";
 import type { GameCard, PickRow } from "@/lib/sports/types";
 import {
@@ -49,10 +50,6 @@ import {
 } from "./store";
 
 const verifiedThisTick = new WeakMap<GameCard, number>();
-
-function postAtFor(startAt: string, leadMinutes: number): string {
-  return new Date(new Date(startAt).getTime() - leadMinutes * 60_000).toISOString();
-}
 
 function asPickRow(partial: Partial<PickRow> & Pick<PickRow, "id" | "gameId" | "sport" | "league" | "matchup" | "market" | "selection" | "side" | "lockedOdds" | "lockedOddsJson" | "reason" | "confidence" | "edgePct" | "units" | "status" | "startAt" | "postAt" | "createdAt">): PickRow {
   return {
@@ -572,7 +569,7 @@ export async function selectOfficialCard(
     const reason = formatWhy(game, rank).trim().slice(0, 1000);
     const confidence = Math.round(rank.confidence);
     const units = tier === "soft_floor" ? 1 : unitsFor(confidence);
-    const postAt = postAtFor(game.startAt, leadMinutes);
+    const postAt = queuePostAt(tier, game.startAt, leadMinutes);
     const matchup = `${game.away.abbr} @ ${game.home.abbr}`;
     const key = officialKey(game.league, game.id);
     const snapshot = JSON.stringify(game.odds);
