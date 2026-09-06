@@ -142,15 +142,15 @@ export function nextOfficialSlots(
   return planDailyCard(rankedIds, committed, target, now).keepIds;
 }
 
-/** Rank every hard-edge LOCK on today's card. Not one-per-sport. */
+/** Rank every hard-edge LOCK on the live card. Not one-per-sport. */
 export function bestOnSlate(
   games: GameCard[],
   minEdge = 3,
   minConf = 58,
   now = new Date(),
 ): GameCard[] {
-  return games
-    .filter((g) => slateBaseFilter(g, now) && isPlayableRank(g.rank, minEdge, minConf))
+  return liveSlateGames(games, now)
+    .filter((g) => isPlayableRank(g.rank, minEdge, minConf))
     .sort((a, b) => (b.rank?.edgePct ?? 0) - (a.rank?.edgePct ?? 0));
 }
 
@@ -159,22 +159,35 @@ export type SlatePick = {
   tier: PickTier;
 };
 
-function slateBaseFilter(g: GameCard, now: Date): boolean {
+/** Future official scheduled tip in the loaded slate (not yet started). */
+function upcomingOfficialFilter(g: GameCard, now: Date): boolean {
   const league = LEAGUE_BY_ID[g.league];
   if (!league?.official) return false;
   if (g.status !== "scheduled") return false;
-  if (!isOfficialDay(g.startAt, now)) return false;
   const start = new Date(g.startAt).getTime();
   if (!Number.isFinite(start) || start <= now.getTime()) return false;
   return true;
 }
 
+/**
+ * Live card pool: prefer today's PT future tips when any remain.
+ * When the PT calendar day is empty (common Sat night → Sunday slate), fall back
+ * to any loaded upcoming official tip so Discord is not empty while games exist.
+ */
+export function liveSlateGames(games: GameCard[], now = new Date()): GameCard[] {
+  const upcoming = games.filter((g) => upcomingOfficialFilter(g, now));
+  const today = upcoming.filter((g) => isOfficialDay(g.startAt, now));
+  return today.length > 0 ? today : upcoming;
+}
+
 /** Soft-floor board: best ranked tickets that missed the hard edge/confidence gate. */
 export function softFloorOnSlate(games: GameCard[], minEdge = 3, minConf = 58, now = new Date()): GameCard[] {
+  const pool = liveSlateGames(games, now);
+  const poolIds = new Set(pool.map((g) => g.id));
   const locks = new Set(bestOnSlate(games, minEdge, minConf, now).map((g) => g.id));
   return games
     .filter((g) => {
-      if (!slateBaseFilter(g, now)) return false;
+      if (!poolIds.has(g.id)) return false;
       if (locks.has(g.id)) return false;
       if (!isSoftFloorEligibleRank(g.rank)) return false;
       // Soft floor only when the ticket would fail the hard gate.
@@ -184,9 +197,10 @@ export function softFloorOnSlate(games: GameCard[], minEdge = 3, minConf = 58, n
 }
 
 /**
- * Always-pick floor: use hard LOCKs when any qualify. Only when today's PT slate
- * has scheduled official games and the hard gate yields 0, select best-available
- * soft-floor candidates (prefer up to daily target). Never invent odds.
+ * Always-pick floor: use hard LOCKs when any qualify. When the live slate
+ * (today's PT tips, else next loaded upcoming official window) has games and the
+ * hard gate yields 0, select best-available soft-floor candidates up to the
+ * daily target. Never invent odds.
  */
 export function selectSlatePicks(
   games: GameCard[],
@@ -196,7 +210,7 @@ export function selectSlatePicks(
   now = new Date(),
 ): SlatePick[] {
   const cap = clampDailyPicks(target);
-  if (!games.some((g) => slateBaseFilter(g, now))) return [];
+  if (liveSlateGames(games, now).length === 0) return [];
   const locks = bestOnSlate(games, minEdge, minConf, now);
   if (locks.length > 0) {
     // Full lock board for planDailyCard rotation; caller caps by remaining slots.

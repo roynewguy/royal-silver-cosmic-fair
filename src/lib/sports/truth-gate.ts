@@ -119,7 +119,14 @@ export function prePostTruthCheck(input: {
   }
   if (live.status !== "scheduled") return { ok: false, reason: "PASS_DATA_CONFLICT", detail: `Status ${live.status}` };
   if (!LEAGUE_BY_ID[live.league]?.official || !isFreshTimestamp(live.fetchedAt, 15 * 60_000, now)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Unapproved model or stale game data" };
-  if (!isFreshTimestamp(live.injuriesFetchedAt, 180 * 60_000, now)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Injury report was not successfully fetched" };
+  const softFloorEarly =
+    input.softFloor === true ||
+    input.queued.softFloor === true ||
+    input.queued.pickTier === "soft_floor";
+  // Soft-floor DESK PICKs still require DK + identity; injury schema / low-DQ may be incomplete.
+  if (!softFloorEarly && !isFreshTimestamp(live.injuriesFetchedAt, 180 * 60_000, now)) {
+    return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Injury report was not successfully fetched" };
+  }
   if (!isDraftKingsLine(live.odds)) return { ok: false, reason: "PASS_DK_UNAVAILABLE", detail: "Line is not verified DraftKings." };
   const dkAge = live.odds.capturedAt ? now - new Date(live.odds.capturedAt).getTime() : null;
   if (!isFreshOfficialDkCache(dkAge)) return { ok: false, reason: "PASS_DK_STALE", detail: "DraftKings capturedAt too old." };
@@ -139,13 +146,13 @@ export function prePostTruthCheck(input: {
 
   const rank = input.rank;
   if (!rank) return { ok: false, reason: "PASS_EDGE_DIED", detail: "Rerank produced no play." };
-  if (rank.passReason === "PASS_LOW_DATA_QUALITY" || (rank.dataQuality ?? 100) < LOW_DATA_QUALITY) {
+  const softFloor = softFloorEarly || rank.pickTier === "soft_floor";
+  if (!softFloor && (rank.passReason === "PASS_LOW_DATA_QUALITY" || (rank.dataQuality ?? 100) < LOW_DATA_QUALITY)) {
     return { ok: false, reason: "PASS_LOW_DATA_QUALITY", detail: `Data quality ${rank.dataQuality ?? 0}.` };
   }
   if (rank.passReason === "PASS_MISSING_STARTER") return { ok: false, reason: "PASS_MISSING_STARTER", detail: rank.passReason };
   if (!finiteProb(rank.probability)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Model probability not in (0,1)." };
   if (!rank.model || !/^v2-/.test(rank.model)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Unknown model version." };
-  const softFloor = input.softFloor === true || input.queued.softFloor === true || rank.pickTier === "soft_floor";
   if (softFloor) {
     if (!isSoftFloorEligibleRank(rank) && !isPlayableRank(rank, input.minEdge, input.minConf)) {
       return { ok: false, reason: "PASS_EDGE_DIED", detail: "Soft-floor candidate no longer eligible." };

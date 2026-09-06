@@ -183,7 +183,7 @@ test("confidenceFrom is not a copy of probability", () => {
 });
 
 
-test("soft-floor eligibility allows edge/confidence soft fails only", () => {
+test("soft-floor eligibility allows priced tickets except identity-critical fails", () => {
   const base = {
     edgePct: 1.5,
     confidence: 50,
@@ -195,6 +195,9 @@ test("soft-floor eligibility allows edge/confidence soft fails only", () => {
   };
   assert.equal(isSoftFloorEligibleRank({ ...base, passReason: "PASS_EDGE_TOO_SMALL" }), true);
   assert.equal(isSoftFloorEligibleRank({ ...base, passReason: "PASS_LOW_CONFIDENCE" }), true);
+  assert.equal(isSoftFloorEligibleRank({ ...base, passReason: "PASS_LOW_DATA_QUALITY" }), true);
+  assert.equal(isSoftFloorEligibleRank({ ...base, passReason: "PASS_STALE_MARKET" }), true);
+  assert.equal(isSoftFloorEligibleRank({ ...base, passReason: "PASS_CRITICAL_DATA_MISSING" }), true);
   assert.equal(isSoftFloorEligibleRank({ ...base, passReason: null }), true);
   assert.equal(isSoftFloorEligibleRank({ ...base, passReason: "PASS_MISSING_STARTER" }), false);
   assert.equal(isSoftFloorEligibleRank({ ...base, price: undefined as unknown as number, passReason: "PASS_EDGE_TOO_SMALL" }), false);

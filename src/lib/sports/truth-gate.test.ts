@@ -371,3 +371,40 @@ test("softFloor allows below hard edge while hard path still PASS_EDGE_DIED", ()
     assert.equal(soft.units, 1);
   }
 });
+
+test("softFloor posts without injury stamp and with low data quality", () => {
+  const game = live({ odds: dk({ homeMl: 118, awayMl: -138 }), injuriesFetchedAt: null });
+  const baseRank = rank({
+    price: 118,
+    edgePct: 2.1,
+    confidence: 52,
+    probability: 0.55,
+    passReason: "PASS_LOW_DATA_QUALITY",
+    dataQuality: 40,
+  });
+  const hard = prePostTruthCheck({
+    queued: queued(game),
+    live: game,
+    rank: baseRank,
+    minEdge: 3,
+    minConf: 58,
+    now,
+  });
+  assert.equal(hard.ok, false);
+
+  const soft = prePostTruthCheck({
+    queued: { ...queued(game), softFloor: true, pickTier: "soft_floor" },
+    live: game,
+    rank: { ...baseRank, pickTier: "soft_floor" },
+    minEdge: 3,
+    minConf: 58,
+    softFloor: true,
+    now,
+  });
+  assert.equal(soft.ok, true);
+  if (soft.ok) {
+    assert.equal(soft.rank.pickTier, "soft_floor");
+    assert.equal(soft.units, 1);
+  }
+});
+
