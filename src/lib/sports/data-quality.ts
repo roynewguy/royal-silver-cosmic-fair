@@ -101,7 +101,18 @@ export function isPlayableRank(
 }
 
 
-/** Soft-floor candidates: real model ticket with only edge/confidence soft fails. */
+/** Soft-floor: real priced model ticket. Block only identity-critical fails. */
+const SOFT_FLOOR_HARD_BLOCKS = new Set([
+  "PASS_MISSING_STARTER",
+  "PASS_STARTER_CHANGED",
+  "PASS_GAME_STARTED",
+  "PASS_POSTPONED",
+  "PASS_CANCELLED",
+  "PASS_GAME_MISMATCH",
+  "PASS_EVENT_ID_CONFLICT",
+  "PASS_ALREADY_POSTED",
+]);
+
 export function isSoftFloorEligibleRank(
   rank: { edgePct: number; confidence?: number; passReason?: string | null; price?: number; selection?: string; market?: string; side?: string; model?: string } | null | undefined,
 ): boolean {
@@ -111,7 +122,9 @@ export function isSoftFloorEligibleRank(
   if (!Number.isFinite(rank.edgePct)) return false;
   const reason = rank.passReason ?? null;
   if (!reason) return true;
-  return reason === "PASS_EDGE_TOO_SMALL" || reason === "PASS_LOW_CONFIDENCE";
+  // Edge/confidence/data-quality/stale/prefetch injury stamps still queue as DESK PICK.
+  if (SOFT_FLOOR_HARD_BLOCKS.has(reason)) return false;
+  return true;
 }
 
 

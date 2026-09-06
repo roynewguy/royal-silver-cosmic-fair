@@ -14,6 +14,7 @@ import {
   rankGames,
   resolveDailyPickTarget,
   ROTATE_SKIP_REASON,
+  liveSlateGames,
   selectSlatePicks,
   softFloorOnSlate,
 } from "./rank.ts";
@@ -73,7 +74,7 @@ test("soccer leagues are never official picks", () => {
 
 });
 
-test("official card ignores tomorrow even if the edge is bigger", () => {
+test("live slate prefers today over tomorrow even if tomorrow edge is bigger", () => {
   const now = new Date("2026-09-04T15:00:00-07:00");
   const tonight = new Date("2026-09-04T19:00:00-07:00").toISOString();
   const tomorrow = new Date("2026-09-05T19:00:00-07:00").toISOString();
@@ -386,6 +387,36 @@ test("soft floor prefers up to DAILY_PICK_TARGET best available", () => {
   assert.deepEqual(slate.map((s) => s.game.id), ["a", "b", "c"]);
 });
 
+test("soft floor accepts PASS_LOW_DATA_QUALITY when a real price exists", () => {
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
+  const weak = card({
+    id: "mlb:dq",
+    league: "mlb",
+    sport: "MLB",
+    startAt: kick,
+    rank: {
+      edgePct: 2.2,
+      confidence: 52,
+      market: "moneyline",
+      side: "home",
+      selection: "MIA ML",
+      line: null,
+      price: -118,
+      probability: 0.54,
+      why: "thin",
+      model: "v2-mlb",
+      passReason: "PASS_LOW_DATA_QUALITY",
+      dataQuality: 45,
+    },
+  });
+  assert.equal(bestOnSlate([weak], 3, 58, now).length, 0);
+  const slate = selectSlatePicks([weak], 3, 58, 3, now);
+  assert.equal(slate.length, 1);
+  assert.equal(slate[0]?.tier, "soft_floor");
+  assert.equal(slate[0]?.game.rank?.price, -118);
+});
+
 test("empty slate day still returns no soft floor", () => {
   const now = new Date("2026-09-04T15:00:00-07:00");
   assert.deepEqual(selectSlatePicks([], 3, 58, 3, now), []);
@@ -469,4 +500,99 @@ test("soft floor prefers up to daily target ranked by edge", () => {
 test("empty slate stays empty even with soft floor", () => {
   const now = new Date("2026-09-04T15:00:00-07:00");
   assert.deepEqual(selectSlatePicks([], 3, 58, 3, now), []);
+});
+
+test("Sat night PT falls back to Sunday loaded slate for soft floor", () => {
+  // Production repro: Sat ~19:30 PT, today's tips already started, 97 games include Sunday NFL.
+  const now = new Date("2026-09-05T19:30:00-07:00");
+  const startedToday = new Date("2026-09-05T13:00:00-07:00").toISOString();
+  const sunday = new Date("2026-09-06T13:00:00-07:00").toISOString();
+  const weakSunday = card({
+    id: "nfl:sun",
+    startAt: sunday,
+    rank: {
+      edgePct: 1.6,
+      confidence: 52,
+      market: "spread",
+      side: "home",
+      selection: "SEA -3",
+      line: -3,
+      price: -110,
+      probability: 0.52,
+      why: "thin",
+      model: "v2-nfl",
+      passReason: "PASS_EDGE_TOO_SMALL",
+    },
+  });
+  const started = card({
+    id: "ncaaf:done",
+    league: "ncaaf",
+    sport: "NCAAF",
+    startAt: startedToday,
+    rank: {
+      edgePct: 4,
+      confidence: 60,
+      market: "spread",
+      side: "home",
+      selection: "ALA -7",
+      line: -7,
+      price: -110,
+      probability: 0.58,
+      why: "started",
+      model: "v2-ncaaf",
+    },
+  });
+  assert.equal(liveSlateGames([started, weakSunday], now).map((g) => g.id).join(","), "nfl:sun");
+  assert.equal(bestOnSlate([started, weakSunday], 3, 58, now).length, 0);
+  const slate = selectSlatePicks([started, weakSunday], 3, 58, 3, now);
+  assert.equal(slate.length, 1);
+  assert.equal(slate[0]?.tier, "soft_floor");
+  assert.equal(slate[0]?.game.id, "nfl:sun");
+  assert.equal(slate[0]?.game.rank?.price, -110);
+});
+
+test("soft floor stays on today when future PT tips remain", () => {
+  const now = new Date("2026-09-05T16:00:00-07:00");
+  const tonight = new Date("2026-09-05T20:00:00-07:00").toISOString();
+  const sunday = new Date("2026-09-06T13:00:00-07:00").toISOString();
+  const todayWeak = card({
+    id: "ncaaf:tonight",
+    league: "ncaaf",
+    sport: "NCAAF",
+    startAt: tonight,
+    rank: {
+      edgePct: 1.1,
+      confidence: 50,
+      market: "spread",
+      side: "away",
+      selection: "USC +3",
+      line: 3,
+      price: -105,
+      probability: 0.51,
+      why: "thin",
+      model: "v2-ncaaf",
+      passReason: "PASS_EDGE_TOO_SMALL",
+    },
+  });
+  const sundayStronger = card({
+    id: "nfl:sun",
+    startAt: sunday,
+    rank: {
+      edgePct: 2.8,
+      confidence: 55,
+      market: "spread",
+      side: "home",
+      selection: "SEA -3",
+      line: -3,
+      price: -110,
+      probability: 0.54,
+      why: "thin",
+      model: "v2-nfl",
+      passReason: "PASS_EDGE_TOO_SMALL",
+    },
+  });
+  const slate = selectSlatePicks([todayWeak, sundayStronger], 3, 58, 3, now);
+  assert.equal(slate.length, 1);
+  assert.equal(slate[0]?.game.id, "ncaaf:tonight");
+  assert.equal(slate[0]?.tier, "soft_floor");
 });

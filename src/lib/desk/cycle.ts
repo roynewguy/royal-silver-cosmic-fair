@@ -480,11 +480,21 @@ export async function prefetchDueDraftKings(games: GameCard[], minEdge: number, 
       const ranked = rankGame(verified.game);
       const checked = prePostTruthCheck({ queued: {
         gameId: game.id, league: game.league, homeName: game.home.name, awayName: game.away.name,
-        startAt: game.startAt, market: game.rank.market, softFloor,
+        startAt: game.startAt, market: game.rank.market, softFloor, pickTier: softFloor ? "soft_floor" : "lock",
       }, live: verified.game, rank: ranked ? { ...ranked, pickTier: softFloor ? "soft_floor" : "lock" } : null, minEdge, minConf, softFloor });
-      const fresh = { ...verified.game, rank: checked.ok ? checked.rank : ranked ? { ...ranked, passReason: checked.reason } : null };
+      // Soft-floor: never poison the priced ticket with a hard PASS before selectOfficialCard.
+      // Hard locks still stamp passReason so they fall through to soft floor when appropriate.
+      let nextRank = checked.ok ? checked.rank : ranked ? { ...ranked, passReason: checked.reason } : null;
+      if (!checked.ok && softFloor && game.rank) {
+        nextRank = { ...game.rank, pickTier: "soft_floor" };
+      }
+      const fresh = { ...verified.game, rank: nextRank };
       verifiedThisTick.set(fresh, Date.now());
       next.set(game.id, fresh);
+    } else if (softFloor && game.rank) {
+      // Keep soft-floor selection alive; post path re-verifies DK.
+      next.set(game.id, { ...game, rank: { ...game.rank, pickTier: "soft_floor" } });
+      await recordEvent(verified.error.includes("AMBIGUOUS") ? "ambiguous_match" : "dk_failure", verified.error);
     } else {
       next.set(game.id, { ...game, rank: game.rank ? { ...game.rank, passReason: "PASS_DK_UNAVAILABLE" } : null });
       await recordEvent(verified.error.includes("AMBIGUOUS") ? "ambiguous_match" : "dk_failure", verified.error);
@@ -541,7 +551,7 @@ export async function selectOfficialCard(
   }
 
   if (plan.keepIds.length === 0 && plan.remaining > 0) {
-    await addLog("skip", `PASS: no lock or soft-floor candidates on today's slate (target ${target}).`);
+    await addLog("skip", `PASS: no lock or soft-floor candidates on live slate (target ${target}).`);
   } else if (wanted.some((g) => tierById.get(g.id) === "soft_floor")) {
     const softN = wanted.filter((g) => tierById.get(g.id) === "soft_floor").length;
     const lockN = wanted.length - softN;
