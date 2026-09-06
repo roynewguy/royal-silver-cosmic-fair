@@ -4,7 +4,11 @@ function postAtFor(startAt: string, leadMinutes: number): string {
   return new Date(new Date(startAt).getTime() - leadMinutes * 60_000).toISOString();
 }
 
-/** Soft-floor BEST AVAILABLE posts immediately; LOCK keeps postLeadMinutes. */
+/**
+ * Soft-floor BEST AVAILABLE posts immediately.
+ * LOCK (and any non-soft): post_at = min(now, tip−lead) so early selections
+ * flush tonight; once inside the lead window, behave as before.
+ */
 export function queuePostAt(
   tier: PickTier | string,
   startAt: string,
@@ -12,5 +16,6 @@ export function queuePostAt(
   now: Date = new Date(),
 ): string {
   if (tier === "soft_floor") return now.toISOString();
-  return postAtFor(startAt, leadMinutes);
+  const lead = postAtFor(startAt, leadMinutes);
+  return Date.parse(lead) > now.getTime() ? now.toISOString() : lead;
 }
