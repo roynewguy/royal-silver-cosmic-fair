@@ -30,7 +30,11 @@ export async function postWebhook(url: string, content: string): Promise<{ ok: b
   if (!discordWebhookOk(url)) return { ok: false, error: "Invalid Discord webhook." };
   try {
     const res = await fetch(waitUrl(url), {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": "BoatBoyzPicks/1.0",
+      },
       signal: AbortSignal.timeout(12_000),
       body: JSON.stringify({ username: "BoatBoyzPicks", content: content.slice(0, 1900), allowed_mentions: { parse: [] }, flags: 4 }),
     });
@@ -53,6 +57,7 @@ export async function deleteWebhookMessage(
   try {
     const res = await fetch(`${url}/messages/${encodeURIComponent(messageId)}`, {
       method: "DELETE",
+      headers: { "User-Agent": "BoatBoyzPicks/1.0" },
       signal: AbortSignal.timeout(12_000),
     });
     if (res.ok || res.status === 404) return { ok: true };
