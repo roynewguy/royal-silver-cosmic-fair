@@ -40,7 +40,7 @@ function nextKick(games: GameCard[]): GameCard | undefined {
 function cardBody(picks: PickRow[]): string {
   if (!picks.length) {
     return [
-      "🌊 BOATBOYZ UPDATE",
+      "🌊 BoatBoyzPicks UPDATE",
       "",
       "No official plays locked yet.",
       "If nothing clears the board, we PASS.",
@@ -49,7 +49,7 @@ function cardBody(picks: PickRow[]): string {
     ].join("\n");
   }
   return [
-    "🌊 BOATBOYZ TODAY'S CARD",
+    "🌊 BoatBoyzPicks TODAY'S CARD",
     "",
     ...picks.map((p) => `${sportEmoji(p.sport)} ${p.sport}  **${p.selection}**  ${formatAmerican(p.lockedOdds)}`),
     "",
@@ -77,7 +77,7 @@ export function buildDiscordPresets(input: {
       id: "pass",
       label: "PASS",
       body: [
-        "🌊 BOATBOYZ PASS",
+        "🌊 BoatBoyzPicks PASS",
         "",
         "No play on this window.",
         "We'd rather sit than force a bet.",
@@ -88,28 +88,28 @@ export function buildDiscordPresets(input: {
     {
       id: "record",
       label: "Record",
-      body: ["🌊 BOATBOYZ RECORD", "", recordLine(input.record), "", "Official auto card only."].join("\n"),
+      body: ["🌊 BoatBoyzPicks RECORD", "", recordLine(input.record), "", "Official auto card only."].join("\n"),
     },
     {
       id: "cash",
       label: "Cash",
       body: cash
         ? [
-            "🌊 BOATBOYZ CASH",
+            "🌊 BoatBoyzPicks CASH",
             "",
             `${sportEmoji(cash.sport)} ${cash.sport}`,
             `**${cash.selection}**`,
             "",
             `Desk ${recordLine(input.record)}`,
           ].join("\n")
-        : ["🌊 BOATBOYZ CASH", "", "**[TEAM / PLAY]**", "", "Hit. On to the next.", "", `Desk ${recordLine(input.record)}`].join("\n"),
+        : ["🌊 BoatBoyzPicks CASH", "", "**[TEAM / PLAY]**", "", "Hit. On to the next.", "", `Desk ${recordLine(input.record)}`].join("\n"),
     },
     {
       id: "live",
       label: "Live look",
       body: live
         ? [
-            "🌊 BOATBOYZ LIVE LOOK",
+            "🌊 BoatBoyzPicks LIVE LOOK",
             "",
             `${sportEmoji(live.sport)} ${live.sport}`,
             `${live.away.abbr} ${live.away.score ?? "—"} @ ${live.home.abbr} ${live.home.score ?? "—"}`,
@@ -118,7 +118,7 @@ export function buildDiscordPresets(input: {
             "Watching it. Not a new official pick.",
           ].join("\n")
         : [
-            "🌊 BOATBOYZ LIVE LOOK",
+            "🌊 BoatBoyzPicks LIVE LOOK",
             "",
             "**[SPORT]**  [AWAY] — @ [HOME] —",
             "[period / clock]",
@@ -130,7 +130,7 @@ export function buildDiscordPresets(input: {
       id: "injury",
       label: "Injury",
       body: [
-        "🌊 BOATBOYZ NOTE",
+        "🌊 BoatBoyzPicks NOTE",
         "",
         next
           ? `${sportEmoji(next.sport)} ${next.away.abbr} @ ${next.home.abbr}`
@@ -146,7 +146,7 @@ export function buildDiscordPresets(input: {
       id: "lock",
       label: "Lock in",
       body: [
-        "🌊 BOATBOYZ LOCK IN",
+        "🌊 BoatBoyzPicks LOCK IN",
         "",
         next
           ? `${sportEmoji(next.sport)} ${next.away.abbr} @ ${next.home.abbr}  ${formatKick(next.startAt, "America/Los_Angeles")} PT`
@@ -161,7 +161,7 @@ export function buildDiscordPresets(input: {
       id: "slate",
       label: "Slate",
       body: [
-        "🌊 BOATBOYZ SLATE",
+        "🌊 BoatBoyzPicks SLATE",
         "",
         todayCount ? `${todayCount} games on today's PT board.` : "Scanning today's board.",
         card.length ? `${card.length} official play${card.length === 1 ? "" : "s"} in the window.` : "No official plays locked yet.",
@@ -173,7 +173,7 @@ export function buildDiscordPresets(input: {
       id: "welcome",
       label: "Welcome",
       body: [
-        "🌊 WELCOME TO BOATBOYZ",
+        "🌊 WELCOME TO BoatBoyzPicks",
         "",
         "We scan the whole slate.",
         "We only post the strongest 1–6 plays.",
@@ -187,7 +187,7 @@ export function buildDiscordPresets(input: {
       id: "note",
       label: "Desk note",
       body: [
-        "🌊 BOATBOYZ NOTE",
+        "🌊 BoatBoyzPicks NOTE",
         "",
         "[note]",
         "",

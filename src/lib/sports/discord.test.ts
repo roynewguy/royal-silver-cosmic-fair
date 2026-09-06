@@ -56,7 +56,7 @@ test("play card has pick, favored %, units, score, and line", () => {
     edgePct: 3,
     modelVersion: "v2-nba",
     reason:
-      "Lakers get the home spot against Warriors.\nWhy BoatBoyz likes it:\n* Lakers are playing at home\n* opponent is missing Stephen Curry",
+      "Lakers get the home spot against Warriors.\nWhy BoatBoyzPicks likes it:\n* Lakers are playing at home\n* opponent is missing Stephen Curry",
     startAt: new Date("2026-09-04T02:30:00Z").toISOString(),
     lockedOddsJson: { book: "DraftKings", source: "odds-api" },
   } as PickRow;
@@ -66,16 +66,16 @@ test("play card has pick, favored %, units, score, and line", () => {
     home: { name: "Lakers", abbr: "LAL", score: null },
   } as GameCard;
   const msg = buildDiscordMessage(pick, game);
-  assert.equal(favoredLine(pick), "BoatBoyz Probability: 60%");
-  assert.match(msg, /BOATBOYZ OFFICIAL PLAY/);
+  assert.equal(favoredLine(pick), "BoatBoyzPicks Probability: 60%");
+  assert.match(msg, /BoatBoyzPicks OFFICIAL PLAY/);
   assert.match(msg, /\*\*Lakers ML\*\*/);
   assert.match(msg, /vs Warriors/);
-  assert.match(msg, /BoatBoyz Probability: 60%/);
+  assert.match(msg, /BoatBoyzPicks Probability: 60%/);
   assert.match(msg, /Market /);
   assert.match(msg, /Estimated Edge:/);
   assert.match(msg, /DraftKings: -135/);
   assert.match(msg, /1\.0U/);
-  assert.match(msg, /WHY BOATBOYZ LIKES IT/);
+  assert.match(msg, /WHY BoatBoyzPicks LIKES IT/);
   assert.match(msg, /playing at home/);
   assert.match(msg, /Score: Not started/);
   assert.match(msg, /Model v2-nba/);
@@ -106,5 +106,5 @@ test("test preview is labeled unofficial and includes desk notes", () => {
   assert.match(msg, /DESK NOTES/);
   assert.match(msg, /home/);
   assert.match(msg, /Tatis|weather|Cease|Cole/i);
-  assert.match(msg, /not an official BoatBoyz play/i);
+  assert.match(msg, /not an official BoatBoyzPicks play/i);
 });

@@ -50,7 +50,7 @@ test("presets fill from the live card and never look like official auto tickets"
   assert.match(rec.body, /12-8-1/);
   assert.match(rec.body, /\+3\.20u/);
   for (const p of presets) {
-    assert.doesNotMatch(p.body, /BOATBOYZ OFFICIAL PLAY/);
+    assert.doesNotMatch(p.body, /BoatBoyzPicks OFFICIAL PLAY/);
     assert.doesNotMatch(p.body, /operator/i);
     assert.doesNotMatch(p.body, /manual/i);
   }
@@ -61,7 +61,7 @@ test("empty board still gives a PASS and a notes-only template", () => {
   assert.match(presets.find((p) => p.id === "pass")!.body, /No play on this window/);
   assert.equal(presets.find((p) => p.id === "custom"), undefined);
   assert.match(presets.find((p) => p.id === "note")!.body, /Desk note/);
-  assert.doesNotMatch(presets.find((p) => p.id === "note")!.body, /BOATBOYZ PLAY/);
+  assert.doesNotMatch(presets.find((p) => p.id === "note")!.body, /BoatBoyzPicks PLAY/);
   assert.doesNotMatch(presets.find((p) => p.id === "note")!.body, /Operator/i);
   assert.doesNotMatch(presets.find((p) => p.id === "note")!.body, /Manual/i);
   assert.match(presets.find((p) => p.id === "card")!.body, /No official plays locked yet/);

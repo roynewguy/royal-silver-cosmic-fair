@@ -32,7 +32,7 @@ export async function postWebhook(url: string, content: string): Promise<{ ok: b
     const res = await fetch(waitUrl(url), {
       method: "POST", headers: { "Content-Type": "application/json" },
       signal: AbortSignal.timeout(12_000),
-      body: JSON.stringify({ username: "BoatBoyz", content: content.slice(0, 1900), allowed_mentions: { parse: [] }, flags: 4 }),
+      body: JSON.stringify({ username: "BoatBoyzPicks", content: content.slice(0, 1900), allowed_mentions: { parse: [] }, flags: 4 }),
     });
     // 5xx/transport failures may occur AFTER Discord accepted the message.
     if (!res.ok) return { ok: false, uncertain: res.status >= 500, error: `Discord HTTP ${res.status}` };
@@ -76,7 +76,7 @@ function edgeLabel(n: number | null | undefined): string {
   return `${sign}${v.toFixed(1)}%`;
 }
 
-function whyBlock(reason: string, heading = "WHY BOATBOYZ LIKES IT"): string[] {
+function whyBlock(reason: string, heading = "WHY BoatBoyzPicks LIKES IT"): string[] {
   const parsed = parseWhy(reason);
   const bullets = parsed.bullets.slice(0, 5).map((b) => `• ${b}`);
   const body = [parsed.writeup, ...bullets].filter(Boolean);
@@ -95,7 +95,7 @@ export function buildTestPreviewMessage(game: GameCard): string {
   const bullets = notes.bullets.map((b) => `• ${b}`);
   const current = game.odds.details || game.rank?.selection || "No current line available";
   return [
-    "🧪 BOATBOYZ TEST PREVIEW — NOT AN OFFICIAL PICK",
+    "🧪 BoatBoyzPicks TEST PREVIEW — NOT AN OFFICIAL PICK",
     "",
     `${sportEmoji(game.sport)} ${game.sport}`,
     `${game.away.abbr} @ ${game.home.abbr}`,
@@ -107,7 +107,7 @@ export function buildTestPreviewMessage(game: GameCard): string {
     notes.writeup,
     ...bullets,
     "",
-    "This message only verifies Discord + the current board. It is not an official BoatBoyz play.",
+    "This message only verifies Discord + the current board. It is not an official BoatBoyzPicks play.",
   ]
     .filter((line) => line !== undefined)
     .join("\n");
@@ -136,7 +136,7 @@ export function buildManualPickMessage(pick: PickRow, game?: GameCard | null): s
   const reason = pick.reason?.trim() || (game ? defaultPlayReason(game, pick.side) : "");
   const lines = live
     ? [
-        "🔴 🌊 BOATBOYZ LIVE PLAY",
+        "🔴 🌊 BoatBoyzPicks LIVE PLAY",
         "",
         `${sportEmoji(pick.sport)} ${pick.sport}`,
         `**${pick.selection}**`,
@@ -151,7 +151,7 @@ export function buildManualPickMessage(pick: PickRow, game?: GameCard | null): s
         `Posted ${posted} PT`,
       ]
     : [
-        "🌊 BOATBOYZ PLAY",
+        "🌊 BoatBoyzPicks PLAY",
         "",
         `${sportEmoji(pick.sport)} ${pick.sport}`,
         `**${pick.selection}**`,
@@ -178,9 +178,9 @@ export function scoreLine(game?: GameCard | null): string {
 
 export function favoredLine(pick: PickRow): string {
   const p = pick.modelProbability;
-  if (p == null) return "BoatBoyz Probability: unavailable";
+  if (p == null) return "BoatBoyzPicks Probability: unavailable";
   const pct = Math.round(Math.max(0, Math.min(1, p)) * 100);
-  return `BoatBoyz Probability: ${pct}%`;
+  return `BoatBoyzPicks Probability: ${pct}%`;
 }
 
 export function currentLine(pick: PickRow): string {
@@ -219,14 +219,14 @@ export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): stri
   const verifiedAt = pick.postedAt ? formatKick(pick.postedAt, "America/Los_Angeles") : pick.lockedOddsJson.capturedAt ? formatKick(pick.lockedOddsJson.capturedAt, "America/Los_Angeles") : "pending";
   const dkLine = pick.lockedLine == null || !Number.isFinite(pick.lockedLine) ? formatAmerican(pick.lockedOdds) : `${formatAmerican(pick.lockedOdds)} · ${pick.lockedLine}`;
   return [
-    "🌊 BOATBOYZ OFFICIAL PLAY",
+    "🌊 BoatBoyzPicks OFFICIAL PLAY",
     "",
     `${sportEmoji(pick.sport)} ${pick.sport}`,
     `**${pick.selection}**`,
     vsLine(pick, game),
     "",
     `DraftKings: ${dkLine}`,
-    `BoatBoyz Probability: ${modelPct}%\nMarket No-Vig: ${marketPct}\nEstimated Edge: ${edgeLabel(edge)}`,
+    `BoatBoyzPicks Probability: ${modelPct}%\nMarket No-Vig: ${marketPct}\nEstimated Edge: ${edgeLabel(edge)}`,
     `Confidence ${Math.round(pick.confidence)} · ${stakeLabel(pick.units)}`,
     "",
     ...whyBlock(pick.reason),
