@@ -100,6 +100,21 @@ export function isPlayableRank(
   return rank.edgePct >= minEdge;
 }
 
+
+/** Soft-floor candidates: real model ticket with only edge/confidence soft fails. */
+export function isSoftFloorEligibleRank(
+  rank: { edgePct: number; confidence?: number; passReason?: string | null; price?: number; selection?: string; market?: string; side?: string; model?: string } | null | undefined,
+): boolean {
+  if (!rank) return false;
+  if (!rank.selection || !rank.market || !rank.side || !rank.model) return false;
+  if (rank.price == null || !Number.isFinite(rank.price)) return false;
+  if (!Number.isFinite(rank.edgePct)) return false;
+  const reason = rank.passReason ?? null;
+  if (!reason) return true;
+  return reason === "PASS_EDGE_TOO_SMALL" || reason === "PASS_LOW_CONFIDENCE";
+}
+
+
 export function guardrailReason(
   game: GameCard,
   pick: RankPick,

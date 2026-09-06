@@ -21,6 +21,8 @@ test("why bullets stay short and mention home plus opponent out", () => {
   assert.match(writeup, /Lakers host Warriors/);
   assert.doesNotMatch(writeup, /favored|underdog|value/);
   assert.match(writeup, /home|LeBron|Curry/i);
+  const sentences = writeup.split(/(?<=\.)\s+/).filter(Boolean);
+  assert.ok(sentences.length >= 2 && sentences.length <= 4);
 });
 
 test("MLB why includes weather and both starters", () => {
@@ -58,4 +60,21 @@ test("preview notes stay unofficial facts", () => {
   const notes = previewNotes(game);
   assert.match(notes.writeup, /Padres/);
   assert.match(notes.writeup, /Yankees|NYY|home/i);
+});
+
+
+test("formatWhy never returns an empty ticket-only body", () => {
+  const game = {
+    league: "nba",
+    sport: "NBA",
+    home: { name: "Lakers", abbr: "LAL", record: null, homeSplit: null, roadSplit: null, starter: null },
+    away: { name: "Warriors", abbr: "GSW", record: null, homeSplit: null, roadSplit: null, starter: null },
+    injuries: [],
+    weather: null,
+  } as unknown as GameCard;
+  const formatted = formatWhy(game, { side: "home", why: "", edgePct: 1.2, probability: 0.54, noVigImplied: 0.52 } as RankPick);
+  assert.match(formatted, /Why BoatBoyzPicks likes it:/i);
+  assert.ok(formatted.trim().length > 40);
+  const parsed = parseWhy(formatted);
+  assert.ok(parsed.writeup.length > 0 || parsed.bullets.length > 0);
 });

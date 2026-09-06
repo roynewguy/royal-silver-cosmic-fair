@@ -85,7 +85,12 @@ function whyBlock(reason: string, heading = "WHY BoatBoyzPicks LIKES IT"): strin
   const parsed = parseWhy(reason);
   const bullets = parsed.bullets.slice(0, 5).map((b) => `• ${b}`);
   const body = [parsed.writeup, ...bullets].filter(Boolean);
-  if (!body.length) return [];
+  if (!body.length) {
+    return [
+      heading,
+      "BoatBoyzPicks scanned the board and this is the strongest straight bet left on the slate.",
+    ];
+  }
   return [heading, ...body];
 }
 
@@ -214,6 +219,32 @@ export function vsLine(pick: PickRow, game?: GameCard | null): string {
   return pick.matchup;
 }
 
+export function resolvePickTier(pick: PickRow): "lock" | "soft_floor" {
+  try {
+    const frozen = JSON.parse(pick.freezeJson ?? "{}") as { pickTier?: string; softFloor?: boolean };
+    if (frozen.pickTier === "soft_floor" || frozen.softFloor === true) return "soft_floor";
+    if (frozen.pickTier === "lock") return "lock";
+  } catch {
+    /* missing freeze is fine for previews */
+  }
+  return "lock";
+}
+
+/** LOCK for hard-edge plays; BEST AVAILABLE / DESK PICK for soft-floor. */
+export function officialPlayHeadline(pick: PickRow): string {
+  if (resolvePickTier(pick) === "soft_floor") {
+    return "🌊 BoatBoyzPicks OFFICIAL PLAY · BEST AVAILABLE / DESK PICK";
+  }
+  return "🌊 BoatBoyzPicks OFFICIAL PLAY · LOCK";
+}
+
+export function officialPlaySubhead(pick: PickRow): string | null {
+  if (resolvePickTier(pick) === "soft_floor") {
+    return "Below hard edge/qualifying floor — verified DraftKings number only";
+  }
+  return null;
+}
+
 export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): string {
   const kick = formatKick(pick.startAt, "America/Los_Angeles");
   const modelPct = pick.modelProbability == null ? "unavailable" : Math.round(pick.modelProbability * 100);
@@ -223,8 +254,11 @@ export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): stri
   const edge = pick.modelEdge ?? pick.edgePct;
   const verifiedAt = pick.postedAt ? formatKick(pick.postedAt, "America/Los_Angeles") : pick.lockedOddsJson.capturedAt ? formatKick(pick.lockedOddsJson.capturedAt, "America/Los_Angeles") : "pending";
   const dkLine = pick.lockedLine == null || !Number.isFinite(pick.lockedLine) ? formatAmerican(pick.lockedOdds) : `${formatAmerican(pick.lockedOdds)} · ${pick.lockedLine}`;
+  const reason = (pick.reason?.trim() || (game ? defaultPlayReason(game, pick.side) : "")).trim();
+  const sub = officialPlaySubhead(pick);
   return [
-    "🌊 BoatBoyzPicks OFFICIAL PLAY",
+    officialPlayHeadline(pick),
+    sub,
     "",
     `${sportEmoji(pick.sport)} ${pick.sport}`,
     `**${pick.selection}**`,
@@ -234,13 +268,13 @@ export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): stri
     `BoatBoyzPicks Probability: ${modelPct}%\nMarket No-Vig: ${marketPct}\nEstimated Edge: ${edgeLabel(edge)}`,
     `Confidence ${Math.round(pick.confidence)} · ${stakeLabel(pick.units)}`,
     "",
-    ...whyBlock(pick.reason),
+    ...whyBlock(reason),
     "",
     `Game: ${kick} PT`,
     scoreLine(game).replace("Score: not started", "Score: Not started"),
     `Verified ${verifiedAt} PT`,
     pick.modelVersion ? `Model ${pick.modelVersion}` : null,
-  ].filter((line): line is string => line != null).join("\n");
+  ].filter((line): line is string => line != null && line !== undefined).join("\n");
 }
 
 export function buildRecapMessage(pick: PickRow, game: GameCard, result: PickResult, profit: number, record: DeskRecord): string {

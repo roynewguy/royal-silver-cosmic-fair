@@ -28,7 +28,7 @@ export function nextActionLine(input: {
   }
   const locked = card.filter((p) => p.status === "posting" || p.status === "posted" || p.status === "graded").length;
   if (locked >= input.target) return "Daily target reached";
-  if (card.length === 0) return "PASS — no remaining games qualify";
+  if (card.length === 0) return "Scanning for LOCK or BEST AVAILABLE desk picks";
   if (input.nextScanAt) return `Scanning again ${relativeTo(input.nextScanAt, now.getTime())}`;
   return "Scanning the slate on the next tick";
 }

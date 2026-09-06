@@ -1,7 +1,7 @@
 import { isFreshTimestamp } from "../desk/production-policy.ts";
 import { LEAGUE_BY_ID } from "./leagues.ts";
 import { twoWayMarket } from "./odds.ts";
-import { isPlayableRank, LOW_DATA_QUALITY } from "./data-quality.ts";
+import { isPlayableRank, isSoftFloorEligibleRank, LOW_DATA_QUALITY } from "./data-quality.ts";
 import { gameFreshness } from "./freshness.ts";
 import { buildFreezeSnapshot, type FreezeSnapshot } from "./freeze.ts";
 import { isDraftKingsLine } from "./odds-api.ts";
@@ -26,6 +26,8 @@ export type QueuedContext = {
   awayStarter?: string | null;
   freezeJson?: string | null;
   status?: string;
+  softFloor?: boolean;
+  pickTier?: "lock" | "soft_floor";
 };
 
 export type TruthFail = { ok: false; reason: PassReason; detail: string };
@@ -86,6 +88,7 @@ export function prePostTruthCheck(input: {
   minEdge: number;
   minConf: number;
   dailyCapOk?: boolean;
+  softFloor?: boolean;
   now?: number;
 }): TruthFail | TruthPass {
   const now = input.now ?? Date.now();
@@ -142,7 +145,12 @@ export function prePostTruthCheck(input: {
   if (rank.passReason === "PASS_MISSING_STARTER") return { ok: false, reason: "PASS_MISSING_STARTER", detail: rank.passReason };
   if (!finiteProb(rank.probability)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Model probability not in (0,1)." };
   if (!rank.model || !/^v2-/.test(rank.model)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Unknown model version." };
-  if (!isPlayableRank(rank, input.minEdge, input.minConf)) {
+  const softFloor = input.softFloor === true || input.queued.softFloor === true || rank.pickTier === "soft_floor";
+  if (softFloor) {
+    if (!isSoftFloorEligibleRank(rank) && !isPlayableRank(rank, input.minEdge, input.minConf)) {
+      return { ok: false, reason: "PASS_EDGE_DIED", detail: "Soft-floor candidate no longer eligible." };
+    }
+  } else if (!isPlayableRank(rank, input.minEdge, input.minConf)) {
     if (rank.confidence < input.minConf) return { ok: false, reason: "PASS_LOW_CONFIDENCE", detail: `Confidence ${rank.confidence}.` };
     return { ok: false, reason: "PASS_EDGE_DIED", detail: `Fresh DK edge ${rank.edgePct.toFixed(1)}% below ${input.minEdge}.` };
   }
@@ -156,11 +164,13 @@ export function prePostTruthCheck(input: {
   if (otherPrice == null) return { ok: false, reason: "PASS_DK_UNAVAILABLE", detail: "Opposing price missing" };
   const pair = twoWayMarket(lockedOdds, otherPrice);
   const edge = (rank.probability - pair.noVigA) * 100;
-  if (!Number.isFinite(edge) || edge < input.minEdge) return { ok: false, reason: "PASS_EDGE_DIED", detail: "Fresh two-way edge below threshold" };
+  if (!Number.isFinite(edge)) return { ok: false, reason: "PASS_EDGE_DIED", detail: "Fresh two-way edge unreadable" };
+  if (!softFloor && edge < input.minEdge) return { ok: false, reason: "PASS_EDGE_DIED", detail: "Fresh two-way edge below threshold" };
   rank.edgePct = edge;
   rank.noVigImplied = pair.noVigA;
   rank.rawImplied = pair.rawA;
-  const units = unitsFor(rank.confidence);
+  rank.pickTier = softFloor ? "soft_floor" : "lock";
+  const units = softFloor ? 1 : unitsFor(rank.confidence);
   const selection = selectionLabel({
     market: rank.market,
     side: rank.side,
@@ -187,6 +197,7 @@ export function prePostTruthCheck(input: {
     starters: { home: live.home.starter, away: live.away.starter },
     rawMarketProbability: rank.rawImplied,
     sourceFetchedAt: live.fetchedAt,
+    pickTier: rank.pickTier,
   });
   if (freeze.llmFacts !== false) return { ok: false, reason: "PASS_DATA_CONFLICT", detail: "LLM facts blocked on freeze." };
   return { ok: true, rank, freeze, units, selection, lockedOdds, lockedLine };

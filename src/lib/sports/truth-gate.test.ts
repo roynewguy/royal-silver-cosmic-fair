@@ -339,3 +339,35 @@ test("grading fails closed on a frozen participant mismatch",()=>{
   const g=live({status:"final"});g.home.score=5;g.away.score=4;
   assert.equal(gradeTruth({status:"posted",gameId:g.id,league:g.league,freezeJson:JSON.stringify({homeTeam:"Different team"})},g,now).ok,false);
 });
+
+
+test("softFloor allows below hard edge while hard path still PASS_EDGE_DIED", () => {
+  const game = live({ odds: dk({ homeMl: 118, awayMl: -138 }) });
+  const softRank = rank({ price: 118, edgePct: 2.1, confidence: 64, probability: 0.55 });
+  const hard = prePostTruthCheck({
+    queued: queued(game),
+    live: game,
+    rank: softRank,
+    minEdge: 3,
+    minConf: 58,
+    now,
+  });
+  assert.equal(hard.ok, false);
+  if (!hard.ok) assert.equal(hard.reason, "PASS_EDGE_DIED");
+
+  const soft = prePostTruthCheck({
+    queued: { ...queued(game), softFloor: true },
+    live: game,
+    rank: { ...softRank, pickTier: "soft_floor" },
+    minEdge: 3,
+    minConf: 58,
+    softFloor: true,
+    now,
+  });
+  assert.equal(soft.ok, true);
+  if (soft.ok) {
+    assert.equal(soft.rank.pickTier, "soft_floor");
+    assert.equal(soft.freeze.pickTier, "soft_floor");
+    assert.equal(soft.units, 1);
+  }
+});
