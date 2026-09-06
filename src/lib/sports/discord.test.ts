@@ -6,6 +6,7 @@ import {
   buildTestPreviewMessage,
   discordWebhookOk,
   favoredLine,
+  postWebhook,
   resolveWebhook,
 } from "./discord.ts";
 import type { GameCard, PickRow } from "./types.ts";
@@ -19,6 +20,27 @@ test("accepts discord webhook urls", () => {
   assert.equal(discordWebhookOk("https://discord.com/api/webhooks/123/abc"), true);
   assert.equal(discordWebhookOk("https://discordapp.com/api/webhooks/123/abc"), true);
 });
+
+
+test("webhook posts send BoatBoyzPicks User-Agent", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const prev = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), init });
+    return new Response(JSON.stringify({ id: "msg1" }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const r = await postWebhook("https://discord.com/api/webhooks/123/abc", "health");
+    assert.equal(r.ok, true);
+    assert.equal(calls.length, 1);
+    const headers = new Headers(calls[0].init?.headers);
+    assert.equal(headers.get("User-Agent"), "BoatBoyzPicks/1.0");
+    assert.equal(headers.get("Content-Type"), "application/json");
+  } finally {
+    globalThis.fetch = prev;
+  }
+});
+
 
 test("operator freeform posts send the typed text and skip empty", () => {
   assert.equal(buildOperatorPost("   "), null);
