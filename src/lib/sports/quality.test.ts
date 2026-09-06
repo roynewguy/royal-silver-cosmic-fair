@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { twoWayMarket, impliedFromAmerican } from "./odds.ts";
-import { confidenceFrom, isPlayableRank, mlbDataQuality, sealRank, shouldAppendSnapshot } from "./data-quality.ts";
+import { confidenceFrom, isPlayableRank, isSoftFloorEligibleRank, mlbDataQuality, sealRank, shouldAppendSnapshot } from "./data-quality.ts";
 import { rankMlb } from "./models/mlb.ts";
 import { MLB_V2_INPUTS } from "./mlb-inputs.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
@@ -180,4 +180,23 @@ test("confidenceFrom is not a copy of probability", () => {
   const c = confidenceFrom({ probability: 0.61, edgePct: 7, dataQuality: 55, missing: ["probable starters"] });
   assert.notEqual(c, 61);
   assert.ok(c < 58);
+});
+
+
+test("soft-floor eligibility allows edge/confidence soft fails only", () => {
+  const base = {
+    edgePct: 1.5,
+    confidence: 50,
+    price: -110,
+    selection: "MIA ML",
+    market: "moneyline",
+    side: "home",
+    model: "v2-mlb",
+  };
+  assert.equal(isSoftFloorEligibleRank({ ...base, passReason: "PASS_EDGE_TOO_SMALL" }), true);
+  assert.equal(isSoftFloorEligibleRank({ ...base, passReason: "PASS_LOW_CONFIDENCE" }), true);
+  assert.equal(isSoftFloorEligibleRank({ ...base, passReason: null }), true);
+  assert.equal(isSoftFloorEligibleRank({ ...base, passReason: "PASS_MISSING_STARTER" }), false);
+  assert.equal(isSoftFloorEligibleRank({ ...base, price: undefined as unknown as number, passReason: "PASS_EDGE_TOO_SMALL" }), false);
+  assert.equal(isPlayableRank({ edgePct: 1.5, confidence: 50, passReason: "PASS_EDGE_TOO_SMALL" }, 3, 58), false);
 });

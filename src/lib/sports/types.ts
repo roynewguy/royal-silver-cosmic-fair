@@ -77,6 +77,8 @@ export type Starter = {
   position: string | null;
 };
 
+export type PickTier = "lock" | "soft_floor";
+
 export type PassReason =
   | "PASS_MISSING_STARTER"
   | "PASS_STALE_MARKET"
@@ -120,6 +122,8 @@ export type RankPick = {
   freshness?: Record<string, { ageMinutes: number | null; source: string }>;
   flags?: Array<"UNSTABLE_MODEL_OUTPUT" | "EDGE_OUTLIER">;
   outlierReason?: string | null;
+  /** Hard-edge LOCK vs soft-floor desk pick. */
+  pickTier?: PickTier;
 };
 
 export type GameCard = {

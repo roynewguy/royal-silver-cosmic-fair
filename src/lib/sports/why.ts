@@ -68,11 +68,17 @@ export function whyWriteup(game: GameCard, rank: Pick<RankPick, "side"> & Partia
   const home = game.home.name;
   const away = game.away.name;
   const bits: string[] = [];
-  if (side === "home") bits.push(`${home} host ${away}.`);
-  else if (side === "away") bits.push(`${away} visit ${home}.`);
-  else bits.push(`Total ${side}: ${away} at ${home}.`);
+  if (side === "home") bits.push(`${home} host ${away} — BoatBoyzPicks wants the home side.`);
+  else if (side === "away") bits.push(`${away} visit ${home} — the desk likes the visitors.`);
+  else bits.push(`Total lean ${side}: ${away} at ${home}.`);
+
   if (rank.probability != null && rank.noVigImplied != null && rank.edgePct != null) {
-    bits.push(`Model ${(rank.probability * 100).toFixed(1)}% vs market no-vig ${(rank.noVigImplied * 100).toFixed(1)}%: ${rank.edgePct.toFixed(1)} percentage points of estimated edge.`);
+    const edgeWord = rank.edgePct >= 3 ? "clear edge" : rank.edgePct >= 0 ? "best available edge on this slate" : "thin number, still the top desk lean";
+    bits.push(
+      `Model ${(rank.probability * 100).toFixed(1)}% against a ${(rank.noVigImplied * 100).toFixed(1)}% no-vig market — ${rank.edgePct.toFixed(1)} pts of ${edgeWord}.`,
+    );
+  } else if (rank.edgePct != null && Number.isFinite(rank.edgePct)) {
+    bits.push(`Estimated edge sits at ${rank.edgePct.toFixed(1)} pts on the live board.`);
   }
 
   const starter = pickedTeam(game, side)?.starter?.name;
@@ -89,17 +95,26 @@ export function whyWriteup(game: GameCard, rank: Pick<RankPick, "side"> & Partia
     bits.push(`${picked.name} enter at ${picked.record} vs ${opp.record}.`);
   }
 
-  if (game.weather && outdoor(game)) bits.push(`Weather: ${game.weather}.`);
+  if (game.weather && outdoor(game)) bits.push(`Weather in play: ${game.weather}.`);
 
-
-  return bits.join(" ").replace(/\s+/g, " ").trim();
+  if (bits.length < 2) {
+    bits.push("This is a straight bet on the verified DraftKings number — no invented odds.");
+  }
+  // Keep a tight 2–4 sentence blurb for Discord.
+  const sentences = bits.join(" ").replace(/\s+/g, " ").trim().split(/(?<=\.)\s+/).filter(Boolean);
+  while (sentences.length < 2) {
+    sentences.push("BoatBoyzPicks posts straights only when the board still shows a real price.");
+  }
+  return sentences.slice(0, 4).join(" ");
 }
 
 export function formatWhy(game: GameCard, rank: Pick<RankPick, "side"> & Partial<RankPick>): string {
   const writeup = whyWriteup(game, rank);
   const lines = whyBullets(game, rank).map((b) => `* ${b}`);
-  if (lines.length === 0 && !writeup) return rank.why || "Board notes only.";
-  return [writeup, "Why BoatBoyzPicks likes it:", ...lines].filter(Boolean).join("\n");
+  const fallback = (rank.why || "").trim() || "BoatBoyzPicks scanned the board and this is the strongest straight bet left on the slate.";
+  const body = writeup || fallback;
+  if (lines.length === 0) return [body, "Why BoatBoyzPicks likes it:", `* ${fallback}`].join("\n");
+  return [body, "Why BoatBoyzPicks likes it:", ...lines].filter(Boolean).join("\n");
 }
 
 /** Default Discord writeup for any posted play. Operator notes get appended, never replace facts. */

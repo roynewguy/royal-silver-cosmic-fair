@@ -1,4 +1,4 @@
-import type { OddsSnapshot, RankPick } from "./types.ts";
+import type { OddsSnapshot, PickTier, RankPick } from "./types.ts";
 import type { FieldFreshness } from "./freshness.ts";
 import { SOURCE_HIERARCHY } from "./source-hierarchy.ts";
 
@@ -38,6 +38,7 @@ export type FreezeSnapshot = {
   llmFacts?: false;
   audit?: AuditField[];
   freshness?: Record<string, FieldFreshness>;
+  pickTier?: PickTier;
 };
 
 export function buildFreezeSnapshot(input: {
@@ -60,6 +61,7 @@ export function buildFreezeSnapshot(input: {
   marketProbability?: number | null;
   postingToken?: string | null;
   freshness?: Record<string, FieldFreshness>;
+  pickTier?: PickTier;
 }): FreezeSnapshot {
   const frozenAt = input.frozenAt ?? new Date().toISOString();
   const dkCapturedAt = input.odds.capturedAt;
@@ -101,5 +103,6 @@ export function buildFreezeSnapshot(input: {
     llmFacts: false,
     audit,
     freshness: input.freshness,
+    pickTier: input.pickTier ?? input.rank.pickTier ?? "lock",
   };
 }

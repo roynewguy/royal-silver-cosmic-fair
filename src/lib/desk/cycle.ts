@@ -23,7 +23,7 @@ import { automationStatus } from "./health";
 import { isFreeBetaMode } from "@/lib/sports/free-beta";
 import { isPaperLedger, paperLockMessage, paperSimulateSend, activeLedger } from "@/lib/sports/paper-mode";
 import { mergeDraftKingsOdds } from "@/lib/sports/odds-api";
-import { bestOnSlate, dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, unitsFor } from "@/lib/sports/rank";
+import { dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, selectSlatePicks, unitsFor } from "@/lib/sports/rank";
 import { formatWhy } from "@/lib/sports/why";
 import { confirmDraftKings, pruneFreeBetaCaches } from "./dk-verify";
 import { recordClosingResult, recordPostedPrediction, recordPregameSnapshots } from "./warehouse";
@@ -345,6 +345,7 @@ export async function postPickById(
   } catch {
     ctx = {};
   }
+  const softFloor = ctx.softFloor === true || ctx.pickTier === "soft_floor";
   const gate = prePostTruthCheck({
     queued: {
       gameId: row.game_id,
@@ -358,11 +359,13 @@ export async function postPickById(
       awayStarter: ctx.awayStarter ?? null,
       freezeJson: pick.freeze_json,
       status: pick.status,
+      softFloor,
     },
     live: liveGame,
-    rank: freshRank,
+    rank: freshRank ? { ...freshRank, pickTier: softFloor ? "soft_floor" : freshRank.pickTier ?? "lock" } : null,
     minEdge,
     minConf,
+    softFloor,
   });
   if (!gate.ok) {
     await sql`
@@ -466,17 +469,19 @@ export async function postPickById(
   return { ok: true, posted: true, pickId };
 }
 
-export async function prefetchDueDraftKings(games: GameCard[], minEdge: number, minConf: number, lead: number): Promise<GameCard[]> {
+export async function prefetchDueDraftKings(games: GameCard[], minEdge: number, minConf: number, lead: number, maxDailyPicks = 3): Promise<GameCard[]> {
   const next = new Map(games.map(g => [g.id, g]));
-  for (const game of bestOnSlate(games, minEdge, minConf)) {
+  const slate = selectSlatePicks(games, minEdge, minConf, dailyPickTarget(maxDailyPicks));
+  for (const { game, tier } of slate) {
     if (Date.parse(game.startAt) - Date.now() > lead * 60_000 || !game.rank) continue;
+    const softFloor = tier === "soft_floor";
     const verified = await confirmDraftKings(game, game.rank.market);
     if (verified.ok) {
       const ranked = rankGame(verified.game);
       const checked = prePostTruthCheck({ queued: {
         gameId: game.id, league: game.league, homeName: game.home.name, awayName: game.away.name,
-        startAt: game.startAt, market: game.rank.market,
-      }, live: verified.game, rank: ranked, minEdge, minConf });
+        startAt: game.startAt, market: game.rank.market, softFloor,
+      }, live: verified.game, rank: ranked ? { ...ranked, pickTier: softFloor ? "soft_floor" : "lock" } : null, minEdge, minConf, softFloor });
       const fresh = { ...verified.game, rank: checked.ok ? checked.rank : ranked ? { ...ranked, passReason: checked.reason } : null };
       verifiedThisTick.set(fresh, Date.now());
       next.set(game.id, fresh);
@@ -511,7 +516,9 @@ export async function selectOfficialCard(
   maxDailyPicks = 3,
 ): Promise<number> {
   const target = dailyPickTarget(maxDailyPicks);
-  const ranked = bestOnSlate(games, minEdge, minConf);
+  const slate = selectSlatePicks(games, minEdge, minConf, target);
+  const tierById = new Map(slate.map((s) => [s.game.id, s.tier]));
+  const ranked = slate.map((s) => s.game);
   const committed = await loadTodayOfficial();
   const plan = planDailyCard(
     ranked.map((g) => g.id),
@@ -534,7 +541,11 @@ export async function selectOfficialCard(
   }
 
   if (plan.keepIds.length === 0 && plan.remaining > 0) {
-    await addLog("skip", `PASS: no qualifying bets on today's slate (target ${target}).`);
+    await addLog("skip", `PASS: no lock or soft-floor candidates on today's slate (target ${target}).`);
+  } else if (wanted.some((g) => tierById.get(g.id) === "soft_floor")) {
+    const softN = wanted.filter((g) => tierById.get(g.id) === "soft_floor").length;
+    const lockN = wanted.length - softN;
+    await addLog("research", `Card mix · ${lockN} LOCK · ${softN} BEST AVAILABLE / DESK PICK (target ${target}).`);
   }
 
   const existingByGame = await loadLatestPicksByGames(wanted.map((g) => g.id));
@@ -547,9 +558,10 @@ export async function selectOfficialCard(
     const existing = existingByGame.get(game.id) ?? null;
     if (existing && (existing.status === "posted" || existing.status === "graded" || existing.status === "posting")) continue;
 
+    const tier = tierById.get(game.id) ?? rank.pickTier ?? "lock";
     const reason = formatWhy(game, rank).trim().slice(0, 1000);
     const confidence = Math.round(rank.confidence);
-    const units = unitsFor(confidence);
+    const units = tier === "soft_floor" ? 1 : unitsFor(confidence);
     const postAt = postAtFor(game.startAt, leadMinutes);
     const matchup = `${game.away.abbr} @ ${game.home.abbr}`;
     const key = officialKey(game.league, game.id);
@@ -561,6 +573,8 @@ export async function selectOfficialCard(
       homeStarter: game.home.starter?.name ?? null,
       awayStarter: game.away.starter?.name ?? null,
       startAt: game.startAt,
+      pickTier: tier,
+      softFloor: tier === "soft_floor",
     });
     if (existing && (existing.status === "queued" || existing.status === "skipped") && !existing.freezeJson) {
       await sql`
@@ -641,7 +655,7 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
       where status = 'posting' and posting_started_at < now() - interval '4 minutes' returning id`;
     if (stuck.length) { await recordEvent("delivery_unknown", `${stuck.length} unfinished sends`); await alertOwner("DISCORD_FAIL", "Unfinished delivery: inspect frozen tickets; do not resend."); }
     const meta = await loadMeta();
-    const games = await prefetchDueDraftKings(await refreshSlate(), meta.minEdgePct, meta.minConfidence, meta.postLeadMinutes);
+    const games = await prefetchDueDraftKings(await refreshSlate(), meta.minEdgePct, meta.minConfidence, meta.postLeadMinutes, meta.maxDailyPicks);
     if (automationStatus(meta.lastTickAt) === "offline") {
       await alertOwner("CRON_STALE", "No successful cron tick for more than 25 minutes.");
     }

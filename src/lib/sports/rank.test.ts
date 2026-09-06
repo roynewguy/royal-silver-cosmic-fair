@@ -14,6 +14,8 @@ import {
   rankGames,
   resolveDailyPickTarget,
   ROTATE_SKIP_REASON,
+  selectSlatePicks,
+  softFloorOnSlate,
 } from "./rank.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
 
@@ -275,4 +277,196 @@ test("target below already-posted count queues nothing new", () => {
   assert.deepEqual(plan.rotateOffIds, ["nfl:eagles"]);
   assert.equal(plan.remaining, 0);
   assert.equal(plan.lockedCount, 2);
+});
+
+test("soft floor fills Discord when hard edge clears nothing", () => {
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
+  const weak = card({
+    id: "nba:soft",
+    league: "nba",
+    sport: "NBA",
+    startAt: kick,
+    rank: {
+      edgePct: 1.4,
+      confidence: 54,
+      market: "moneyline",
+      side: "home",
+      selection: "Lakers ML",
+      line: null,
+      price: -120,
+      probability: 0.53,
+      why: "thin",
+      model: "v2-nba",
+      passReason: "PASS_EDGE_TOO_SMALL",
+    },
+  });
+  assert.equal(bestOnSlate([weak], 3, 58, now).length, 0);
+  assert.equal(softFloorOnSlate([weak], 3, 58, now).length, 1);
+  const slate = selectSlatePicks([weak], 3, 58, 3, now);
+  assert.equal(slate.length, 1);
+  assert.equal(slate[0]?.tier, "soft_floor");
+  assert.equal(slate[0]?.game.rank?.pickTier, "soft_floor");
+  assert.equal(slate[0]?.game.rank?.price, -120);
+});
+
+test("locks win the card; soft floor only engages when hard gate is empty", () => {
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
+  const lock = card({
+    id: "nba:lock",
+    league: "nba",
+    sport: "NBA",
+    startAt: kick,
+    rank: {
+      edgePct: 5.5,
+      confidence: 66,
+      market: "moneyline",
+      side: "home",
+      selection: "Lakers ML",
+      line: null,
+      price: -135,
+      probability: 0.6,
+      why: "edge",
+      model: "v2-nba",
+    },
+  });
+  const soft = card({
+    id: "nfl:soft",
+    startAt: kick,
+    rank: {
+      edgePct: 2.1,
+      confidence: 55,
+      market: "spread",
+      side: "home",
+      selection: "SEA -3",
+      line: -3,
+      price: -110,
+      probability: 0.54,
+      why: "thin",
+      model: "v2-nfl",
+      passReason: "PASS_EDGE_TOO_SMALL",
+    },
+  });
+  const withLock = selectSlatePicks([lock, soft], 3, 58, 3, now);
+  assert.equal(withLock.length, 1);
+  assert.equal(withLock[0]?.tier, "lock");
+  assert.equal(withLock[0]?.game.id, "nba:lock");
+  const softOnly = selectSlatePicks([soft], 3, 58, 3, now);
+  assert.equal(softOnly.length, 1);
+  assert.equal(softOnly[0]?.tier, "soft_floor");
+});
+
+test("soft floor prefers up to DAILY_PICK_TARGET best available", () => {
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
+  const mk = (id: string, edge: number) =>
+    card({
+      id,
+      league: "nba",
+      sport: "NBA",
+      startAt: kick,
+      rank: {
+        edgePct: edge,
+        confidence: 50,
+        market: "moneyline",
+        side: "home",
+        selection: `${id} ML`,
+        line: null,
+        price: -110,
+        probability: 0.52,
+        why: "soft",
+        model: "v2-nba",
+        passReason: "PASS_EDGE_TOO_SMALL",
+      },
+    });
+  const slate = selectSlatePicks([mk("a", 2.5), mk("b", 1.8), mk("c", 1.2), mk("d", 0.4)], 3, 58, 3, now);
+  assert.equal(slate.length, 3);
+  assert.ok(slate.every((s) => s.tier === "soft_floor"));
+  assert.deepEqual(slate.map((s) => s.game.id), ["a", "b", "c"]);
+});
+
+test("empty slate day still returns no soft floor", () => {
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  assert.deepEqual(selectSlatePicks([], 3, 58, 3, now), []);
+});
+
+
+test("soft floor activates only when hard gate is empty", () => {
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
+  const weak = card({
+    id: "nfl:weak",
+    startAt: kick,
+    rank: {
+      edgePct: 1.2,
+      confidence: 52,
+      market: "spread",
+      side: "home",
+      selection: "SEA -3",
+      line: -3,
+      price: -110,
+      probability: 0.51,
+      why: "thin",
+      model: "v2-nfl",
+    },
+  });
+  const lock = card({
+    id: "nfl:lock",
+    startAt: kick,
+    rank: {
+      edgePct: 5,
+      confidence: 64,
+      market: "spread",
+      side: "away",
+      selection: "DEN +3",
+      line: 3,
+      price: -110,
+      probability: 0.58,
+      why: "lock",
+      model: "v2-nfl",
+    },
+  });
+  assert.equal(bestOnSlate([weak], 3, 58, now).length, 0);
+  const softOnly = selectSlatePicks([weak], 3, 58, 3, now);
+  assert.equal(softOnly.length, 1);
+  assert.equal(softOnly[0]?.tier, "soft_floor");
+  assert.equal(softOnly[0]?.game.rank?.pickTier, "soft_floor");
+
+  const withLock = selectSlatePicks([weak, lock], 3, 58, 3, now);
+  assert.equal(withLock.length, 1);
+  assert.equal(withLock[0]?.tier, "lock");
+  assert.equal(withLock[0]?.game.id, "nfl:lock");
+  assert.ok(withLock.every((p) => p.tier === "lock"));
+});
+
+test("soft floor prefers up to daily target ranked by edge", () => {
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
+  const mk = (id: string, edge: number) =>
+    card({
+      id,
+      startAt: kick,
+      rank: {
+        edgePct: edge,
+        confidence: 50,
+        market: "moneyline",
+        side: "home",
+        selection: "SEA ML",
+        line: null,
+        price: -120,
+        probability: 0.52,
+        why: "soft",
+        model: "v2-nfl",
+      },
+    });
+  const picks = selectSlatePicks([mk("a", 0.5), mk("b", 2.2), mk("c", 1.1), mk("d", 1.8)], 3, 58, 3, now);
+  assert.equal(picks.length, 3);
+  assert.deepEqual(picks.map((p) => p.game.id), ["b", "d", "c"]);
+  assert.ok(picks.every((p) => p.tier === "soft_floor"));
+});
+
+test("empty slate stays empty even with soft floor", () => {
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  assert.deepEqual(selectSlatePicks([], 3, 58, 3, now), []);
 });

@@ -89,7 +89,7 @@ test("play card has pick, favored %, units, score, and line", () => {
   } as GameCard;
   const msg = buildDiscordMessage(pick, game);
   assert.equal(favoredLine(pick), "BoatBoyzPicks Probability: 60%");
-  assert.match(msg, /BoatBoyzPicks OFFICIAL PLAY/);
+  assert.match(msg, /BoatBoyzPicks LOCK/);
   assert.match(msg, /\*\*Lakers ML\*\*/);
   assert.match(msg, /vs Warriors/);
   assert.match(msg, /BoatBoyzPicks Probability: 60%/);
@@ -130,3 +130,77 @@ test("test preview is labeled unofficial and includes desk notes", () => {
   assert.match(msg, /Tatis|weather|Cease|Cole/i);
   assert.match(msg, /not an official BoatBoyzPicks play/i);
 });
+
+test("soft-floor Discord payload is labeled BEST AVAILABLE / DESK PICK and always has a writeup", () => {
+  const pick = {
+    id: 11,
+    sport: "NFL",
+    selection: "SEA -3",
+    matchup: "DEN @ SEA",
+    market: "spread",
+    side: "home",
+    lockedOdds: -110,
+    lockedLine: -3,
+    units: 1,
+    confidence: 54,
+    modelProbability: 0.54,
+    modelEdge: 1.8,
+    edgePct: 1.8,
+    modelVersion: "v2-nfl",
+    reason: "",
+    startAt: new Date("2026-09-04T02:30:00Z").toISOString(),
+    lockedOddsJson: { book: "DraftKings", source: "odds-api", capturedAt: new Date("2026-09-04T01:00:00Z").toISOString() },
+    freezeJson: JSON.stringify({ pickTier: "soft_floor", marketProbability: 0.52 }),
+  } as PickRow;
+  const game = {
+    status: "scheduled",
+    league: "nfl",
+    sport: "NFL",
+    startAt: pick.startAt,
+    away: { name: "Broncos", abbr: "DEN", score: null, record: "8-8", roadSplit: "3-5", starter: null },
+    home: { name: "Seahawks", abbr: "SEA", score: null, record: "10-6", homeSplit: "6-2", starter: null },
+    injuries: [],
+    weather: "54° F, calm",
+    odds: pick.lockedOddsJson,
+    rank: null,
+  } as unknown as GameCard;
+  const msg = buildDiscordMessage(pick, game);
+  assert.match(msg, /BEST AVAILABLE/);
+  assert.match(msg, /DESK PICK/);
+  assert.doesNotMatch(msg, /OFFICIAL PLAY · LOCK/);
+  assert.match(msg, /WHY BoatBoyzPicks LIKES IT/);
+  assert.match(msg, /Seahawks|home|edge|slate|BoatBoyzPicks/i);
+  assert.doesNotMatch(msg, /ESPN/);
+});
+
+test("LOCK and soft-floor headers differ when both tiers are present on the desk", () => {
+  const base = {
+    id: 1,
+    sport: "NBA",
+    selection: "Lakers ML",
+    matchup: "GSW @ LAL",
+    market: "moneyline",
+    side: "home",
+    lockedOdds: -135,
+    lockedLine: null,
+    units: 1,
+    confidence: 67,
+    modelProbability: 0.6,
+    modelEdge: 3.2,
+    edgePct: 3.2,
+    modelVersion: "v2-nba",
+    reason: "Lakers host Warriors.\nWhy BoatBoyzPicks likes it:\n* Lakers are playing at home",
+    startAt: new Date("2026-09-04T02:30:00Z").toISOString(),
+    lockedOddsJson: { book: "DraftKings", source: "odds-api" },
+  } as PickRow;
+  const lockMsg = buildDiscordMessage({ ...base, freezeJson: JSON.stringify({ pickTier: "lock" }) } as PickRow);
+  const softMsg = buildDiscordMessage({ ...base, freezeJson: JSON.stringify({ pickTier: "soft_floor" }), units: 1, confidence: 52, modelEdge: 1.1, edgePct: 1.1 } as PickRow);
+  assert.match(lockMsg, /OFFICIAL PLAY · LOCK|BoatBoyzPicks LOCK/);
+  assert.doesNotMatch(lockMsg, /BEST AVAILABLE/);
+  assert.match(softMsg, /BEST AVAILABLE/);
+  assert.match(softMsg, /DESK PICK/);
+  assert.doesNotMatch(softMsg, /OFFICIAL PLAY · LOCK/);
+  assert.match(lockMsg, /WHY BoatBoyzPicks LIKES IT/);
+  assert.match(softMsg, /WHY BoatBoyzPicks LIKES IT/);
+});
+

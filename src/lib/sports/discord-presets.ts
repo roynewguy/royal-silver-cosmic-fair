@@ -43,7 +43,7 @@ function cardBody(picks: PickRow[]): string {
       "🌊 BoatBoyzPicks UPDATE",
       "",
       "No official plays locked yet.",
-      "If nothing clears the board, we PASS.",
+      "Live slate days still post BEST AVAILABLE / DESK PICKs when the hard edge is quiet.",
       "",
       "Not an official pick post.",
     ].join("\n");
@@ -166,7 +166,7 @@ export function buildDiscordPresets(input: {
         todayCount ? `${todayCount} games on today's PT board.` : "Scanning today's board.",
         card.length ? `${card.length} official play${card.length === 1 ? "" : "s"} in the window.` : "No official plays locked yet.",
         "",
-        "Quality over quantity. Weak spots PASS.",
+        "Quality first. Soft floor keeps the desk live when the hard gate is empty.",
       ].join("\n"),
     },
     {
@@ -176,8 +176,8 @@ export function buildDiscordPresets(input: {
         "🌊 WELCOME TO BoatBoyzPicks",
         "",
         "We scan the whole slate.",
-        "We only post the strongest 1–6 plays.",
-        "If nothing qualifies, we PASS.",
+        "We post the strongest 1–6 plays.",
+        "Hard edge = LOCK. Soft floor = BEST AVAILABLE / DESK PICK.",
         "",
         "Official picks verify at DraftKings before they go out.",
         "This channel is the bot. Sit back.",

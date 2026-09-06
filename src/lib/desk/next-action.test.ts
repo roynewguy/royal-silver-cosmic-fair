@@ -9,7 +9,7 @@ test("unarmed status is honest", () => {
   );
 });
 
-test("empty card is a pass", () => {
+test("empty card keeps scanning for lock or soft-floor desk picks", () => {
   assert.equal(
     nextActionLine({
       automation: "online",
@@ -17,6 +17,6 @@ test("empty card is a pass", () => {
       target: 3,
       picks: [],
     }),
-    "PASS — no remaining games qualify",
+    "Scanning for LOCK or BEST AVAILABLE desk picks",
   );
 });

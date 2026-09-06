@@ -1,5 +1,5 @@
 import { isOfficialDay } from "./day.ts";
-import { isPlayableRank } from "./data-quality.ts";
+import { isPlayableRank, isSoftFloorEligibleRank } from "./data-quality.ts";
 import { LEAGUE_BY_ID } from "./leagues.ts";
 import { rankMlb } from "./models/mlb.ts";
 import { rankNba } from "./models/nba.ts";
@@ -8,7 +8,7 @@ import { rankNfl } from "./models/nfl.ts";
 import { rankNhl } from "./models/nhl.ts";
 import { rankUfc } from "./models/ufc.ts";
 import { rankWnba } from "./models/wnba.ts";
-import type { GameCard, RankPick } from "./types.ts";
+import type { GameCard, PickTier, RankPick } from "./types.ts";
 
 export function rankGame(game: GameCard): RankPick | null {
   const league = LEAGUE_BY_ID[game.league];
@@ -142,7 +142,7 @@ export function nextOfficialSlots(
   return planDailyCard(rankedIds, committed, target, now).keepIds;
 }
 
-/** Rank every qualifying game on today's card. Not one-per-sport. */
+/** Rank every hard-edge LOCK on today's card. Not one-per-sport. */
 export function bestOnSlate(
   games: GameCard[],
   minEdge = 3,
@@ -150,14 +150,71 @@ export function bestOnSlate(
   now = new Date(),
 ): GameCard[] {
   return games
+    .filter((g) => slateBaseFilter(g, now) && isPlayableRank(g.rank, minEdge, minConf))
+    .sort((a, b) => (b.rank?.edgePct ?? 0) - (a.rank?.edgePct ?? 0));
+}
+
+export type SlatePick = {
+  game: GameCard;
+  tier: PickTier;
+};
+
+function slateBaseFilter(g: GameCard, now: Date): boolean {
+  const league = LEAGUE_BY_ID[g.league];
+  if (!league?.official) return false;
+  if (g.status !== "scheduled") return false;
+  if (!isOfficialDay(g.startAt, now)) return false;
+  const start = new Date(g.startAt).getTime();
+  if (!Number.isFinite(start) || start <= now.getTime()) return false;
+  return true;
+}
+
+/** Soft-floor board: best ranked tickets that missed the hard edge/confidence gate. */
+export function softFloorOnSlate(games: GameCard[], minEdge = 3, minConf = 58, now = new Date()): GameCard[] {
+  const locks = new Set(bestOnSlate(games, minEdge, minConf, now).map((g) => g.id));
+  return games
     .filter((g) => {
-      const league = LEAGUE_BY_ID[g.league];
-      if (!league?.official) return false;
-      if (g.status !== "scheduled") return false;
-      if (!isOfficialDay(g.startAt, now)) return false;
-      const start = new Date(g.startAt).getTime();
-      if (!Number.isFinite(start) || start <= now.getTime()) return false;
-      return isPlayableRank(g.rank, minEdge, minConf);
+      if (!slateBaseFilter(g, now)) return false;
+      if (locks.has(g.id)) return false;
+      if (!isSoftFloorEligibleRank(g.rank)) return false;
+      // Soft floor only when the ticket would fail the hard gate.
+      return !isPlayableRank(g.rank, minEdge, minConf);
     })
     .sort((a, b) => (b.rank?.edgePct ?? 0) - (a.rank?.edgePct ?? 0));
 }
+
+/**
+ * Always-pick floor: use hard LOCKs when any qualify. Only when today's PT slate
+ * has scheduled official games and the hard gate yields 0, select best-available
+ * soft-floor candidates (prefer up to daily target). Never invent odds.
+ */
+export function selectSlatePicks(
+  games: GameCard[],
+  minEdge = 3,
+  minConf = 58,
+  target = DEFAULT_DAILY_PICKS,
+  now = new Date(),
+): SlatePick[] {
+  const cap = clampDailyPicks(target);
+  if (!games.some((g) => slateBaseFilter(g, now))) return [];
+  const locks = bestOnSlate(games, minEdge, minConf, now);
+  if (locks.length > 0) {
+    // Full lock board for planDailyCard rotation; caller caps by remaining slots.
+    return locks.map((game) => ({
+      game: { ...game, rank: game.rank ? { ...game.rank, pickTier: "lock" as const } : null },
+      tier: "lock" as const,
+    }));
+  }
+  return softFloorOnSlate(games, minEdge, minConf, now)
+    .slice(0, cap)
+    .map((game) => ({
+      game: { ...game, rank: game.rank ? { ...game.rank, pickTier: "soft_floor" as const } : null },
+      tier: "soft_floor" as const,
+    }));
+}
+
+/** Ranked game ids in card priority order (locks then soft floor). */
+export function slatePickIds(picks: SlatePick[]): string[] {
+  return picks.map((p) => p.game.id);
+}
+
