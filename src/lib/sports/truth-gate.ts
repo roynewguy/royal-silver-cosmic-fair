@@ -1,7 +1,7 @@
 import { isFreshTimestamp } from "../desk/production-policy.ts";
 import { LEAGUE_BY_ID } from "./leagues.ts";
 import { twoWayMarket } from "./odds.ts";
-import { isPlayableRank, isSoftFloorEligibleRank, LOW_DATA_QUALITY } from "./data-quality.ts";
+import { isPlayableRank, LOW_DATA_QUALITY } from "./data-quality.ts";
 import { gameFreshness } from "./freshness.ts";
 import { buildFreezeSnapshot, type FreezeSnapshot } from "./freeze.ts";
 import { isDraftKingsLine } from "./odds-api.ts";
@@ -53,7 +53,9 @@ export function startersMissingInWindow(live: GameCard, now = Date.now()): boole
   if (live.league !== "mlb") return false;
   const start = new Date(live.startAt).getTime();
   if (!Number.isFinite(start) || start - now > STARTER_WINDOW_MS || start <= now) return false;
-  return !live.home.starter?.name || !live.away.starter?.name;
+  return [live.home.starter?.name, live.away.starter?.name].some(
+    name => !name?.trim() || /^(probable( starting)? pitcher|starting pitcher|tbd|unknown|undecided)$/i.test(name.trim()),
+  );
 }
 
 export function gradeTruth(
@@ -119,12 +121,8 @@ export function prePostTruthCheck(input: {
   }
   if (live.status !== "scheduled") return { ok: false, reason: "PASS_DATA_CONFLICT", detail: `Status ${live.status}` };
   if (!LEAGUE_BY_ID[live.league]?.official || !isFreshTimestamp(live.fetchedAt, 15 * 60_000, now)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Unapproved model or stale game data" };
-  const softFloorEarly =
-    input.softFloor === true ||
-    input.queued.softFloor === true ||
-    input.queued.pickTier === "soft_floor";
-  // Soft-floor DESK PICKs still require DK + identity; injury schema / low-DQ may be incomplete.
-  if (!softFloorEarly && !isFreshTimestamp(live.injuriesFetchedAt, 180 * 60_000, now)) {
+  // Legacy queue tiers must never weaken the official/paper truth gate.
+  if (!isFreshTimestamp(live.injuriesFetchedAt, 180 * 60_000, now)) {
     return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Injury report was not successfully fetched" };
   }
   if (!isDraftKingsLine(live.odds)) return { ok: false, reason: "PASS_DK_UNAVAILABLE", detail: "Line is not verified DraftKings." };
@@ -146,18 +144,13 @@ export function prePostTruthCheck(input: {
 
   const rank = input.rank;
   if (!rank) return { ok: false, reason: "PASS_EDGE_DIED", detail: "Rerank produced no play." };
-  const softFloor = softFloorEarly || rank.pickTier === "soft_floor";
-  if (!softFloor && (rank.passReason === "PASS_LOW_DATA_QUALITY" || (rank.dataQuality ?? 100) < LOW_DATA_QUALITY)) {
+  if (rank.passReason === "PASS_LOW_DATA_QUALITY" || (rank.dataQuality ?? 0) < LOW_DATA_QUALITY) {
     return { ok: false, reason: "PASS_LOW_DATA_QUALITY", detail: `Data quality ${rank.dataQuality ?? 0}.` };
   }
   if (rank.passReason === "PASS_MISSING_STARTER") return { ok: false, reason: "PASS_MISSING_STARTER", detail: rank.passReason };
   if (!finiteProb(rank.probability)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Model probability not in (0,1)." };
   if (!rank.model || !/^v2-/.test(rank.model)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Unknown model version." };
-  if (softFloor) {
-    if (!isSoftFloorEligibleRank(rank) && !isPlayableRank(rank, input.minEdge, input.minConf)) {
-      return { ok: false, reason: "PASS_EDGE_DIED", detail: "Soft-floor candidate no longer eligible." };
-    }
-  } else if (!isPlayableRank(rank, input.minEdge, input.minConf)) {
+  if (!isPlayableRank(rank, input.minEdge, input.minConf)) {
     if (rank.confidence < input.minConf) return { ok: false, reason: "PASS_LOW_CONFIDENCE", detail: `Confidence ${rank.confidence}.` };
     return { ok: false, reason: "PASS_EDGE_DIED", detail: `Fresh DK edge ${rank.edgePct.toFixed(1)}% below ${input.minEdge}.` };
   }
@@ -172,12 +165,12 @@ export function prePostTruthCheck(input: {
   const pair = twoWayMarket(lockedOdds, otherPrice);
   const edge = (rank.probability - pair.noVigA) * 100;
   if (!Number.isFinite(edge)) return { ok: false, reason: "PASS_EDGE_DIED", detail: "Fresh two-way edge unreadable" };
-  if (!softFloor && edge < input.minEdge) return { ok: false, reason: "PASS_EDGE_DIED", detail: "Fresh two-way edge below threshold" };
+  if (edge < input.minEdge) return { ok: false, reason: "PASS_EDGE_DIED", detail: "Fresh two-way edge below threshold" };
   rank.edgePct = edge;
   rank.noVigImplied = pair.noVigA;
   rank.rawImplied = pair.rawA;
-  rank.pickTier = softFloor ? "soft_floor" : "lock";
-  const units = softFloor ? 1 : unitsFor(rank.confidence);
+  rank.pickTier = "lock";
+  const units = unitsFor(rank.confidence);
   const selection = selectionLabel({
     market: rank.market,
     side: rank.side,

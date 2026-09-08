@@ -141,11 +141,12 @@ function splitOf(comp: EspnCompetitor | undefined, type: string): string | null 
   return comp?.records?.find((r) => r.type === type)?.summary ?? null;
 }
 
-function starterFrom(comp: EspnCompetitor | undefined): Starter | null {
+export function starterFrom(comp: EspnCompetitor | undefined): Starter | null {
   const p = comp?.probables?.[0];
   if (!p) return null;
-  const name = p.displayName ?? p.athlete?.displayName;
-  if (!name || /^(TBD|unknown|TBA)$/i.test(name)) return null;
+  // The probable's displayName describes the role; the athlete owns the name.
+  const name = p.athlete?.displayName?.trim();
+  if (!name || /^(TBD|unknown|TBA|probable( starting)? pitcher|starting pitcher)$/i.test(name)) return null;
   const stats = p.statistics ?? [];
   const num = (names: string[]) => {
     const hit = stats.find((s) => names.includes((s.name ?? s.abbreviation ?? "").toLowerCase()));

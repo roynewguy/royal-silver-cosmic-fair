@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { extraScanDateKeys } from "./day.ts";
 import { LEAGUE_BY_ID, LEAGUES } from "./leagues.ts";
-import { espnRequestHeaders, espnScoreboardUrlCount, INJURY_CACHE_MS, urlsFor } from "./espn.ts";
+import { espnRequestHeaders, espnScoreboardUrlCount, INJURY_CACHE_MS, urlsFor, starterFrom } from "./espn.ts";
+
+test("starter comes from the athlete, never the probable role label", () => {
+  const probable = { displayName: "Probable Starting Pitcher", athlete: { displayName: "Verified Athlete" } };
+  assert.equal(starterFrom({ probables: [probable] })?.name, "Verified Athlete");
+  assert.equal(starterFrom({ probables: [{ displayName: "Probable Starting Pitcher" }] }), null);
+  assert.equal(starterFrom({ probables: [{ athlete: { displayName: "TBD" } }] }), null);
+});
 
 test("ESPN requests omit the custom user-agent rejected by the scoreboard API", () => {
   const headers = espnRequestHeaders();

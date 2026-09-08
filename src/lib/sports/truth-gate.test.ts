@@ -341,7 +341,7 @@ test("grading fails closed on a frozen participant mismatch",()=>{
 });
 
 
-test("softFloor allows below hard edge while hard path still PASS_EDGE_DIED", () => {
+test("legacy softFloor cannot bypass the minimum edge", () => {
   const game = live({ odds: dk({ homeMl: 118, awayMl: -138 }) });
   const softRank = rank({ price: 118, edgePct: 2.1, confidence: 64, probability: 0.55 });
   const hard = prePostTruthCheck({
@@ -364,15 +364,11 @@ test("softFloor allows below hard edge while hard path still PASS_EDGE_DIED", ()
     softFloor: true,
     now,
   });
-  assert.equal(soft.ok, true);
-  if (soft.ok) {
-    assert.equal(soft.rank.pickTier, "soft_floor");
-    assert.equal(soft.freeze.pickTier, "soft_floor");
-    assert.equal(soft.units, 1);
-  }
+  assert.equal(soft.ok, false);
+  if (!soft.ok) assert.equal(soft.reason, "PASS_EDGE_DIED");
 });
 
-test("softFloor posts without injury stamp and with low data quality", () => {
+test("legacy softFloor cannot bypass missing injuries or low data quality", () => {
   const game = live({ odds: dk({ homeMl: 118, awayMl: -138 }), injuriesFetchedAt: null });
   const baseRank = rank({
     price: 118,
@@ -401,10 +397,25 @@ test("softFloor posts without injury stamp and with low data quality", () => {
     softFloor: true,
     now,
   });
-  assert.equal(soft.ok, true);
-  if (soft.ok) {
-    assert.equal(soft.rank.pickTier, "soft_floor");
-    assert.equal(soft.units, 1);
+  assert.equal(soft.ok, false);
+  if (!soft.ok) assert.equal(soft.reason, "PASS_CRITICAL_DATA_MISSING");
+  game.injuriesFetchedAt = new Date(now).toISOString();
+  const lowQuality = prePostTruthCheck({ queued: queued(game), live: game,
+    rank: baseRank, minEdge: 3, minConf: 58, softFloor: true, now });
+  assert.equal(lowQuality.ok, false);
+  if (!lowQuality.ok) assert.equal(lowQuality.reason, "PASS_LOW_DATA_QUALITY");
+});
+
+test("MLB placeholder pitcher labels are not verified starter identities", () => {
+  for (const name of ["Probable Starting Pitcher", "Starting Pitcher", "TBD", "Unknown", " "]) {
+    for (const side of ["home", "away"] as const) {
+      const game = live();
+      game[side].starter!.name = name;
+      const result = prePostTruthCheck({ queued: queued(game), live: game,
+        rank: rank(), minEdge: 3, minConf: 58, softFloor: true, now });
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.reason, "PASS_MISSING_STARTER");
+    }
   }
 });
 

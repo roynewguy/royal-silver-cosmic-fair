@@ -136,3 +136,10 @@ Outstanding live checks:
 7. No production credentials or active deployment session were available in the resumed browser. Deployment and actual live health remain unverified until authenticated access is restored.
 
 **Explicit: V2 probability coefficients/weights were NOT retuned. V3 was NOT auto-promoted. Live production readiness must remain blocked until these observations succeed.**
+# September 8 live connection repair
+
+The saved Odds API key was applied with production redeployment of 492562b. The operator check verified a fresh DraftKings moneyline for Arizona at Kansas City. A full run delivered three messages to official-picks (channel 1545432221899296871), confirmed both in application logs and Discord: 1547026633263685644, 1547026634475831389, 1547026635906093060. Test delivery was separately observed in private test-lab (1545956146584490035). These deliveries prove transport, not complete model/data readiness.
+
+That live run exposed a regression introduced by the later soft-floor changes: missing injuries and low data quality could bypass official checks. The truth gate now requires the same minimum edge, confidence, data quality, and injury freshness regardless of legacy queue tier. ESPN starter parsing now reads athlete.displayName instead of the probable role label. Placeholder identities are rejected at the final gate. Existing frozen tickets/messages are preserved and will continue through grading.
+
+Validation: 258 tests passed; typecheck passed; lint has zero errors and one existing fast-refresh warning. No files removed. No V2 model weights changed. No V3 promotion. Injury-feed schema failures remain a launch blocker; missing context must produce PASS. Scheduled scanning and grading remain enabled.
