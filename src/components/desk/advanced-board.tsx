@@ -9,7 +9,7 @@ import { buildManualPickMessage, buildTestPreviewMessage } from "@/lib/sports/di
 import { canPostGame, NO_INVENTED_LINE, resolveManualTicket } from "@/lib/sports/manual-post";
 import { DiscordComposer } from "@/components/desk/discord-composer";
 import { formatKick } from "@/lib/utils";
-import { replayPaperDay, settleReviewedPick } from "@/lib/desk/api";
+import { replayPaperDay, settleReviewedPick, checkOddsConnection } from "@/lib/desk/api";
 import type { CalibrationReport, GameCard, Market, PickRow, Side } from "@/lib/sports/types";
 
 export function AdvancedBoard() {
@@ -20,6 +20,8 @@ export function AdvancedBoard() {
   const [lead, setLead] = useState(String(desk.data.postLeadMinutes));
   const [previewId, setPreviewId] = useState<string>("");
   const health = desk.data.health;
+  const [checkingOdds, setCheckingOdds] = useState(false);
+  const [oddsCheck, setOddsCheck] = useState("");
 
   if (!desk.data.operator) {
     return (
@@ -155,6 +157,13 @@ export function AdvancedBoard() {
       <section className="space-y-2">
         <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">Odds API</h2>
         <p className="text-sm">DraftKings API · {health.oddsLabel}</p>
+        <Button disabled={checkingOdds} onClick={async () => {
+          setCheckingOdds(true);
+          try { const result = await checkOddsConnection(); setOddsCheck(result.message); }
+          catch { setOddsCheck("Connection check could not complete. Try again after checking server health."); }
+          finally { setCheckingOdds(false); }
+        }}>{checkingOdds ? "Checking odds…" : "Check odds connection"}</Button>
+        {oddsCheck ? <p role="status" className="text-sm">{oddsCheck}</p> : null}
         <p className="text-xs text-subtle">Used {health.oddsUsed ?? "—"} · Free beta {health.freeBeta ? "ON" : "off"}</p>
       </section>
 

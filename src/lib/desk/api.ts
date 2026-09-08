@@ -441,3 +441,17 @@ export const settleReviewedPick = createServerFn({ method: "POST" })
       return { ok: true };
     } finally { await clearWorkerLock(lease); }
   });
+
+/** Operator-only real verification probe; never queues or sends a pick. */
+export const checkOddsConnection = createServerFn({ method: "POST" }).handler(async () => {
+ const gate = await requireOperator();
+ if (!gate.ok) return { ok: false, message: gate.error };
+ const { LEAGUE_BY_ID } = await import("../sports/leagues");
+ const games = await loadGames();
+ const game = games.filter(g => g.status === "scheduled" && Date.parse(g.startAt) > Date.now() && LEAGUE_BY_ID[g.league]?.official)
+   .sort((a,b) => Date.parse(a.startAt)-Date.parse(b.startAt))[0];
+ if (!game) return { ok: false, message: "No upcoming supported game to verify. Scan the slate first." };
+ const { confirmDraftKings } = await import("./dk-verify");
+ const result = await confirmDraftKings(game, "moneyline");
+ return { ok: result.ok, message: result.ok ? `Fresh DraftKings moneyline verified: ${game.away.name} at ${game.home.name}. No pick was posted.` : result.error };
+});

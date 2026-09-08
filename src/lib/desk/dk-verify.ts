@@ -1,3 +1,4 @@
+import { safeOddsError } from "../sports/odds-error.ts";
 import { recordEvent } from "./telemetry";
 import { getSql } from "@/lib/db";
 import { isFreshOfficialDkCache, marketParam, } from "@/lib/sports/free-beta.ts";
@@ -82,7 +83,7 @@ export async function confirmDraftKings(
   const league = LEAGUE_BY_ID[game.league];
   const apiKey = process.env.ODDS_API_KEY?.trim();
   if (!league?.oddsApiKey || !apiKey) {
-    return { ok: false, error: "PASS_DK_UNAVAILABLE" };
+    return { ok: false, error: !apiKey ? "ODDS_API_KEY is missing on this deployment" : "This league has no DraftKings provider mapping" };
   }
 
   try {
@@ -103,9 +104,11 @@ export async function confirmDraftKings(
         return { ok: true, game: next };
       }
     }
-  } catch {
-    await recordEvent("dk_failure", "DraftKings request failed");
-    await addLog("scan", "Odds API request failed", game.sport);
+  } catch (error) {
+    const detail = safeOddsError(error);
+    await recordEvent("dk_failure", detail);
+    await addLog("scan", detail, game.sport);
+    return { ok: false, error: detail };
   }
 
   return { ok: false, error: "PASS_DK_UNAVAILABLE" };
