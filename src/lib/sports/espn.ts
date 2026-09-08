@@ -437,7 +437,17 @@ async function fetchInjuryBoard(league: LeagueConfig): Promise<{ rows: BoardInj[
         }[];
       }[];
     };
-    if (!Array.isArray(payload.teams)) { scanStats.errors.push(`${league.id}: injury schema unavailable`); return null; } // Unavailable, not empty.
+    if (!Array.isArray(payload.teams)) {
+      // Field names only: diagnose provider schema drift without logging response values.
+      const shape = Object.entries(payload).map(([key, value]) => {
+        if (!Array.isArray(value)) return key;
+        const first = value[0];
+        const fields = first && typeof first === "object" ? Object.keys(first).join(",") : "";
+        return `${key}[${value.length}](${fields})`;
+      }).join(";");
+      scanStats.errors.push(`${league.id}: injury schema unavailable: ${shape}`);
+      return null;
+    } // Unavailable, not empty.
     const rows: BoardInj[] = [];
     for (const team of payload.teams ?? []) {
       const abbr = team.team?.abbreviation;
