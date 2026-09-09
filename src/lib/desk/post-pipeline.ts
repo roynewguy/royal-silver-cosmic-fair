@@ -3,7 +3,7 @@ import type { PickStatus } from "@/lib/sports/types";
 
 export const STALE_POSTING_MS = 4 * 60 * 1000;
 
-export type DiscordSend = () => Promise<{ ok: boolean; id?: string; error?: string; uncertain?: boolean }>;
+export type DiscordSend = () => Promise<{ ok: boolean; id?: string; error?: string; uncertain?: boolean; authFailure?: boolean }>;
 
 export type CompletePayload = {
   freezeJson: string;
@@ -40,6 +40,7 @@ export type SendOnceResult = {
   status: PickStatus | null;
   error?: string;
   uncertain?: boolean;
+  authFailure?: boolean;
 };
 
 export function newPostingToken(): string {
@@ -76,7 +77,13 @@ export async function sendOnce(
     if (res.uncertain) throw new Error(res.error ?? "DELIVERY_UNKNOWN");
     if (!res.ok) {
       await store.release(pickId, token);
-      return { sent: false, claimed: true, status: "queued", error: res.error };
+      return {
+        sent: false,
+        claimed: true,
+        status: "queued",
+        error: res.error,
+        authFailure: res.authFailure === true,
+      };
     }
     const ok = await store.complete(pickId, token, {
       ...payload,

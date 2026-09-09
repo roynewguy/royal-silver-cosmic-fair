@@ -568,3 +568,30 @@ test("official result embed is gold-bar WIN/LOSS/PUSH with clean fields and neve
   assert.equal(parseResultWebhookBody("**WIN** · MLB\nATH ML"), "**WIN** · MLB\nATH ML");
   assert.match(buildRecapMessage(pick, game, "WIN", 2.88, record), /\*\*WIN\*\* · MLB/);
 });
+
+test("postWebhook marks Discord 401/403 as authFailure, not uncertain", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => new Response("unauthorized", { status: 401 })) as typeof fetch;
+  try {
+    const res = await postWebhook("https://discord.com/api/webhooks/1/abc", "hello");
+    assert.equal(res.ok, false);
+    assert.equal(res.uncertain, false);
+    assert.equal(res.authFailure, true);
+    assert.match(res.error ?? "", /401/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("postWebhook marks Discord 403 as authFailure for alerts path", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => new Response("forbidden", { status: 403 })) as typeof fetch;
+  try {
+    const res = await postWebhook("https://discord.com/api/webhooks/1/abc", "hello");
+    assert.equal(res.ok, false);
+    assert.equal(res.authFailure, true);
+    assert.equal(res.uncertain, false);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
