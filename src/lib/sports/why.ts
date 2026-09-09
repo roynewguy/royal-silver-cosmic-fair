@@ -27,7 +27,14 @@ export function whyBullets(game: GameCard, rank: Pick<RankPick, "side"> & Partia
   if (side === "away") bullets.push(`${game.away.name} are playing away at ${game.home.name}`);
   if (side === "over" || side === "under") bullets.push(`lean is ${side} on the total`);
 
-  if (picked?.starter?.name) {
+  if (game.league === "mlb" && picked?.starter?.name && other?.starter?.name &&
+      picked.starter.era != null && other.starter.era != null &&
+      Number.isFinite(picked.starter.era) && Number.isFinite(other.starter.era)) {
+    const comparison = picked.starter.era < other.starter.era
+      ? "Selected starter has the lower season ERA."
+      : picked.starter.era > other.starter.era ? "Opponent has the lower season ERA; a risk to this pick." : "Season ERAs are equal.";
+    bullets.push(`⚾ Pitching: ${picked.starter.name} (${picked.starter.era.toFixed(2)} ERA) vs ${other.starter.name} (${other.starter.era.toFixed(2)} ERA). ${comparison}`);
+  } else if (picked?.starter?.name) {
     const extra =
       picked.starter.era != null
         ? ` (ERA ${picked.starter.era.toFixed(2)})`
@@ -36,7 +43,7 @@ export function whyBullets(game: GameCard, rank: Pick<RankPick, "side"> & Partia
           : "";
     bullets.push(`${picked.starter.name} is listed to start${extra}`);
   }
-  if (other?.starter?.name && game.league === "mlb") {
+  if (other?.starter?.name && game.league === "mlb" && picked?.starter?.era == null) {
     const era = other.starter.era;
     bullets.push(`${other.name} listed ${other.starter.name}${era != null && Number.isFinite(era) ? ` (ERA ${era.toFixed(2)})` : ""}`);
   }
@@ -81,10 +88,11 @@ export function whyWriteup(game: GameCard, rank: Pick<RankPick, "side"> & Partia
   else bits.push(`Total lean ${side}: ${away} at ${home}.`);
 
   if (rank.probability != null && rank.noVigImplied != null && rank.edgePct != null) {
-    const edgeWord = rank.edgePct >= 3 ? "clear edge" : rank.edgePct >= 0 ? "best available edge on this slate" : "thin number, still the top desk lean";
     bits.push(
-      `Model ${(rank.probability * 100).toFixed(1)}% against a ${(rank.noVigImplied * 100).toFixed(1)}% no-vig market — ${rank.edgePct.toFixed(1)} pts of ${edgeWord}.`,
+      `The model estimates ${(rank.probability * 100).toFixed(1)}% versus the market's ${(rank.noVigImplied * 100).toFixed(1)}% after removing bookmaker margin: ${rank.edgePct.toFixed(1)} percentage points of estimated edge.`,
     );
+    if ((side === "home" || side === "away") && rank.probability < 0.5)
+      bits.push("This is a value underdog: the model still expects it to lose more often than win, but prices its chance above the market.");
   } else if (rank.edgePct != null && Number.isFinite(rank.edgePct)) {
     bits.push(`Estimated edge sits at ${rank.edgePct.toFixed(1)} pts on the live board.`);
   }

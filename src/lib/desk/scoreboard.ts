@@ -20,7 +20,7 @@ export async function syncRecordScoreboard(): Promise<void> {
     const sent = await postWebhook(hook, content);
     if (!sent.ok || !sent.id) {
       await sql`update discord_scoreboard set state='delivery_unknown' where purpose='record'`;
-      await alertOwner("DISCORD_FAIL", "Scoreboard creation failed or is uncertain; inspect public-record before retrying.");
+      await alertOwner("DISCORD_FAIL", "Scoreboard creation failed or is uncertain; inspect the results scoreboard before retrying.");
       return;
     }
     await sql`update discord_scoreboard set state='sent', message_id=${sent.id}, updated_at=now() where purpose='record'`;

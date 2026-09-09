@@ -19,9 +19,10 @@ test("scoreboard edits existing message and never POSTs a replacement on 404", a
     assert.deepEqual(calls, [{url:"https://discord.com/api/webhooks/1/token/messages/42",method:"PATCH"}]);
   } finally { globalThis.fetch = original; }
 });
-test("public record requires a dedicated webhook and cannot inherit picks or alerts", () => {
+test("scoreboard defaults to results and never inherits picks or alerts", () => {
   const hook="https://discord.com/api/webhooks/1/token";
   assert.equal(channelWebhook("record","",{DISCORD_PICKS_WEBHOOK:hook}), "");
   assert.equal(channelWebhook("record","",{DISCORD_RECORD_WEBHOOK:hook,DISCORD_ALERT_WEBHOOK:hook}), "");
   assert.equal(channelWebhook("record","",{DISCORD_RECORD_WEBHOOK:hook}), hook);
+  assert.equal(channelWebhook("record","",{DISCORD_RESULTS_WEBHOOK:hook}), hook);
 });

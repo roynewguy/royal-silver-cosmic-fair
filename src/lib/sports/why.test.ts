@@ -62,6 +62,19 @@ test("preview notes stay unofficial facts", () => {
   assert.match(notes.writeup, /Yankees|NYY|home/i);
 });
 
+test("a value underdog is not described as likely to win", () => {
+  const game = { league: "mlb", home: { name: "Home" }, away: { name: "Away" }, injuries: [] } as unknown as GameCard;
+  const text = whyWriteup(game, { side: "away", probability: 0.43, noVigImplied: 0.38, edgePct: 5 });
+  assert.match(text, /expects it to lose more often than win/);
+  assert.match(text, /5.0 percentage points/);
+});
+
+test("pitching comparison includes an unfavorable fact instead of inventing an advantage", () => {
+  const game = { league: "mlb", home: { name: "Home", starter: { name: "Home Pitcher", era: 5 } },
+    away: { name: "Away", starter: { name: "Away Pitcher", era: 3 } }, injuries: [] } as unknown as GameCard;
+  assert.match(whyBullets(game, { side: "home" }).join(" "), /Opponent has the lower season ERA; a risk/);
+});
+
 
 test("formatWhy never returns an empty ticket-only body", () => {
   const game = {
