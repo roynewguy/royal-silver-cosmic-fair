@@ -1,5 +1,6 @@
 import { channelWebhook } from "./discord-routing.ts";
 import { formatAmerican, formatKick, formatUnits } from "../utils.ts";
+import { formatClvSummaryLine, type ClvSummary } from "./closing.ts";
 import { parseWhy, previewNotes, defaultPlayReason } from "./why.ts";
 import type { DeskRecord, GameCard, PickResult, PickRow } from "./types.ts";
 
@@ -124,14 +125,18 @@ export async function editWebhookMessage(url: string, id: string, content: strin
   } catch { return { ok: false }; }
 }
 
-export function buildRecordScoreboard(record: DeskRecord): string {
-  return ["🌊 **BOATBOYZ • OFFICIAL SCOREBOARD**", "",
+export function buildRecordScoreboard(record: DeskRecord, clv?: ClvSummary | null): string {
+  const lines = ["🌊 **BOATBOYZ • OFFICIAL SCOREBOARD**", "",
     `✅ Wins: **${record.wins}**   ❌ Losses: **${record.losses}**   ↔️ Pushes: **${record.pushes}**`,
     `💰 Net units: **${formatUnits(record.units)}**`,
     `📊 ROI: **${record.riskedUnits ? `${(record.units / record.riskedUnits * 100).toFixed(1)}%` : "—"}**`,
-    `⏳ Pending: **${record.pending}**`, "",
+    `⏳ Pending: **${record.pending}**`];
+  if (clv && clv.sample > 0) lines.push(formatClvSummaryLine(clv, "CLV (straights · tip closes)"));
+  lines.push("",
     "🤖 Automated official picks only • Test, paper and manual plays excluded.",
-    "🔄 This message updates automatically. Every official result stays recorded."].join("\n");
+    "CLV uses real tip/start DraftKings quotes only — never invented.",
+    "🔄 This message updates automatically. Every official result stays recorded.");
+  return lines.join("\n");
 }
 
 function pctLabel(n: number | null | undefined): string {

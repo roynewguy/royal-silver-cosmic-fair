@@ -46,7 +46,7 @@ export async function loadOddsRemaining(): Promise<number | null> {
   return Number.isFinite(v) ? v : null;
 }
 
-async function loadCache(gameId: string, market: Market): Promise<{
+export async function readDkCache(gameId: string, market: Market): Promise<{
   odds: OddsSnapshot;
   checks: number;
   ageMs: number;
@@ -79,7 +79,7 @@ export async function confirmDraftKings(
   game: GameCard,
   market: Market,
 ): Promise<{ ok: true; game: GameCard } | { ok: false; error: string }> {
-  const cached = await loadCache(game.id, market);
+  const cached = await readDkCache(game.id, market);
   const league = LEAGUE_BY_ID[game.league];
   const apiKey = process.env.ODDS_API_KEY?.trim();
   if (!league?.oddsApiKey || !apiKey) {
