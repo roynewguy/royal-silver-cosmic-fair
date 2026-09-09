@@ -1,12 +1,11 @@
-import { impliedFromAmerican } from "./odds.ts";
+import { computeClvPoints } from "./closing.ts";
 
-/** Closing-line value in probability points. Positive = we beat the close. */
+/** Closing-line value in probability points. Positive = we beat the close. Never invents. */
 export function clvFromPrices(postedPrice: number | null | undefined, closingPrice: number | null | undefined): number | null {
-  if (postedPrice == null || closingPrice == null) return null;
-  if (!Number.isFinite(postedPrice) || !Number.isFinite(closingPrice) || postedPrice === 0 || closingPrice === 0) {
-    return null;
-  }
-  return impliedFromAmerican(closingPrice) - impliedFromAmerican(postedPrice);
+  return computeClvPoints(
+    postedPrice == null ? null : postedPrice,
+    closingPrice == null ? null : closingPrice,
+  );
 }
 
 export function averageClv(values: Array<number | null | undefined>): number | null {

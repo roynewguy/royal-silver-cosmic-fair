@@ -3,30 +3,61 @@ import { formatAmerican } from "../utils.ts";
 import { impliedFromAmerican, priceFor, lineFor } from "./odds.ts";
 import type { Market, OddsSnapshot, PickRow, Side } from "./types.ts";
 
-/** CLV is price-to-price on the SAME market/line, using the last verified pregame quote. */
-export function verifiedClosingPrice(
-  raw: string | null,
-  pick: Pick<PickRow, "startAt" | "market" | "side" | "lockedLine">,
-): number | null {
+/** Real book quote fields required for CLV — never invent missing pieces. */
+export type RealQuote = {
+  book: string;
+  market: Market;
+  side: Side;
+  line: number | null;
+  price: number;
+  capturedAt: string;
+  source: OddsSnapshot["source"];
+};
+
+export type QuotePickRef = Pick<PickRow, "startAt" | "market" | "side" | "lockedLine">;
+
+/**
+ * Extract a real DraftKings quote (book / line / price / ts) from a snapshot JSON.
+ * Returns null when any required field is missing, non-DK, post-tip, stale (>20m),
+ * or the line no longer matches the locked ticket — never invents closes.
+ */
+export function extractRealQuote(raw: string | null | undefined, pick: QuotePickRef): RealQuote | null {
   if (!raw) return null;
   try {
     const snap = JSON.parse(raw) as OddsSnapshot;
-    const time = Date.parse(snap.capturedAt ?? "");
+    if (!isDraftKingsLine(snap)) return null;
+    const capturedAt = snap.capturedAt;
+    if (!capturedAt || typeof capturedAt !== "string") return null;
+    const time = Date.parse(capturedAt);
     const start = Date.parse(pick.startAt);
-    if (
-      !isDraftKingsLine(snap) ||
-      !Number.isFinite(time) ||
-      !Number.isFinite(start) ||
-      time >= start ||
-      start - time > 20 * 60_000
-    ) {
-      return null;
-    }
+    if (!Number.isFinite(time) || !Number.isFinite(start)) return null;
+    if (time >= start) return null;
+    if (start - time > 20 * 60_000) return null;
     if (lineFor(snap, pick.market, pick.side) !== pick.lockedLine) return null;
-    return priceFor(snap, pick.market, pick.side);
+    const price = priceFor(snap, pick.market, pick.side);
+    if (price == null || !Number.isFinite(price) || price === 0) return null;
+    const book = typeof snap.book === "string" && snap.book.trim() ? snap.book.trim() : null;
+    if (!book) return null;
+    return {
+      book,
+      market: pick.market,
+      side: pick.side,
+      line: pick.lockedLine,
+      price: Math.round(price),
+      capturedAt,
+      source: snap.source,
+    };
   } catch {
     return null;
   }
+}
+
+/** CLV is price-to-price on the SAME market/line, using the last verified pregame quote. */
+export function verifiedClosingPrice(
+  raw: string | null,
+  pick: QuotePickRef,
+): number | null {
+  return extractRealQuote(raw, pick)?.price ?? null;
 }
 
 /** Ticket open = frozen posted/locked American; never invent a price. */
@@ -67,6 +98,17 @@ export function computeClvPoints(openPrice: number | null, closePrice: number | 
   return impliedFromAmerican(closePrice) - impliedFromAmerican(openPrice);
 }
 
+/**
+ * Canonical open→close CLV for a ticket. Open = posted/locked only; close = verified real quote only.
+ * Missing close ⇒ null CLV (never invented).
+ */
+export function ticketClvPoints(
+  pick: { postedOdds?: number | null; lockedOdds: number },
+  closePrice: number | null,
+): number | null {
+  return computeClvPoints(ticketOpenPrice(pick), closePrice);
+}
+
 export function formatClvPoints(clv: number | null | undefined): string {
   if (clv == null || !Number.isFinite(clv)) return "—";
   const pp = clv * 100;
@@ -80,6 +122,8 @@ export type OpenCloseLogInput = {
   closePrice: number | null;
   /** Hard LOCK vs soft desk — for labels only; never reclassifies. */
   pickTier?: "lock" | "soft_floor" | null;
+  /** Optional real-quote provenance (book · line · ts) when close is real. */
+  closeQuote?: Pick<RealQuote, "book" | "line" | "capturedAt"> | null;
 };
 
 /** One-line open→close log. Missing close stays "—" — never fabricates odds. */
@@ -90,7 +134,13 @@ export function formatOpenCloseLog(input: OpenCloseLogInput): string {
   const close = formatAmerican(input.closePrice);
   const clv = computeClvPoints(input.openPrice, input.closePrice);
   const clvLabel = clv == null ? "n/a (no real close)" : formatClvPoints(clv);
-  return `CLV ${tier} · ${input.selection} · open ${open} → close ${close} · ${clvLabel}`;
+  const quoteBit =
+    input.closeQuote && input.closePrice != null
+      ? ` · ${input.closeQuote.book}` +
+        (input.closeQuote.line != null ? ` line ${input.closeQuote.line}` : "") +
+        ` @ ${input.closeQuote.capturedAt}`
+      : "";
+  return `CLV ${tier} · ${input.selection} · open ${open} → close ${close} · ${clvLabel}${quoteBit}`;
 }
 
 export type ClvRow = { clv: number | null };
@@ -138,6 +188,7 @@ export type ClosingCaptureAction = "use-cache" | "fetch" | "skip";
 /**
  * Lean tip-window closing capture. Real DK quotes only.
  * FREE_BETA never fetches (no Odds burn); missing close stays missing.
+ * Cache-first when a fresh pregame DK snapshot is already on hand.
  */
 export function closingCaptureAction(input: {
   freeBeta: boolean;

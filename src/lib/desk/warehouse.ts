@@ -102,12 +102,6 @@ export async function recordPostedPrediction(game: GameCard, rank: RankPick): Pr
   });
 }
 
-function closingForSide(game: GameCard, side: string | null): number | null {
-  if (side === "away") return game.odds.awayMl;
-  if (side === "home") return game.odds.homeMl;
-  return game.odds.homeMl;
-}
-
 export async function recordClosingResult(input: {
   game: GameCard;
   modelVersion: string | null;
@@ -117,6 +111,7 @@ export async function recordClosingResult(input: {
 }): Promise<void> {
   await swallow(async () => {
     const sql = await getSql();
+    // Official CLV uses verified tip close only — never invent from live board.
     const officialClv = clvFromPrices(input.postedPrice, input.closingPrice);
     await sql`
       update game_history set
@@ -133,9 +128,8 @@ export async function recordClosingResult(input: {
       where game_id = ${input.game.id} and result is null
     `;
     for (const row of rows) {
-      const closing = row.model_version === input.modelVersion && row.stage === "posted"
-        ? input.closingPrice
-        : closingForSide(input.game, row.side);
+      // Real closes only: reuse the verified tip close when present; otherwise leave null (never invent from board).
+      const closing = input.closingPrice;
       const clv = clvFromPrices(row.price, closing);
       await sql`
         update model_predictions set
@@ -162,4 +156,3 @@ export async function recordClosingResult(input: {
     }
   });
 }
-

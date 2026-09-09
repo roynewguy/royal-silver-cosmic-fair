@@ -4,10 +4,12 @@ import {
   boardOpenPrice,
   closingCaptureAction,
   computeClvPoints,
+  extractRealQuote,
   formatClvPoints,
   formatClvSummaryLine,
   formatOpenCloseLog,
   summarizeClv,
+  ticketClvPoints,
   ticketOpenPrice,
   verifiedClosingPrice,
 } from "./closing.ts";
@@ -144,4 +146,61 @@ test("closingCaptureAction is lean under FREE_BETA and skips inventing", () => {
     }),
     "skip",
   );
+});
+
+
+test("extractRealQuote requires book/line/price/ts and never invents", () => {
+  const start = "2026-09-09T20:00:00Z";
+  const pick = { startAt: start, market: "moneyline" as const, side: "home" as const, lockedLine: null };
+  const ok = extractRealQuote(
+    JSON.stringify(dkSnap({ homeMl: -130, capturedAt: "2026-09-09T19:50:00Z" })),
+    pick,
+  );
+  assert.ok(ok);
+  assert.equal(ok.book, "DraftKings");
+  assert.equal(ok.price, -130);
+  assert.equal(ok.capturedAt, "2026-09-09T19:50:00Z");
+  assert.equal(ok.line, null);
+
+  assert.equal(
+    extractRealQuote(JSON.stringify(dkSnap({ homeMl: -130, capturedAt: null as unknown as string })), pick),
+    null,
+  );
+  const noBook = dkSnap({ homeMl: -130, capturedAt: "2026-09-09T19:50:00Z" });
+  (noBook as { book: string }).book = "   ";
+  assert.equal(extractRealQuote(JSON.stringify(noBook), pick), null);
+
+  const spreadPick = { startAt: start, market: "spread" as const, side: "home" as const, lockedLine: -3.5 };
+  const spread = extractRealQuote(
+    JSON.stringify(
+      dkSnap({
+        homeMl: -110,
+        homeSpread: -3.5,
+        homeSpreadOdds: -115,
+        capturedAt: "2026-09-09T19:55:00Z",
+      }),
+    ),
+    spreadPick,
+  );
+  assert.ok(spread);
+  assert.equal(spread.line, -3.5);
+  assert.equal(spread.price, -115);
+});
+
+test("ticketClvPoints uses ticket open + real close only", () => {
+  assert.ok(ticketClvPoints({ postedOdds: -110, lockedOdds: -105 }, -130)! > 0);
+  assert.equal(ticketClvPoints({ postedOdds: -110, lockedOdds: -105 }, null), null);
+  assert.equal(ticketClvPoints({ postedOdds: 0, lockedOdds: 0 }, -130), null);
+});
+
+test("formatOpenCloseLog appends real quote provenance when present", () => {
+  const line = formatOpenCloseLog({
+    selection: "KC ML",
+    openPrice: -110,
+    closePrice: -130,
+    pickTier: "lock",
+    closeQuote: { book: "DraftKings", line: null, capturedAt: "2026-09-09T19:50:00Z" },
+  });
+  assert.match(line, /DraftKings/);
+  assert.match(line, /2026-09-09T19:50:00Z/);
 });
