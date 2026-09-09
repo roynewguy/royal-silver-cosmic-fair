@@ -153,3 +153,8 @@ The optional `DISCORD_RECORD_WEBHOOK` must point to #public-record and be distin
 # Results scoreboard destination update
 
 At the operator's request the permanent scoreboard now defaults to the existing #results webhook, alongside individual recaps. DISCORD_RECORD_WEBHOOK remains an optional separate destination; no new webhook is required for #results. The scoreboard's saved id is retained and PATCHed only when the actual auto record changes. Pick explanations compare verified pitcher ERAs and disclose unfavorable comparisons. Model probabilities below 50% are explicitly described as value underdogs, not likely winners. This is deterministic wording from supplied facts, not independent web research or invented context.
+# Weekly recap automation
+
+`DISCORD_WEEKLY_WEBHOOK` points only to #weekly-recap. The existing ten-minute worker checks for the weekly summary on or after Monday 09:00 America/Los_Angeles, including DST changes and delayed-run catch-up during that week. Each report covers games starting in the previous Monday–Sunday PT window. It includes W/L/P/VOID, units, ROI on graded stakes, pending at publication, and the overall auto record at publication. Paper/manual tickets are excluded. No reports are generated for weeks before the first posted official game's date.
+
+The existing durable Discord message table and delivery primitives are shared with the results scoreboard. A `weekly:YYYY-MM-DD` unique purpose fences each report before sending. Unknown delivery is not automatically repeated. Weekly reports are snapshots at publication; later settlements remain in #results. No new scheduler or model changes.

@@ -1,4 +1,4 @@
-export type DiscordRole = "picks" | "results" | "alerts" | "test" | "manual" | "record";
+export type DiscordRole = "picks" | "results" | "alerts" | "test" | "manual" | "record" | "weekly";
 
 export function webhookIdentity(url: string): string | null {
   try {
@@ -18,10 +18,13 @@ export function channelWebhook(role: DiscordRole, stored = "", env: NodeJS.Proce
   const manual = env.DISCORD_MANUAL_WEBHOOK?.trim() || test;
   // The operator's permanent scoreboard shares #results by default.
   const record = env.DISCORD_RECORD_WEBHOOK?.trim() || results;
-  const urls = { picks, results, alerts, test, manual, record };
+  const weekly = env.DISCORD_WEEKLY_WEBHOOK?.trim() || "";
+  const urls = { picks, results, alerts, test, manual, record, weekly };
   const selected = urls[role];
   const id = webhookIdentity(selected);
   if (!id) return "";
+  if (role === "weekly" && [picks,results,alerts,test,manual,record].some(u => webhookIdentity(u) === id)) return "";
+  if (role !== "weekly" && webhookIdentity(weekly) === id) return "";
   if (role === "record" && [picks, alerts, test, manual].some(u => webhookIdentity(u) === id)) return "";
   if (role === "alerts" && [picks, results, test, manual, record].some(u => webhookIdentity(u) === id)) return "";
   if (role !== "alerts" && webhookIdentity(alerts) === id) return "";
