@@ -104,6 +104,7 @@ test("live shadow does not substitute zeros for last5/rest/rdiff", () => {
   assert.ok(built.row.features.home.restDays != null);
   assert.notEqual(built.row.features.home.runDiffPg, null);
   assert.equal(JSON.stringify(built.row.features).includes("\"score\""), false);
+  assert.equal(built.row.market.homeClose, null);
   assert.deepEqual(x, featureVector(built.row));
 });
 

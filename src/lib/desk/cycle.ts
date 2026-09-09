@@ -14,7 +14,7 @@ import { sendWeeklyRecap } from "./weekly-recap";
 import { livePostingEnabled } from "./production-policy";
 import { recordEvent } from "./telemetry";
 import { getSql } from "@/lib/db";
-import { officialKey } from "@/lib/sports/day";
+import { officialKey, ptDayKey } from "@/lib/sports/day";
 import {
   buildDiscordMessage,
   buildOfficialPickPayload,
@@ -34,13 +34,19 @@ import { automationStatus } from "./health";
 import { isFreeBetaMode } from "@/lib/sports/free-beta";
 import { isPaperLedger, paperLockMessage, paperSimulateSend, activeLedger } from "@/lib/sports/paper-mode";
 import { isDraftKingsLine, mergeDraftKingsOdds } from "@/lib/sports/odds-api";
-import { dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, selectSlatePicks, unitsForTier } from "@/lib/sports/rank";
+import { bestOnSlate, dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, selectSlatePicks, unitsForTier } from "@/lib/sports/rank";
 import { formatPassFunnelLog, summarizeSlatePass } from "@/lib/sports/pass-funnel";
 import { formatWhy } from "@/lib/sports/why";
 import { confirmDraftKings, pruneFreeBetaCaches, readDkCache } from "./dk-verify";
 import { recordClosingResult, recordPostedPrediction, recordPregameSnapshots } from "./warehouse";
 import { recordV2Candidates } from "@/lib/sports/candidate-log";
 import { recordMlbShadow, gradeShadowPredictions } from "@/lib/models-v3/shadow-store";
+import { attachChallengerPredictions } from "@/lib/models-v3/challenger-board";
+import { canQueueOfficial } from "@/lib/models-v3/registry";
+import { dropCorrelated, qualifyOfficial, rankByBetScore } from "@/lib/sports/policy";
+import { recordPassDecisions } from "@/lib/sports/pass-log";
+import { maybePostNoPlay, postShadowLabSlate } from "@/lib/sports/shadow-discord";
+import { persistBookQuotes } from "@/lib/sports/market-consensus";
 import { gradeDisposition, UNPOSTED_SKIP } from "./posting";
 import { queuePostAt } from "./queue-post-at";
 import { sendOnce } from "./post-pipeline";
@@ -109,12 +115,17 @@ export async function refreshSlate(): Promise<GameCard[]> {
   const merged = await mergeDraftKingsOdds(raw);
   const windowed = merged.filter((g) => inLookahead(g));
   const ranked = rankGames(windowed);
-  if (ranked.length) await upsertGames(ranked);
+  const withChallengers = await attachChallengerPredictions(ranked);
+  if (withChallengers.length) await upsertGames(withChallengers);
   const previous = await loadGames();
-  const next = mergeFetchedSlate(ranked, previous);
+  const next = mergeFetchedSlate(withChallengers, previous);
   await recordPregameSnapshots(next);
   await recordV2Candidates(next);
   await recordMlbShadow(next);
+  const meta = await loadMeta();
+  await recordPassDecisions(next, meta.minEdgePct, meta.minConfidence);
+  await persistBookQuotes(next).catch(() => undefined);
+  await postShadowLabSlate(next).catch(() => 0);
   await pruneFreeBetaCaches();
   const stats = espnScanStats();
   if (stats.espn_error_count) {
@@ -461,6 +472,14 @@ export async function postPickById(
     await addLog("skip", SOFT_FLOOR_EXPIRED_REASON, game.sport);
     return { ok: true, posted: false, pickId };
   }
+  if (!canQueueOfficial(gate.rank.model)) {
+    await sql`
+      update picks set status = 'skipped', skip_reason = 'PASS_NO_EDGE'
+      where id = ${row.id} and status = 'queued'
+    `;
+    await addLog("skip", `${game.sport} shadow/DESK ticket is not an official LOCK.`, game.sport);
+    return { ok: true, posted: false, pickId };
+  }
 
   const factualReason = formatWhy(liveGame, gate.rank);
   Object.assign(gate.freeze, { reason: factualReason });
@@ -609,8 +628,14 @@ export async function selectOfficialCard(
   maxDailyPicks = 3,
 ): Promise<number> {
   const target = dailyPickTarget(maxDailyPicks);
-  const slate = selectSlatePicks(games, minEdge, minConf, target);
-  const ranked = slate.map((s) => s.game);
+  // LOCK-only pool, then lab quality + correlation. Soft-floor never queues.
+  const playable = bestOnSlate(games, minEdge, minConf).filter((g) => qualifyOfficial(g, minEdge, minConf));
+  const scored = rankByBetScore(playable, minEdge, minConf);
+  const { keep: rankedGames, dropped: correlated } = dropCorrelated(scored);
+  const ranked = rankedGames.map((game) => ({
+    ...game,
+    rank: game.rank ? { ...game.rank, pickTier: "lock" as const } : null,
+  }));
   const committed = await loadTodayOfficial();
   const plan = planDailyCard(
     ranked.map((g) => g.id),
@@ -621,6 +646,9 @@ export async function selectOfficialCard(
   const wanted = ranked.filter((g) => wantedIdSet.has(g.id));
 
   const sql = await getSql();
+  for (const game of correlated) {
+    await addLog("skip", `${game.sport} ${game.away.abbr} @ ${game.home.abbr} — PASS_CORRELATED`, game.sport);
+  }
   for (const gameId of plan.rotateOffIds) {
     const row = committed.find((p) => p.gameId === gameId && p.status === "queued");
     if (!row) continue;
@@ -636,6 +664,8 @@ export async function selectOfficialCard(
     // Zero LOCKs = correct PASS. Funnel codes explain edge/conf/truth; soft stays research-only (never queued).
     const funnel = summarizeSlatePass(games, minEdge, minConf);
     await addLog(funnel.softResearch > 0 ? "research" : "skip", formatPassFunnelLog(funnel, target));
+    const hook = await webhookUrl();
+    await maybePostNoPlay(hook, ptDayKey()).catch(() => false);
   }
 
   const existingByGame = await loadLatestPicksByGames(wanted.map((g) => g.id));
@@ -644,6 +674,7 @@ export async function selectOfficialCard(
   for (const game of wanted) {
     const rank = game.rank;
     if (!rank) continue;
+    if (!canQueueOfficial(rank.model)) continue;
     if (game.status !== "scheduled") continue;
     const existing = existingByGame.get(game.id) ?? null;
     if (existing && (existing.status === "posted" || existing.status === "graded" || existing.status === "posting")) continue;

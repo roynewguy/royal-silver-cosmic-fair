@@ -485,3 +485,62 @@ export const checkOddsConnection = createServerFn({ method: "POST" }).handler(as
  const result = await confirmDraftKings(game, "moneyline");
  return { ok: result.ok, message: result.ok ? `Fresh DraftKings moneyline verified: ${game.away.name} at ${game.home.name}. No pick was posted.` : result.error };
 });
+
+export const promoteModel = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const data = input as { version?: string; sport?: string; confirmLive?: boolean };
+    return {
+      version: String(data.version ?? ""),
+      sport: String(data.sport ?? ""),
+      confirmLive: data.confirmLive === true,
+    };
+  })
+  .handler(async ({ data }) => {
+    const gate = await requireOperator();
+    if (!gate.ok) return { ok: false as const, error: gate.error };
+    const { promoteChallenger } = await import("@/lib/models-v3/promotion");
+    const { loadModelLab } = await import("@/lib/models-v3/lab");
+    const lab = await loadModelLab();
+    const card = lab.cards.find((c) => c.modelVersion === data.version && c.sport === data.sport);
+    const champ = lab.cards.find((c) => c.sport === data.sport && c.role === "champion");
+    const result = promoteChallenger({
+      version: data.version,
+      sport: data.sport,
+      stats: {
+        n: card?.sampleSize ?? 0,
+        brier: card?.brier ?? null,
+        roi: card?.roi ?? null,
+        clv: card?.clv ?? null,
+        calibrationDelta: null,
+        maxDrawdown: null,
+      },
+      champion: {
+        n: champ?.sampleSize ?? 0,
+        brier: champ?.brier ?? null,
+        roi: champ?.roi ?? null,
+        clv: champ?.clv ?? null,
+        calibrationDelta: null,
+        maxDrawdown: null,
+      },
+      confirmLive: data.confirmLive,
+    });
+    if (!result.ok) return { ok: false as const, error: result.note, livePosting: false as const };
+    try {
+      const sql = await getSql();
+      await sql`
+        insert into model_promotion_log (sport, to_version, action, live_posting, reason, stats_json)
+        values (${data.sport}, ${data.version}, ${result.status}, false, ${result.note}, '{}')
+      `;
+      if (result.status === "candidate") {
+        await sql`
+          update model_registry set status = 'candidate'
+          where model_version = ${data.version} and sport = ${data.sport}
+        `;
+      }
+    } catch {
+      /* registry table may be fresh */
+    }
+    await addLog("desk", result.note);
+    return { ok: true as const, livePosting: false as const, note: result.note, state: await deskForClient() };
+  });
+

@@ -2,6 +2,7 @@ import { applyDraftKingsSnapshot, nearestKickHours, shouldFetchLeagueOdds } from
 import { isFreeBetaMode } from "./free-beta.ts";
 import { LEAGUES } from "./leagues.ts";
 import { parseAmerican, parseLine } from "./odds.ts";
+import { buildMarketConsensus, quotesFromEvent } from "./market-consensus.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
 
 type OddsApiMarket = {
@@ -178,7 +179,7 @@ export function oddsApiUrl(sportKey: string, apiKey: string, markets: string): s
   url.searchParams.set("regions", "us");
   url.searchParams.set("markets", markets);
   url.searchParams.set("oddsFormat", "american");
-  url.searchParams.set("bookmakers", "draftkings");
+  url.searchParams.set("bookmakers", "draftkings,fanduel,betmgm,williamhill_us");
   return url.toString();
 }
 
@@ -250,6 +251,12 @@ function applyPairs(leagueGames: GameCard[], rows: OddsApiGame[], byId: Map<stri
     if (!hit || !cur) continue;
     const snap = snapshotFromApi(hit, cur.home.name, cur.away.name);
     if (!snap) continue;
-    byId.set(gameId, { ...cur, odds: applyDraftKingsSnapshot(cur.odds, snap) });
+    const quotes = quotesFromEvent(hit, cur.home.name, cur.away.name);
+    const consensus = buildMarketConsensus(quotes);
+    byId.set(gameId, {
+      ...cur,
+      odds: applyDraftKingsSnapshot(cur.odds, snap),
+      shadows: { ...cur.shadows, consensus },
+    });
   }
 }

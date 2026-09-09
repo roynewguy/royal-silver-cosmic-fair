@@ -59,15 +59,15 @@ export function normalizeWebhookPayload(body: string | DiscordWebhookPayload): D
 export async function postWebhook(
   url: string,
   body: string | DiscordWebhookPayload,
-): Promise<{ ok: boolean; id?: string; error?: string; uncertain?: boolean; authFailure?: boolean }> {
-  if (!discordWebhookOk(url)) return { ok: false, error: "Invalid Discord webhook." };
+  opts?: { username?: string },
+): Promise<{ ok: boolean; id?: string; error?: string; uncertain?: boolean; authFailure?: boolean }> {  if (!discordWebhookOk(url)) return { ok: false, error: "Invalid Discord webhook." };
   const payload = normalizeWebhookPayload(body);
   const content = (payload.content ?? "").slice(0, 1900);
   const embeds = payload.embeds?.length ? payload.embeds : undefined;
   if (!content && !embeds?.length) return { ok: false, error: "Discord payload empty." };
   try {
     const wire: Record<string, unknown> = {
-      username: "BoatBoyzPicks",
+      username: opts?.username?.trim() || "BoatBoyzPicks",
       allowed_mentions: { parse: [] },
     };
     if (content) wire.content = content;
@@ -83,7 +83,6 @@ export async function postWebhook(
       signal: AbortSignal.timeout(12_000),
       body: JSON.stringify(wire),
     });
-    // 5xx/transport failures may occur AFTER Discord accepted the message.
     // 5xx/transport failures may occur AFTER Discord accepted the message.
     // 401/403 are definite auth failures → alerts path; never uncertain blind-repost.
     if (!res.ok) {
