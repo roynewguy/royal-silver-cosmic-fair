@@ -322,7 +322,7 @@ test("official LOCK embed matches BetStars-style card shape with 1u", () => {
   const payload = buildOfficialPickPayload(pick, game);
 
   assert.equal(embed.color, OFFICIAL_EMBED_COLOR);
-  assert.equal(OFFICIAL_EMBED_COLOR, 0xd4af37);
+  assert.equal(OFFICIAL_EMBED_COLOR, 0x0a1628);
   assert.match(embed.author?.name ?? "", /🔒 LOCK/);
   assert.doesNotMatch(embed.author?.name ?? "", /BEST AVAILABLE/);
   assert.match(embed.description ?? "", /🏀 \*\*Lakers\*\* \| Warriors vs Lakers/);
@@ -490,5 +490,5 @@ test("LOCK vs soft-floor embed badges and units differ on the same slate", () =>
   assert.equal(lockEmbed.fields?.find((f) => f.name === "Units")?.value, "1u LOCK");
   assert.equal(softEmbed.fields?.find((f) => f.name === "Units")?.value, "0.5u desk");
   assert.equal(lockEmbed.color, softEmbed.color);
-  assert.equal(lockEmbed.color, 0xd4af37);
+  assert.equal(lockEmbed.color, 0x0a1628);
 });

@@ -43,8 +43,8 @@ export type DiscordWebhookPayload = {
   embeds?: DiscordEmbed[];
 };
 
-/** Gold left-bar — navy desk vibe (BetStars/DK-style cards). */
-export const OFFICIAL_EMBED_COLOR = 0xd4af37;
+/** Brand navy left-bar (#0A1628) — BoatBoyzPicks official pick cards. */
+export const OFFICIAL_EMBED_COLOR = 0x0a1628;
 
 export function normalizeWebhookPayload(body: string | DiscordWebhookPayload): DiscordWebhookPayload {
   if (typeof body === "string") return { content: body };
