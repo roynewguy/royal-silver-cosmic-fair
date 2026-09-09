@@ -22,6 +22,7 @@
     "dataset": "node --experimental-strip-types src/lib/models-v3/cli.ts dataset",
     "train": "node --experimental-strip-types src/lib/models-v3/cli.ts train",
     "test:template": "node --test 'scripts/**/*.test.mjs'",
+    "discord:sample-embeds": "node --experimental-strip-types scripts/discord-sample-embeds.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
