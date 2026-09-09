@@ -5,7 +5,7 @@ function postAtFor(startAt: string, leadMinutes: number): string {
 }
 
 /**
- * Legacy soft_floor (research-only; not auto-queued) posts immediately if ever present.
+ * Legacy soft_floor (research-only; expired before flush) would post immediately if present.
  * LOCK (and any non-soft): post_at = min(now, tip−lead) so early selections
  * flush tonight; once inside the lead window, behave as before.
  */

@@ -59,7 +59,7 @@ export function normalizeWebhookPayload(body: string | DiscordWebhookPayload): D
 export async function postWebhook(
   url: string,
   body: string | DiscordWebhookPayload,
-): Promise<{ ok: boolean; id?: string; error?: string; uncertain?: boolean }> {
+): Promise<{ ok: boolean; id?: string; error?: string; uncertain?: boolean; authFailure?: boolean }> {
   if (!discordWebhookOk(url)) return { ok: false, error: "Invalid Discord webhook." };
   const payload = normalizeWebhookPayload(body);
   const content = (payload.content ?? "").slice(0, 1900);
@@ -84,7 +84,17 @@ export async function postWebhook(
       body: JSON.stringify(wire),
     });
     // 5xx/transport failures may occur AFTER Discord accepted the message.
-    if (!res.ok) return { ok: false, uncertain: res.status >= 500, error: `Discord HTTP ${res.status}` };
+    // 5xx/transport failures may occur AFTER Discord accepted the message.
+    // 401/403 are definite auth failures → alerts path; never uncertain blind-repost.
+    if (!res.ok) {
+      const authFailure = res.status === 401 || res.status === 403;
+      return {
+        ok: false,
+        uncertain: res.status >= 500,
+        authFailure,
+        error: `Discord HTTP ${res.status}`,
+      };
+    }
     const json = await res.json() as { id?: string };
     if (!json.id) return { ok: false, uncertain: true, error: "Discord confirmation missing message id" };
     return { ok: true, id: json.id };

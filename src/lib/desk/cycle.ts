@@ -42,6 +42,12 @@ import { recordMlbShadow, gradeShadowPredictions } from "@/lib/models-v3/shadow-
 import { gradeDisposition, UNPOSTED_SKIP } from "./posting";
 import { queuePostAt } from "./queue-post-at";
 import { sendOnce } from "./post-pipeline";
+import {
+  DISCORD_AUTH_SKIP_REASON,
+  SOFT_FLOOR_EXPIRED_REASON,
+  isSoftFloorQueuedContext,
+  postAttemptBlockReason,
+} from "./lifecycle";
 import { maybePostDailyFreePick } from "./free-pick-delivery";
 import type { GameCard, PickRow } from "@/lib/sports/types";
 import {
@@ -268,6 +274,29 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
   return graded;
 }
 
+/** Expire leftover soft_floor queued tickets so legacy DESK rows never flush to Discord. */
+export async function expireSoftFloorQueued(): Promise<number> {
+  const sql = await getSql();
+  const rows = await sql<{ id: number; context_json: string | null }>`
+    select id, context_json from picks
+    where status = 'queued' and coalesce(pick_source, 'auto') = 'auto' and context_json is not null
+  `;
+  let n = 0;
+  for (const row of rows) {
+    if (!isSoftFloorQueuedContext(row.context_json)) continue;
+    const updated = await sql<{ id: number }>`
+      update picks set status = 'skipped', skip_reason = ${SOFT_FLOOR_EXPIRED_REASON}
+      where id = ${row.id} and status = 'queued'
+      returning id
+    `;
+    if (updated.length) {
+      n += 1;
+      await addLog("skip", SOFT_FLOOR_EXPIRED_REASON);
+    }
+  }
+  return n;
+}
+
 export async function postPickById(
   pickId: number,
   games: GameCard[],
@@ -307,6 +336,35 @@ export async function postPickById(
   if (game.status !== "scheduled") {
     await sql`update picks set status = 'skipped', skip_reason = ${"PASS_GAME_STARTED"} where id = ${row.id} and status = 'queued'`;
     return { ok: true, posted: false, pickId };
+  }
+
+  const earlyCtx = await sql<{ context_json: string | null; freeze_json: string | null; status: string }>`
+    select context_json, freeze_json, status from picks where id = ${row.id}
+  `;
+  const early = earlyCtx[0];
+  if (early && isSoftFloorQueuedContext(early.context_json)) {
+    await sql`
+      update picks set status = 'skipped', skip_reason = ${SOFT_FLOOR_EXPIRED_REASON}
+      where id = ${row.id} and status = 'queued'
+    `;
+    await addLog("skip", SOFT_FLOOR_EXPIRED_REASON, game.sport);
+    return { ok: true, posted: false, pickId };
+  }
+  const blocked = postAttemptBlockReason({
+    status: early?.status ?? "queued",
+    gameStatus: game.status,
+    gameStarted: new Date(game.startAt).getTime() <= Date.now(),
+    freezeJson: early?.freeze_json,
+  });
+  if (blocked) {
+    if (early?.status === "queued") {
+      await sql`
+        update picks set status = 'skipped', skip_reason = ${blocked}
+        where id = ${row.id} and status = 'queued'
+      `;
+      await addLog("skip", blocked, game.sport);
+    }
+    return { ok: true, posted: false, pickId, error: blocked };
   }
 
   const queuedMeta = await sql<{ market: string; ledger: string | null }>`select market, ledger from picks where id = ${row.id}`;
@@ -392,6 +450,15 @@ export async function postPickById(
     }
     return { ok: true, posted: false, pickId };
   }
+  // Final pre-post truth: soft/DESK never posts as LOCK and never ships to Discord.
+  if (gate.rank.pickTier === "soft_floor" || gate.freeze.pickTier === "soft_floor" || softFloor) {
+    await sql`
+      update picks set status = 'skipped', skip_reason = ${SOFT_FLOOR_EXPIRED_REASON}
+      where id = ${row.id} and status = 'queued'
+    `;
+    await addLog("skip", SOFT_FLOOR_EXPIRED_REASON, game.sport);
+    return { ok: true, posted: false, pickId };
+  }
 
   const factualReason = formatWhy(liveGame, gate.rank);
   Object.assign(gate.freeze, { reason: factualReason });
@@ -468,6 +535,19 @@ export async function postPickById(
     return { ok: false, posted: false, pickId, error: result.error };
   }
   if (!result.sent) {
+    if (result.authFailure) {
+      await sql`
+        update picks set status = 'skipped', skip_reason = ${DISCORD_AUTH_SKIP_REASON}
+        where id = ${pick.id} and status = 'queued'
+      `;
+      await recordEvent("discord_failure", "Discord webhook 401/403");
+      await addLog("post", `Discord auth failure — skipped: ${result.error ?? "401/403"}`, pick.sport);
+      await alertOwner(
+        "DISCORD_FAIL",
+        `Webhook HTTP 401/403 — ticket skipped, not retried. Fix DISCORD_* webhook. (${result.error ?? "auth"})`,
+      );
+      return { ok: false, posted: false, pickId, error: result.error };
+    }
     await recordEvent("discord_failure");
     await addLog("post", `Discord failed, still queued: ${result.error ?? "send failed"}`, pick.sport);
     await alertOwner("DISCORD_FAIL", result.error ?? "send failed");
@@ -721,9 +801,27 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
     locked = await tryWorkerLock();
     if (!locked) return { ok: true as const, skipped: true, source };
     const sql = await getSql();
-    const stuck = await sql<{id: number}>`update picks set status = 'delivery_unknown', skip_reason = 'DELIVERY_UNKNOWN'
-      where status = 'posting' and posting_started_at < now() - interval '4 minutes' returning id`;
-    if (stuck.length) { await recordEvent("delivery_unknown", `${stuck.length} unfinished sends`); await alertOwner("DISCORD_FAIL", "Unfinished delivery: inspect frozen tickets; do not resend."); }
+    // Stale posting: known Discord id → posted (no duplicate); else delivery_unknown (never requeue/blind-repost).
+    const recoveredPosted = await sql<{id: number}>`
+      update picks set status = 'posted', posting_token = null, posting_started_at = null, posting_at = null
+      where status = 'posting' and discord_message_id is not null
+        and posting_started_at < now() - interval '4 minutes'
+      returning id`;
+    const stuck = await sql<{id: number}>`
+      update picks set status = 'delivery_unknown', skip_reason = 'DELIVERY_UNKNOWN',
+        posting_token = null, posting_started_at = null, posting_at = null
+      where status = 'posting' and discord_message_id is null
+        and posting_started_at < now() - interval '4 minutes'
+      returning id`;
+    if (recoveredPosted.length) {
+      await recordEvent("discord_picks_success", `${recoveredPosted.length} stale posting recovered as posted`);
+    }
+    if (stuck.length) {
+      await recordEvent("delivery_unknown", `${stuck.length} unfinished sends`);
+      await alertOwner("DISCORD_FAIL", "Unfinished delivery: inspect frozen tickets; do not resend.");
+    }
+    const softExpired = await expireSoftFloorQueued();
+    if (softExpired) await recordEvent("truth_pass", `${softExpired} soft_floor queued expired`);
     const meta = await loadMeta();
     const games = await prefetchDueDraftKings(await refreshSlate(), meta.minEdgePct, meta.minConfidence, meta.postLeadMinutes, meta.maxDailyPicks);
     if (automationStatus(meta.lastTickAt) === "offline") {
