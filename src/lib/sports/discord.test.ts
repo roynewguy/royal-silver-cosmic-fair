@@ -538,14 +538,15 @@ test("official result embed is gold-bar WIN/LOSS/PUSH with clean fields and neve
   assert.match(winEmbed.description ?? "", /⚾ \*\*MLB\*\*/);
   assert.match(winEmbed.description ?? "", /\*\*ATH ML\*\* @ \*\*\+144\*\*/);
   const names = (winEmbed.fields ?? []).map((f) => f.name);
-  assert.deepEqual(names, ["Result", "Sport", "Pick", "Final", "This ticket", "Auto record"]);
+  assert.deepEqual(names, ["Result", "Sport", "Pick", "Final", "This ticket", "W-L-P", "Kick PT"]);
   const byName = Object.fromEntries((winEmbed.fields ?? []).map((f) => [f.name, f.value]));
   assert.equal(byName.Result, "✅ WIN");
   assert.equal(byName.Sport, "MLB");
   assert.equal(byName.Pick, "ATH ML (+144)");
   assert.equal(byName.Final, "Final TOR 0 @ ATH 2");
   assert.equal(byName["This ticket"], "+2.88u");
-  assert.equal(byName["Auto record"], "3-1-0 · +3.80u · ROI 76.0%");
+  assert.equal(byName["W-L-P"], "3-1-0 · +3.80u · ROI 76.0%");
+  assert.match(byName["Kick PT"]!, /PT$/);
   assert.match(winEmbed.footer?.text ?? "", /^BoatBoyzPicks · .+ PT$/);
 
   const lossEmbed = buildOfficialResultEmbed(pick, game, "LOSS", -2, { ...record, wins: 2, losses: 2, units: -0.2, riskedUnits: 5 });

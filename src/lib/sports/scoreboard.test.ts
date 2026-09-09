@@ -6,6 +6,8 @@ import { channelWebhook } from "./discord-routing.ts";
 test("scoreboard preserves losing units, pending and undefined ROI", () => {
   const text = buildRecordScoreboard({ wins: 1, losses: 1, pushes: 0, units: -0.12, pending: 1, riskedUnits: 2 });
   assert.match(text, /-0.12/); assert.match(text, /-6.0%/); assert.match(text, /Pending: \*\*1/);
+  assert.match(text, /\*\*W-L-P\*\* · \*\*1-1-0\*\*/);
+  assert.match(text, /Timezone: \*\*PT\*\* \(America\/Los_Angeles\)/);
   assert.match(buildRecordScoreboard({ wins: 0, losses: 0, pushes: 0, units: 0, pending: 0, riskedUnits: 0 }), /ROI: \*\*—/);
 });
 test("scoreboard edits existing message and never POSTs a replacement on 404", async () => {
