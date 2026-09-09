@@ -1,6 +1,7 @@
 import { extraScanDateKeys, scanDateKeysForLeague, ymdToEspn, ptYmd } from "./day.ts";
 import { LEAGUES, type LeagueConfig } from "./leagues.ts";
 import { parseAmerican, parseLine } from "./odds.ts";
+import { parseInjuryBoard, type BoardInj } from "./injury-board.ts";
 import { parseInjuryStatus } from "./models/injury.ts";
 import type { GameCard, GameStatus, Injury, OddsSnapshot, Starter, TeamInfo } from "./types.ts";
 
@@ -411,7 +412,7 @@ export async function fetchAllSlates(now = new Date()): Promise<GameCard[]> {
   return games;
 }
 
-type BoardInj = { abbr: string; player: string; status: string; position: string | null };
+
 
 const injuryCache = new Map<string, { at: number; rows: BoardInj[]; fetchedAt: string }>();
 
@@ -420,48 +421,8 @@ async function fetchInjuryBoard(league: LeagueConfig): Promise<{ rows: BoardInj[
   if (hit && Date.now() - hit.at < INJURY_CACHE_MS) return { rows: hit.rows, fetchedAt: hit.fetchedAt };
   const url = `https://site.api.espn.com/apis/site/v2/sports/${league.espnSport}/${league.espnLeague}/injuries`;
   try {
-    const payload = (await fetchJson(url)) as {
-      items?: {
-        id?: string;
-        injuries?: {
-          status?: string;
-          athlete?: { displayName?: string; position?: { abbreviation?: string } };
-          details?: { type?: string };
-        }[];
-      }[];
-      teams?: {
-        team?: { abbreviation?: string };
-        injuries?: {
-          status?: string;
-          athlete?: { displayName?: string; position?: { abbreviation?: string } };
-        }[];
-      }[];
-    };
-    if (!Array.isArray(payload.teams)) {
-      // Field names only: diagnose provider schema drift without logging response values.
-      const shape = Object.entries(payload).map(([key, value]) => {
-        if (!Array.isArray(value)) return key;
-        const first = value[0];
-        const fields = first && typeof first === "object" ? Object.keys(first).join(",") : "";
-        return `${key}[${value.length}](${fields})`;
-      }).join(";");
-      scanStats.errors.push(`${league.id}: injury schema unavailable: ${shape}`);
-      return null;
-    } // Unavailable, not empty.
-    const rows: BoardInj[] = [];
-    for (const team of payload.teams ?? []) {
-      const abbr = team.team?.abbreviation;
-      if (!abbr || !Array.isArray(team.injuries)) return null;
-      for (const inj of team.injuries ?? []) {
-        if (!inj.athlete?.displayName) continue;
-        rows.push({
-          abbr,
-          player: inj.athlete.displayName,
-          status: inj.status ?? "",
-          position: inj.athlete.position?.abbreviation ?? null,
-        });
-      }
-    }
+    const rows = parseInjuryBoard(await fetchJson(url));
+    if (!rows) { scanStats.errors.push(`${league.id}: injury schema unavailable`); return null; }
     injuryCache.set(league.id, { at: Date.now(), rows, fetchedAt: new Date().toISOString() });
     return { rows, fetchedAt: injuryCache.get(league.id)!.fetchedAt };
   } catch {
@@ -474,7 +435,7 @@ function mergeInjuryBoard(game: GameCard, board: BoardInj[], fetchedAt: string):
   const extra: Injury[] = [];
   for (const row of board) {
     const team =
-      row.abbr === game.home.abbr ? "home" : row.abbr === game.away.abbr ? "away" : null;
+      (row.teamName === game.home.name || row.abbr === game.home.abbr) ? "home" : (row.teamName === game.away.name || row.abbr === game.away.abbr) ? "away" : null;
     if (!team) continue;
     extra.push({
       team,
