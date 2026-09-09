@@ -23,6 +23,7 @@ function publicGame(game: GameCard): GameCard {
     notes: [],
     injuries: [],
     weather: null,
+    shadows: null,
     home: { ...game.home, homeSplit: null, roadSplit: null, starter: null },
     away: { ...game.away, homeSplit: null, roadSplit: null, starter: null },
   };
@@ -57,5 +58,7 @@ export function redactDesk(state: DeskState, operator: boolean): DeskState {
     calibration: null,
     health: state.health ?? EMPTY_HEALTH,
     researchModels: operator ? state.researchModels : null,
+    modelLab: null,
+    skippedToday: 0,
   };
 }

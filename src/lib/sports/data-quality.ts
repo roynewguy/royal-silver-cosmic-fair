@@ -34,7 +34,10 @@ export function mlbDataQuality(game: GameCard, now = Date.now()): { score: numbe
   if (game.home.starter?.era != null && game.away.starter?.era != null) score += 20;
   else missing.push("starter ERA");
 
-  if (game.injuriesFetchedAt || (game.injuries?.length ?? 0) > 0) score += 15;
+  if (game.home.starter?.whip != null && game.away.starter?.whip != null) score += 5;
+  else missing.push("starter WHIP");
+
+  if (game.injuriesFetchedAt || (game.injuries?.length ?? 0) > 0) score += 10;
   else missing.push("injuries");
 
   const age = marketAgeMs(game, now);
@@ -48,7 +51,6 @@ export function mlbDataQuality(game: GameCard, now = Date.now()): { score: numbe
   else missing.push("weather");
 
   if (!game.home.homeSplit && !game.away.roadSplit) missing.push("home/road splits");
-  missing.push("bullpen workload");
   return { score: clamp(score, 0, 100), missing };
 }
 

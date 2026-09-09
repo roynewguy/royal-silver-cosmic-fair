@@ -14,6 +14,7 @@ test("every official sport has a frozen V2 production model and a V3 prefix", ()
     assert.match(spec.shadowPrefix, /^v3-/);
     assert.equal(canQueueOfficial(spec.production), true);
     assert.equal(canQueueOfficial(`${spec.shadowPrefix}-logreg-x`), false);
+    assert.equal(canQueueOfficial(`v4-${spec.id}-ensemble`), false);
   }
 });
 

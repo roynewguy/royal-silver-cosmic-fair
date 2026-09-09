@@ -99,7 +99,58 @@ export type PassReason =
   | "PASS_ODDS_EVENT_AMBIGUOUS"
   | "PASS_ALREADY_POSTED"
   | "PASS_DATA_CONFLICT"
-  | "PASS_DAILY_CAP";
+  | "PASS_DAILY_CAP"
+  | "PASS_NO_EDGE"
+  | "PASS_HIGH_UNCERTAINTY"
+  | "PASS_LINE_MOVED"
+  | "PASS_PRICE_TOO_BAD"
+  | "PASS_INJURY_UNCONFIRMED"
+  | "PASS_STARTER_UNCONFIRMED"
+  | "PASS_MARKET_STALE"
+  | "PASS_MARKET_DISAGREEMENT"
+  | "PASS_MARKET_INCOMPLETE"
+  | "PASS_MODEL_UNCALIBRATED"
+  | "PASS_CORRELATED"
+  | "PASS_DAILY_RISK_LIMIT";
+
+export type BookQuote = {
+  sportsbook: string;
+  key: string;
+  homePrice: number | null;
+  awayPrice: number | null;
+};
+
+export type MarketConsensus = {
+  books: BookQuote[];
+  bestHome: number | null;
+  bestAway: number | null;
+  consensusHome: number | null;
+  medianHome: number | null;
+  noVigHome: number | null;
+  dispersion: number;
+};
+
+export type ModelCall = {
+  model: string;
+  probability: number;
+  marketProbability: number | null;
+  edgePct: number | null;
+  expectedValuePct: number | null;
+  uncertainty: number | null;
+  dataQuality: number | null;
+  confidence: number | null;
+  action: "BET" | "PASS";
+  passReason: PassReason | null;
+  official: boolean;
+  price?: number | null;
+  side?: Side;
+};
+
+export type GameShadows = {
+  v3?: ModelCall | null;
+  v4?: ModelCall | null;
+  consensus?: MarketConsensus | null;
+};
 
 export type RankPick = {
   market: Market;
@@ -148,6 +199,7 @@ export type GameCard = {
   injuriesFetchedAt?: string | null;
   startersFetchedAt?: string | null;
   weatherFetchedAt?: string | null;
+  shadows?: GameShadows | null;
 };
 
 export type SportScan = {
@@ -322,4 +374,55 @@ export type DeskState = {
   livePosting?: boolean;
   paperMode?: boolean;
   paperRecord?: DeskRecord | null;
+  modelLab?: ModelLabState | null;
+  skippedToday?: number;
 };
+
+export type ModelStatus = "shadow" | "candidate" | "production" | "retired";
+export type ModelRole = "champion" | "challenger" | "paper";
+
+export type ModelDrift = {
+  last50Roi: number | null;
+  last100Roi: number | null;
+  last250Roi: number | null;
+  last50Brier: number | null;
+  last100Brier: number | null;
+  last250Brier: number | null;
+  flag: boolean;
+  note: string | null;
+};
+
+export type ModelCard = {
+  modelName: string;
+  modelVersion: string;
+  sport: string;
+  status: ModelStatus;
+  role: ModelRole;
+  trainingPeriod: string | null;
+  features: string[];
+  sampleSize: number | null;
+  brier: number | null;
+  logLoss: number | null;
+  accuracy: number | null;
+  roi: number | null;
+  clv: number | null;
+  averageEdge: number | null;
+  betCount: number | null;
+  lastPredictionAt: string | null;
+  eligible: boolean;
+  eligibleReasons: string[];
+  livePosting: boolean;
+  wins: number | null;
+  losses: number | null;
+  units: number | null;
+  drift: ModelDrift | null;
+};
+
+export type ModelLabState = {
+  champion: string;
+  note: string;
+  cards: ModelCard[];
+  livePostingLockedToV2: true;
+  passReasons: Array<{ reason: string; n: number }>;
+};
+

@@ -1,7 +1,7 @@
 "use client";
 
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Anchor, BookOpen, Home, LayoutGrid, SlidersHorizontal } from "lucide-react";
+import { Anchor, BookOpen, Brain, Home, LayoutGrid, SlidersHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { DeskProvider, useDesk } from "@/lib/desk/use-desk";
 import { cn, formatUnits } from "@/lib/utils";
@@ -11,6 +11,7 @@ const nav = [
   { to: "/", label: "Home", icon: Home },
   { to: "/slate", label: "Slate", icon: LayoutGrid },
   { to: "/record", label: "Record", icon: BookOpen },
+  { to: "/models", label: "Models", icon: Brain },
   { to: "/advanced", label: "Advanced", icon: SlidersHorizontal },
 ] as const;
 
@@ -79,7 +80,7 @@ function DeskShellInner({ children }: { children: ReactNode }) {
       </header>
       <main className="mx-auto w-full max-w-7xl px-4 py-5 pb-24 sm:px-6 sm:py-8 sm:pb-8">{children}</main>
       <nav className="fixed right-0 bottom-0 left-0 z-30 border-t border-border bg-bg/95 backdrop-blur-sm sm:hidden">
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-5">
           {nav.map((item) => {
             const active = pathname === item.to;
             const Icon = item.icon;
