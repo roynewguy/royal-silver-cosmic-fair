@@ -1,5 +1,5 @@
 import { getSql } from "@/lib/db";
-import { impliedFromAmerican } from "@/lib/sports/odds";
+import { computeClvPoints } from "@/lib/sports/closing";
 import { marketImplied, packPregameFeatures } from "@/lib/sports/warehouse";
 import type { GameCard, RankPick } from "@/lib/sports/types";
 
@@ -94,10 +94,7 @@ export async function recordClosingResult(input: {
 }): Promise<void> {
   await swallow(async () => {
     const sql = await getSql();
-    const clv =
-      input.closingPrice != null && input.postedPrice != null
-        ? impliedFromAmerican(input.closingPrice) - impliedFromAmerican(input.postedPrice)
-        : null;
+    const clv = computeClvPoints(input.postedPrice, input.closingPrice);
     await sql`
       update game_history set
         status = ${input.game.status},

@@ -3,7 +3,9 @@ export { sqlLocker } from "./sql-locker";
 import {
   verifiedClosingPrice,
   closingCaptureAction,
+  extractRealQuote,
   formatOpenCloseLog,
+  ticketClvPoints,
   ticketOpenPrice,
 } from "../sports/closing";
 import { flushResultRecaps } from "./result-delivery";
@@ -25,7 +27,6 @@ import {
 import { fetchAllSlates, beginEspnScan, espnScanStats } from "@/lib/sports/espn";
 import { mergeFetchedSlate, inLookahead } from "@/lib/sports/slate-merge";
 import { gradePick, settle } from "@/lib/sports/grade";
-import { impliedFromAmerican } from "@/lib/sports/odds";
 import { prePostTruthCheck, gradeTruth, type QueuedContext } from "@/lib/sports/truth-gate";
 import { isManualSource, NEEDS_MANUAL_GRADE } from "@/lib/sports/manual-post";
 import { alertOwner } from "./alerts";
@@ -231,11 +232,11 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
     }
     const { profit } = settle(fake, result);
     const closing = verifiedClosingPrice(row.closing_snapshot_json, fake);
-    const postedOdds = row.posted_odds ?? row.locked_odds;
-    const clv =
-      closing != null && postedOdds != null
-        ? impliedFromAmerican(closing) - impliedFromAmerican(postedOdds)
-        : null;
+    const postedOdds = ticketOpenPrice({ postedOdds: row.posted_odds, lockedOdds: row.locked_odds });
+    const clv = ticketClvPoints(
+      { postedOdds: row.posted_odds, lockedOdds: row.locked_odds },
+      closing,
+    );
     const record = await loadRecord();
     if (!isManualSource(row.pick_source) && !isPaperLedger(row.ledger)) {
       record.wins += Number(result === "WIN");
@@ -764,14 +765,15 @@ async function captureClosingQuotes(games: GameCard[]): Promise<void> {
       if (verified.ok) oddsJson = JSON.stringify(verified.game.odds);
     }
     if (!oddsJson) continue;
-    const close = verifiedClosingPrice(oddsJson, {
+    const quote = extractRealQuote(oddsJson, {
       startAt: row.start_at,
       market,
       side: row.side as PickRow["side"],
       lockedLine: row.locked_line,
     });
     // Real closes only — skip storing a snapshot that fails the tip verifier.
-    if (close == null) continue;
+    if (quote == null) continue;
+    const close = quote.price;
     const prevClose = verifiedClosingPrice(row.closing_snapshot_json, {
       startAt: row.start_at,
       market,
@@ -784,7 +786,13 @@ async function captureClosingQuotes(games: GameCard[]): Promise<void> {
     const tier = resolvePickTier({ freezeJson: row.freeze_json } as PickRow);
     await addLog(
       "scan",
-      formatOpenCloseLog({ selection: row.selection, openPrice: open, closePrice: close, pickTier: tier }),
+      formatOpenCloseLog({
+        selection: row.selection,
+        openPrice: open,
+        closePrice: close,
+        pickTier: tier,
+        closeQuote: { book: quote.book, line: quote.line, capturedAt: quote.capturedAt },
+      }),
       game.sport,
     );
   }
