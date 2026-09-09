@@ -2,6 +2,7 @@ import { channelWebhook } from "./discord-routing.ts";
 import { formatAmerican, formatKick, formatUnits } from "../utils.ts";
 import { formatClvSummaryLine, type ClvSummary } from "./closing.ts";
 import { parseWhy, previewNotes, defaultPlayReason } from "./why.ts";
+import { buildWeeklyRecap, weekSunday } from "./weekly-recap.ts";
 import type { DeskRecord, GameCard, PickResult, PickRow } from "./types.ts";
 
 export function discordWebhookOk(url: string): boolean {
@@ -113,29 +114,47 @@ export async function deleteWebhookMessage(
 }
 
 /** PATCH is repeatable against a known message; never recreate a missing scoreboard. */
-export async function editWebhookMessage(url: string, id: string, content: string): Promise<{ ok: boolean; missing?: boolean }> {
+export async function editWebhookMessage(
+  url: string,
+  id: string,
+  body: string | DiscordWebhookPayload,
+): Promise<{ ok: boolean; missing?: boolean }> {
   if (!discordWebhookOk(url) || !/^\d+$/.test(id)) return { ok: false };
   const target = new URL(url);
   target.pathname = target.pathname.replace(/\/$/, "") + `/messages/${id}`;
   target.search = "";
+  const payload = normalizeWebhookPayload(body);
+  const content = (payload.content ?? "").slice(0, 1900);
+  const embeds = payload.embeds?.length ? payload.embeds : undefined;
+  const wire: Record<string, unknown> = { allowed_mentions: { parse: [] } };
+  // Always send content key so embed-only updates clear leftover plain text.
+  wire.content = content;
+  if (embeds?.length) wire.embeds = embeds;
   try {
     const res = await fetch(target, { method: "PATCH", headers: { "Content-Type": "application/json", "User-Agent": "BoatBoyzPicks/1.0" },
-      signal: AbortSignal.timeout(12_000), body: JSON.stringify({ content: content.slice(0,1900), allowed_mentions: { parse: [] } }) });
+      signal: AbortSignal.timeout(12_000), body: JSON.stringify(wire) });
     return { ok: res.ok, missing: res.status === 404 };
   } catch { return { ok: false }; }
 }
 
 export function buildRecordScoreboard(record: DeskRecord, clv?: ClvSummary | null): string {
-  const lines = ["🌊 **BOATBOYZ • OFFICIAL SCOREBOARD**", "",
-    `✅ Wins: **${record.wins}**   ❌ Losses: **${record.losses}**   ↔️ Pushes: **${record.pushes}**`,
+  const roi = record.riskedUnits ? `${(record.units / record.riskedUnits * 100).toFixed(1)}%` : "—";
+  const lines = [
+    "🌊 **BOATBOYZ • OFFICIAL SCOREBOARD**",
+    "🕒 Timezone: **PT** (America/Los_Angeles)",
+    "",
+    `✅ **W-L-P** · **${record.wins}-${record.losses}-${record.pushes}**`,
     `💰 Net units: **${formatUnits(record.units)}**`,
-    `📊 ROI: **${record.riskedUnits ? `${(record.units / record.riskedUnits * 100).toFixed(1)}%` : "—"}**`,
-    `⏳ Pending: **${record.pending}**`];
+    `📊 ROI: **${roi}**`,
+    `⏳ Pending: **${record.pending}**`,
+  ];
   if (clv && clv.sample > 0) lines.push(formatClvSummaryLine(clv, "CLV (straights · tip closes)"));
-  lines.push("",
+  lines.push(
+    "",
     "🤖 Automated official picks only • Test, paper and manual plays excluded.",
     "CLV uses real tip/start DraftKings quotes only — never invented.",
-    "🔄 This message updates automatically. Every official result stays recorded.");
+    "🔄 This message updates automatically. Every official result stays recorded.",
+  );
   return lines.join("\n");
 }
 
@@ -504,6 +523,39 @@ export function autoRecordLine(record: DeskRecord): string {
   return `${record.wins}-${record.losses}-${record.pushes} · ${formatUnits(record.units)}${roi}`;
 }
 
+/**
+ * Official #weekly-recap Discord embed — same gold bar as picks/results (#D4AF37).
+ * Presentation polish only; does not invent odds or touch soft/LOCK.
+ */
+export function buildWeeklyRecapEmbed(
+  period: { start: string; end: string },
+  week: DeskRecord & { voids: number },
+  overall: DeskRecord,
+  clv?: ClvSummary | null,
+): DiscordEmbed {
+  const sunday = weekSunday(period.end);
+  const body = buildWeeklyRecap(period, week, overall, clv);
+  const description = body.replace(/^🌊 \*\*BOATBOYZ • WEEKLY RECAP\*\*\n?/, "").trim();
+  return {
+    author: { name: "🌊 BoatBoyzPicks WEEKLY RECAP" },
+    description: description.slice(0, 4096),
+    color: OFFICIAL_EMBED_COLOR,
+    footer: { text: `BoatBoyzPicks · ${period.start}–${sunday} PT` },
+  };
+}
+
+export function buildWeeklyRecapPayload(
+  period: { start: string; end: string },
+  week: DeskRecord & { voids: number },
+  overall: DeskRecord,
+  clv?: ClvSummary | null,
+): DiscordWebhookPayload {
+  return {
+    content: "",
+    embeds: [buildWeeklyRecapEmbed(period, week, overall, clv)],
+  };
+}
+
 /** Plain-text recap (legacy / logs). Live Discord delivery uses buildOfficialResultPayload. */
 export function buildRecapMessage(pick: PickRow, game: GameCard, result: PickResult, profit: number, record: DeskRecord): string {
   const tag = result === "WIN" ? "WIN" : result === "LOSS" ? "LOSS" : result === "PUSH" ? "PUSH" : "VOID";
@@ -513,7 +565,7 @@ export function buildRecapMessage(pick: PickRow, game: GameCard, result: PickRes
     pick.selection,
     finalScoreLine(game),
     `${formatUnits(profit)} · this ticket`,
-    `Auto record ${autoRecordLine(record)}`,
+    `W-L-P ${autoRecordLine(record)}`,
   ].join("\n");
 }
 
@@ -547,7 +599,8 @@ export function buildOfficialResultEmbed(
       { name: "Pick", value: pickLine, inline: true },
       { name: "Final", value: finalScoreLine(game), inline: false },
       { name: "This ticket", value: formatUnits(profit), inline: true },
-      { name: "Auto record", value: autoRecordLine(record), inline: true },
+      { name: "W-L-P", value: autoRecordLine(record), inline: true },
+      { name: "Kick PT", value: `${kick} PT`, inline: true },
     ],
     footer: { text: `BoatBoyzPicks · ${kick} PT` },
   };

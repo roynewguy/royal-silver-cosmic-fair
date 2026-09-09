@@ -16,26 +16,43 @@ export function weeklyPeriod(now = new Date()): { start: string; end: string; pu
   return { start: localDate.toISOString().slice(0,10), end, publishDate: end };
 }
 
+function weekSunday(end: string): string {
+  const sunday = new Date(`${end}T12:00:00Z`);
+  sunday.setUTCDate(sunday.getUTCDate() - 1);
+  return sunday.toISOString().slice(0, 10);
+}
+
+/** Plain-text weekly body (also used as gold-embed description). */
 export function buildWeeklyRecap(
   period: {start:string;end:string},
   week: DeskRecord & {voids:number},
   overall: DeskRecord,
   clv?: ClvSummary | null,
 ): string {
-  const sunday = new Date(`${period.end}T12:00:00Z`); sunday.setUTCDate(sunday.getUTCDate()-1);
-  const lines = ["🌊 **BOATBOYZ • WEEKLY RECAP**", `📅 ${period.start} – ${sunday.toISOString().slice(0,10)} • Pacific Time`, "",
-    `✅ **${week.wins} W**   ❌ **${week.losses} L**   ↔️ **${week.pushes} P**   🚫 **${week.voids} VOID**`,
+  const sunday = weekSunday(period.end);
+  const roi = week.riskedUnits ? `${(week.units / week.riskedUnits * 100).toFixed(1)}%` : "—";
+  const lines = [
+    "🌊 **BOATBOYZ • WEEKLY RECAP**",
+    `📅 ${period.start} – ${sunday} · PT (Pacific)`,
+    "",
+    `✅ **W-L-P** · **${week.wins}-${week.losses}-${week.pushes}**   🚫 **VOID ${week.voids}**`,
     `💰 Net units: **${formatUnits(week.units)}**`,
-    `📊 ROI: **${week.riskedUnits ? `${(week.units/week.riskedUnits*100).toFixed(1)}%` : "—"}**`,
-    `⏳ Pending at publication: **${week.pending}**`];
+    `📊 ROI: **${roi}**`,
+    `⏳ Pending at publication: **${week.pending}**`,
+  ];
   if (clv) {
     lines.push(formatClvSummaryLine(clv, "CLV (straights · tip closes)"));
   }
-  lines.push("",
-    `🏁 Overall at publication: **${overall.wins}-${overall.losses}-${overall.pushes}** • **${formatUnits(overall.units)}**`, "",
-    "Games starting Monday–Sunday PT. Automated official picks only.",
+  lines.push(
+    "",
+    `🏁 Overall at publication: **W-L-P ${overall.wins}-${overall.losses}-${overall.pushes}** · **${formatUnits(overall.units)}**`,
+    "",
+    "Games starting Monday–Sunday PT (America/Los_Angeles). Automated official picks only.",
     "CLV uses real DraftKings tip/start quotes on the same market/line — never invented.",
     "Unfinished games are not counted as wins or losses. Later settlements appear in #results.",
-    "Every result recorded. No losses removed.");
+    "Every result recorded. No losses removed.",
+  );
   return lines.join("\n");
 }
+
+export { weekSunday };

@@ -1,7 +1,8 @@
 import { getSql } from "../db";
 import { channelWebhook } from "../sports/discord-routing";
 import { summarizeClv, type ClvSummary } from "../sports/closing";
-import { weeklyPeriod, buildWeeklyRecap } from "../sports/weekly-recap";
+import { weeklyPeriod } from "../sports/weekly-recap";
+import { buildWeeklyRecapPayload } from "../sports/discord";
 import { syncPersistentMessage } from "./scoreboard";
 import { loadRecord } from "./store";
 
@@ -37,5 +38,5 @@ export async function sendWeeklyRecap(now = new Date()): Promise<void> {
       and (start_at at time zone 'America/Los_Angeles')::date >= ${period.start}::date
       and (start_at at time zone 'America/Los_Angeles')::date < ${period.end}::date`;
   const clv: ClvSummary = summarizeClv(clvRows.map((row) => ({ clv: row.clv == null ? null : Number(row.clv) })));
-  await syncPersistentMessage(purpose,"weekly",buildWeeklyRecap(period,week,await loadRecord(),clv),false);
+  await syncPersistentMessage(purpose,"weekly",buildWeeklyRecapPayload(period,week,await loadRecord(),clv),false);
 }
