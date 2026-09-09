@@ -68,6 +68,29 @@ export async function deleteWebhookMessage(
   }
 }
 
+/** PATCH is repeatable against a known message; never recreate a missing scoreboard. */
+export async function editWebhookMessage(url: string, id: string, content: string): Promise<{ ok: boolean; missing?: boolean }> {
+  if (!discordWebhookOk(url) || !/^\d+$/.test(id)) return { ok: false };
+  const target = new URL(url);
+  target.pathname = target.pathname.replace(/\/$/, "") + `/messages/${id}`;
+  target.search = "";
+  try {
+    const res = await fetch(target, { method: "PATCH", headers: { "Content-Type": "application/json", "User-Agent": "BoatBoyzPicks/1.0" },
+      signal: AbortSignal.timeout(12_000), body: JSON.stringify({ content: content.slice(0,1900), allowed_mentions: { parse: [] } }) });
+    return { ok: res.ok, missing: res.status === 404 };
+  } catch { return { ok: false }; }
+}
+
+export function buildRecordScoreboard(record: DeskRecord): string {
+  return ["🌊 **BOATBOYZ • OFFICIAL SCOREBOARD**", "",
+    `✅ Wins: **${record.wins}**   ❌ Losses: **${record.losses}**   ↔️ Pushes: **${record.pushes}**`,
+    `💰 Net units: **${formatUnits(record.units)}**`,
+    `📊 ROI: **${record.riskedUnits ? `${(record.units / record.riskedUnits * 100).toFixed(1)}%` : "—"}**`,
+    `⏳ Pending: **${record.pending}**`, "",
+    "🤖 Automated official picks only • Test, paper and manual plays excluded.",
+    "🔄 This message updates automatically. Every official result stays recorded."].join("\n");
+}
+
 function pctLabel(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   const pct = n > 1.5 ? n : n * 100;
@@ -81,7 +104,7 @@ function edgeLabel(n: number | null | undefined): string {
   return `${sign}${v.toFixed(1)}%`;
 }
 
-function whyBlock(reason: string, heading = "WHY BoatBoyzPicks LIKES IT"): string[] {
+function whyBlock(reason: string, heading = "🔎 **WHY BoatBoyzPicks LIKES IT**"): string[] {
   const parsed = parseWhy(reason);
   const bullets = parsed.bullets.slice(0, 5).map((b) => `• ${b}`);
   const body = [parsed.writeup, ...bullets].filter(Boolean);
@@ -252,7 +275,7 @@ export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): stri
   try { frozen = JSON.parse(pick.freezeJson ?? "{}"); } catch { /* show missing */ }
   const marketPct = frozen.marketProbability == null ? "unavailable" : pctLabel(frozen.marketProbability);
   const edge = pick.modelEdge ?? pick.edgePct;
-  const verifiedAt = pick.postedAt ? formatKick(pick.postedAt, "America/Los_Angeles") : pick.lockedOddsJson.capturedAt ? formatKick(pick.lockedOddsJson.capturedAt, "America/Los_Angeles") : "pending";
+  const verifiedAt = pick.lockedOddsJson.capturedAt ? formatKick(pick.lockedOddsJson.capturedAt, "America/Los_Angeles") : "unavailable";
   const dkLine = pick.lockedLine == null || !Number.isFinite(pick.lockedLine) ? formatAmerican(pick.lockedOdds) : `${formatAmerican(pick.lockedOdds)} · ${pick.lockedLine}`;
   const reason = (pick.reason?.trim() || (game ? defaultPlayReason(game, pick.side) : "")).trim();
   const sub = officialPlaySubhead(pick);
@@ -260,20 +283,24 @@ export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): stri
     officialPlayHeadline(pick),
     sub,
     "",
-    `${sportEmoji(pick.sport)} ${pick.sport}`,
-    `**${pick.selection}**`,
+    `${sportEmoji(pick.sport)} **${pick.sport} • ${pick.matchup}**`,
+    `🎯 **${pick.selection}**`,
     vsLine(pick, game),
     "",
-    `DraftKings: ${dkLine}`,
+    `🏦 DraftKings: ${dkLine}`,
+    `💵 Stake: **${stakeLabel(pick.units)}**`,
+    "",
+    "📊 **THE NUMBERS**",
     `BoatBoyzPicks Probability: ${modelPct}%\nMarket No-Vig: ${marketPct}\nEstimated Edge: ${edgeLabel(edge)}`,
-    `Confidence ${Math.round(pick.confidence)} · ${stakeLabel(pick.units)}`,
+    `Confidence: ${Math.round(pick.confidence)}/100 (data confidence, not win probability)`,
     "",
     ...whyBlock(reason),
     "",
-    `Game: ${kick} PT`,
+    `🕒 Game: ${kick} PT`,
     scoreLine(game).replace("Score: not started", "Score: Not started"),
-    `Verified ${verifiedAt} PT`,
-    pick.modelVersion ? `Model ${pick.modelVersion}` : null,
+    `✅ Odds verified: ${verifiedAt} PT`,
+    pick.modelVersion ? `🤖 Model: ${pick.modelVersion}` : null,
+    "Estimated advantage, not a guaranteed win. Every result recorded.",
   ].filter((line): line is string => line != null && line !== undefined).join("\n");
 }
 

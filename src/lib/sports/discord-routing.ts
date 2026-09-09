@@ -1,4 +1,4 @@
-export type DiscordRole = "picks" | "results" | "alerts" | "test" | "manual";
+export type DiscordRole = "picks" | "results" | "alerts" | "test" | "manual" | "record";
 
 export function webhookIdentity(url: string): string | null {
   try {
@@ -16,11 +16,13 @@ export function channelWebhook(role: DiscordRole, stored = "", env: NodeJS.Proce
   const alerts = env.DISCORD_ALERT_WEBHOOK?.trim() || env.OPERATOR_WEBHOOK_URL?.trim() || "";
   const test = env.DISCORD_TEST_WEBHOOK?.trim() || "";
   const manual = env.DISCORD_MANUAL_WEBHOOK?.trim() || test;
-  const urls = { picks, results, alerts, test, manual };
+  const record = env.DISCORD_RECORD_WEBHOOK?.trim() || "";
+  const urls = { picks, results, alerts, test, manual, record };
   const selected = urls[role];
   const id = webhookIdentity(selected);
   if (!id) return "";
-  if (role === "alerts" && [picks, results, test, manual].some(u => webhookIdentity(u) === id)) return "";
+  if (role === "record" && [picks, results, alerts, test, manual].some(u => webhookIdentity(u) === id)) return "";
+  if (role === "alerts" && [picks, results, test, manual, record].some(u => webhookIdentity(u) === id)) return "";
   if (role !== "alerts" && webhookIdentity(alerts) === id) return "";
   if (role === "results" && webhookIdentity(picks) === id) return "";
   if (["test", "manual"].includes(role) && webhookIdentity(picks) === id) return "";

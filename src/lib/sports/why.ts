@@ -37,7 +37,15 @@ export function whyBullets(game: GameCard, rank: Pick<RankPick, "side"> & Partia
     bullets.push(`${picked.starter.name} is listed to start${extra}`);
   }
   if (other?.starter?.name && game.league === "mlb") {
-    bullets.push(`${other.name} listed ${other.starter.name}`);
+    const era = other.starter.era;
+    bullets.push(`${other.name} listed ${other.starter.name}${era != null && Number.isFinite(era) ? ` (ERA ${era.toFixed(2)})` : ""}`);
+  }
+
+  if ((side === "over" || side === "under") && game.league === "mlb") {
+    for (const team of [game.away, game.home]) {
+      if (team.starter?.name && team.starter.era != null && Number.isFinite(team.starter.era))
+        bullets.push(`${team.abbr}: ${team.starter.name}, ERA ${team.starter.era.toFixed(2)}`);
+    }
   }
 
   const oppOut = other ? injuryNotes(game, side === "home" ? "away" : "home") : [];

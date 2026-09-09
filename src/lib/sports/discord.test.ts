@@ -100,7 +100,9 @@ test("play card has pick, favored %, units, score, and line", () => {
   assert.match(msg, /WHY BoatBoyzPicks LIKES IT/);
   assert.match(msg, /playing at home/);
   assert.match(msg, /Score: Not started/);
-  assert.match(msg, /Model v2-nba/);
+  assert.match(msg, /Model: v2-nba/);
+  assert.match(msg, /🎯 \*\*Lakers ML\*\*/);
+  assert.match(msg, /📊 \*\*THE NUMBERS\*\*/);
   assert.doesNotMatch(msg, /Favored /);
   assert.doesNotMatch(msg, /current DK/i);
   assert.doesNotMatch(msg, /ESPN/);

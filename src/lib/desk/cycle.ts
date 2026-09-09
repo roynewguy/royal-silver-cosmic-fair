@@ -2,6 +2,7 @@ import { sqlLocker } from "./sql-locker";
 export { sqlLocker } from "./sql-locker";
 import { verifiedClosingPrice } from "../sports/closing";
 import { flushResultRecaps } from "./result-delivery";
+import { syncRecordScoreboard } from "./scoreboard";
 import { livePostingEnabled } from "./production-policy";
 import { recordEvent } from "./telemetry";
 import { getSql } from "@/lib/db";
@@ -684,6 +685,7 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
       meta.maxDailyPicks,
     );
     const posted = await flushDuePosts(games, meta.minEdgePct, meta.minConfidence, locked);
+    try { await syncRecordScoreboard(); } catch { await alertOwner("DISCORD_FAIL", "Scoreboard storage/update failed; automatic grading remains active."); }
     if (source === "cron") { await touchCronTick(source); await recordEvent("cron_success"); }
     const espn = espnScanStats();
     const espnErrors = espn.espn_error_count

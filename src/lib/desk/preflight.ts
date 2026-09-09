@@ -1,7 +1,7 @@
 import { getSql } from "../db";
 import { channelWebhook, type DiscordRole } from "../sports/discord-routing";
 import { livePostingEnabled } from "./production-policy";
-import { automationStatus } from "./health";
+import { automationStatus, espnService } from "./health";
 import { isPaperMode } from "../sports/paper-mode";
 import { LEAGUES } from "../sports/leagues";
 
@@ -36,13 +36,15 @@ export async function loadPreflight(lastTickAt: string | null, stored: string): 
   const checks: Preflight["checks"] = [
     { name: "Automation", status: automationStatus(lastTickAt) === "online" ? "READY" : "BLOCKED", detail: automationStatus(lastTickAt).toUpperCase() },
     { name: "Database", status: "READY", detail: "Read completed" },
-    { name: "ESPN", status: latest.scan_success && !counts.espn_failure ? "READY" : "UNVERIFIED", detail: latest.scan_success ?? "No successful complete scan in 24h" },
+    { name: "ESPN", status: espnService(latest.scan_success,
+      Date.parse(latest.espn_failure ?? "") >= Date.parse(latest.scan_success ?? "") ? 1 : 0) === "ok" ? "READY" : "UNVERIFIED",
+      detail: latest.scan_success ?? "No successful complete scan in 24h" },
     { name: "Odds API", status: latest.odds_api_success ? "READY" : "UNVERIFIED", detail: latest.odds_api_success ?? "No verified response in 24h" },
     { name: "DraftKings exact-event verification", status: latest.dk_success ? "READY" : "UNVERIFIED", detail: latest.dk_success ?? "No exact-event verification in 24h" },
     { name: "Truth gate", status: "READY", detail: "Required on every automated/paper post" },
     { name: "New automated customer picks", status: livePostingEnabled() ? "READY" : "BLOCKED", detail: livePostingEnabled() ? "Enabled" : "Kill switch OFF (scans and grading continue)" },
   ];
-  for (const role of ["picks", "results", "alerts", "test", "manual"] as DiscordRole[]) {
+  for (const role of ["picks", "results", "alerts", "test", "manual", "record"] as DiscordRole[]) {
     const configured = Boolean(channelWebhook(role, stored));
     const proven = latest[`discord_${role}_success`];
     checks.push({ name: `Discord ${role}`, status: !configured ? "BLOCKED" : proven ? "READY" : "UNVERIFIED", detail: !configured ? "Missing or conflicting channel" : proven ?? "Configured; no confirmed delivery in 24h" });
