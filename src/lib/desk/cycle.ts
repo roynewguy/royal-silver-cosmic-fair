@@ -660,12 +660,17 @@ export async function selectOfficialCard(
     await addLog("skip", `${row.selection} — ${ROTATE_SKIP_REASON}`, row.sport);
   }
 
-  if (plan.keepIds.length === 0 && plan.remaining > 0) {
-    // Zero LOCKs = correct PASS. Funnel codes explain edge/conf/truth; soft stays research-only (never queued).
+  // Funnel visibility: log when keepIds empty and (slots remain OR slate has zero LOCKs).
+  // Soft/DESK stays research-only. No-play Discord only when remaining slots exist.
+  if (plan.keepIds.length === 0) {
     const funnel = summarizeSlatePass(games, minEdge, minConf);
-    await addLog(funnel.softResearch > 0 ? "research" : "skip", formatPassFunnelLog(funnel, target));
-    const hook = await webhookUrl();
-    await maybePostNoPlay(hook, ptDayKey()).catch(() => false);
+    if (plan.remaining > 0 || funnel.locks === 0) {
+      await addLog(funnel.softResearch > 0 ? "research" : "skip", formatPassFunnelLog(funnel, target));
+    }
+    if (plan.remaining > 0) {
+      const hook = await webhookUrl();
+      await maybePostNoPlay(hook, ptDayKey()).catch(() => false);
+    }
   }
 
   const existingByGame = await loadLatestPicksByGames(wanted.map((g) => g.id));
@@ -888,9 +893,11 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
     const espnErrors = espn.espn_error_count
       ? ` · errors ${espn.espn_error_count}${espn.espn_last_error ? ` (${espn.espn_last_error})` : ""}`
       : "";
+    const passFunnel = summarizeSlatePass(games, meta.minEdgePct, meta.minConfidence);
+    const passFunnelLine = formatPassFunnelLog(passFunnel, dailyPickTarget(meta.maxDailyPicks));
     await addLog(
       "scan",
-      `Tick ${source}: ${games.length} games · espn ${espn.espn_request_count} req · ${espn.scan_duration_ms}ms${espnErrors} · queued ${queued} · posted ${posted} · free ${freePosted ? 1 : 0} · graded ${graded}`,
+      `Tick ${source}: ${games.length} games · espn ${espn.espn_request_count} req · ${espn.scan_duration_ms}ms${espnErrors} · queued ${queued} · posted ${posted} · free ${freePosted ? 1 : 0} · graded ${graded} · ${passFunnel.primary}`,
     );
     return {
       ok: true as const,
@@ -906,6 +913,14 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
       posted,
       graded,
       voided,
+      passFunnel: {
+        primary: passFunnel.primary,
+        scanned: passFunnel.scanned,
+        locks: passFunnel.locks,
+        softResearch: passFunnel.softResearch,
+        reasons: passFunnel.reasons,
+        line: passFunnelLine,
+      },
     };
   } catch (error) {
     const code = (error as {code?: string})?.code;
