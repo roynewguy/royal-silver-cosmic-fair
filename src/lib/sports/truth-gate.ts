@@ -7,7 +7,7 @@ import { buildFreezeSnapshot, type FreezeSnapshot } from "./freeze.ts";
 import { isDraftKingsLine } from "./odds-api.ts";
 import { isFreshOfficialDkCache } from "./free-beta.ts";
 import { lineFor, priceFor } from "./odds.ts";
-import { unitsFor } from "./rank.ts";
+import { unitsForTier } from "./rank.ts";
 import { selectionLabel } from "./odds.ts";
 import type { GameCard, PassReason, RankPick } from "./types.ts";
 
@@ -169,8 +169,13 @@ export function prePostTruthCheck(input: {
   rank.edgePct = edge;
   rank.noVigImplied = pair.noVigA;
   rank.rawImplied = pair.rawA;
-  rank.pickTier = "lock";
-  const units = unitsFor(rank.confidence);
+  const softFloor =
+    input.softFloor === true ||
+    queued.softFloor === true ||
+    queued.pickTier === "soft_floor" ||
+    rank.pickTier === "soft_floor";
+  rank.pickTier = softFloor ? "soft_floor" : "lock";
+  const units = unitsForTier(rank.pickTier);
   const selection = selectionLabel({
     market: rank.market,
     side: rank.side,

@@ -419,3 +419,37 @@ test("MLB placeholder pitcher labels are not verified starter identities", () =>
   }
 });
 
+test("LOCK freezes flat 1u even at high confidence; soft_floor freezes 0.5u", () => {
+  const g = live({ odds: dk({ homeMl: 118, awayMl: -138 }) });
+  const lock = prePostTruthCheck({
+    queued: queued(g),
+    live: g,
+    rank: rank({ edgePct: 5, price: 118, confidence: 85 }),
+    minEdge: 3,
+    minConf: 58,
+    now,
+  });
+  assert.equal(lock.ok, true);
+  if (lock.ok) {
+    assert.equal(lock.units, 1);
+    assert.equal(lock.freeze.units, 1);
+    assert.equal(lock.rank.pickTier, "lock");
+  }
+
+  const soft = prePostTruthCheck({
+    queued: { ...queued(g), softFloor: true, pickTier: "soft_floor" },
+    live: g,
+    rank: rank({ edgePct: 5, price: 118, confidence: 85, pickTier: "soft_floor" }),
+    minEdge: 3,
+    minConf: 58,
+    softFloor: true,
+    now,
+  });
+  assert.equal(soft.ok, true);
+  if (soft.ok) {
+    assert.equal(soft.units, 0.5);
+    assert.equal(soft.freeze.units, 0.5);
+    assert.equal(soft.rank.pickTier, "soft_floor");
+    assert.equal(soft.freeze.pickTier, "soft_floor");
+  }
+});

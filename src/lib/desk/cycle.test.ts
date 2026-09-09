@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { queuePostAt } from "./queue-post-at.ts";
+import { unitsForTier } from "../sports/rank.ts";
 
 test("soft_floor queue post_at is approximately now (not lead-delayed)", () => {
   const startAt = "2026-09-07T17:05:00.000Z";
@@ -29,3 +30,9 @@ test("lock queue post_at uses tip−lead when already inside the lead window", (
   assert.equal(postAt, expected);
   assert.ok(Date.parse(expected) <= now.getTime());
 });
+
+test("official queue units: LOCK 1u, soft_floor DESK 0.5u", () => {
+  assert.equal(unitsForTier("lock"), 1);
+  assert.equal(unitsForTier("soft_floor"), 0.5);
+});
+

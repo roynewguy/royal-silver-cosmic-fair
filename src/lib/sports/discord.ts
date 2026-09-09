@@ -146,9 +146,13 @@ export function buildTestPreviewMessage(game: GameCard): string {
     .join("\n");
 }
 
-function stakeLabel(n: number | null | undefined): string {
+/** Official stake text on Discord cards, e.g. 1u / 0.5u. */
+export function stakeLabel(n: number | null | undefined): string {
   const v = Number(n ?? 1);
-  return `${Number.isFinite(v) ? v.toFixed(1) : "1.0"}U`;
+  if (!Number.isFinite(v)) return "1u";
+  const rounded = Math.round(v * 100) / 100;
+  const text = Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  return `${text}u`;
 }
 
 function opponentName(pick: PickRow, game?: GameCard | null): string {

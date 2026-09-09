@@ -17,6 +17,8 @@ import {
   liveSlateGames,
   selectSlatePicks,
   softFloorOnSlate,
+  unitsFor,
+  unitsForTier,
 } from "./rank.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
 
@@ -595,4 +597,13 @@ test("soft floor stays on today when future PT tips remain", () => {
   assert.equal(slate.length, 1);
   assert.equal(slate[0]?.game.id, "ncaaf:tonight");
   assert.equal(slate[0]?.tier, "soft_floor");
+});
+
+test("unitsForTier: LOCK is flat 1u; soft_floor / DESK is 0.5u", () => {
+  assert.equal(unitsForTier("lock"), 1);
+  assert.equal(unitsForTier("soft_floor"), 0.5);
+  // Official card must not use confidence-scaled sizing for LOCK.
+  assert.equal(unitsFor(85), 2);
+  assert.equal(unitsFor(75), 1.5);
+  assert.equal(unitsForTier("lock"), 1);
 });
