@@ -26,9 +26,52 @@ function waitUrl(url: string) {
   return u.toString();
 }
 
-export async function postWebhook(url: string, content: string): Promise<{ ok: boolean; id?: string; error?: string; uncertain?: boolean }> {
+/** Discord embed subset used for official pick cards. */
+export type DiscordEmbedField = { name: string; value: string; inline?: boolean };
+export type DiscordEmbed = {
+  title?: string;
+  description?: string;
+  url?: string;
+  color?: number;
+  fields?: DiscordEmbedField[];
+  footer?: { text: string };
+  author?: { name: string };
+};
+
+export type DiscordWebhookPayload = {
+  content?: string;
+  embeds?: DiscordEmbed[];
+};
+
+/** Brand gold left-bar (#D4AF37) — BoatBoyzPicks official pick cards. */
+export const OFFICIAL_EMBED_COLOR = 0xD4AF37;
+
+export function normalizeWebhookPayload(body: string | DiscordWebhookPayload): DiscordWebhookPayload {
+  if (typeof body === "string") return { content: body };
+  return {
+    content: body.content,
+    embeds: body.embeds?.slice(0, 10),
+  };
+}
+
+export async function postWebhook(
+  url: string,
+  body: string | DiscordWebhookPayload,
+): Promise<{ ok: boolean; id?: string; error?: string; uncertain?: boolean }> {
   if (!discordWebhookOk(url)) return { ok: false, error: "Invalid Discord webhook." };
+  const payload = normalizeWebhookPayload(body);
+  const content = (payload.content ?? "").slice(0, 1900);
+  const embeds = payload.embeds?.length ? payload.embeds : undefined;
+  if (!content && !embeds?.length) return { ok: false, error: "Discord payload empty." };
   try {
+    const wire: Record<string, unknown> = {
+      username: "BoatBoyzPicks",
+      allowed_mentions: { parse: [] },
+    };
+    if (content) wire.content = content;
+    if (embeds?.length) wire.embeds = embeds;
+    // Suppress link unfurls on plain-text posts only — never suppress our own embeds[].
+    if (!embeds?.length) wire.flags = 4;
     const res = await fetch(waitUrl(url), {
       method: "POST",
       headers: {
@@ -36,13 +79,13 @@ export async function postWebhook(url: string, content: string): Promise<{ ok: b
         "User-Agent": "BoatBoyzPicks/1.0",
       },
       signal: AbortSignal.timeout(12_000),
-      body: JSON.stringify({ username: "BoatBoyzPicks", content: content.slice(0, 1900), allowed_mentions: { parse: [] }, flags: 4 }),
+      body: JSON.stringify(wire),
     });
     // 5xx/transport failures may occur AFTER Discord accepted the message.
     if (!res.ok) return { ok: false, uncertain: res.status >= 500, error: `Discord HTTP ${res.status}` };
-    const body = await res.json() as { id?: string };
-    if (!body.id) return { ok: false, uncertain: true, error: "Discord confirmation missing message id" };
-    return { ok: true, id: body.id };
+    const json = await res.json() as { id?: string };
+    if (!json.id) return { ok: false, uncertain: true, error: "Discord confirmation missing message id" };
+    return { ok: true, id: json.id };
   } catch {
     return { ok: false, uncertain: true, error: "DELIVERY_UNKNOWN: Discord transport/confirmation failed" };
   }
@@ -279,6 +322,124 @@ export function officialPlaySubhead(pick: PickRow): string | null {
     return "Soft floor · below hard edge/qualifying — verified DraftKings number only · not a hard-edge play";
   }
   return "Hard-edge qualifying play · verified DraftKings number";
+}
+
+/** Plain badge text for embed author (no markdown). Soft never says LOCK. */
+export function officialTierBadgePlain(pick: PickRow): string {
+  if (resolvePickTier(pick) === "soft_floor") return "📋 BEST AVAILABLE / DESK PICK";
+  return "🔒 LOCK";
+}
+
+/** Units field on embed cards: "1u LOCK" vs "0.5u desk". */
+export function unitsFieldLabel(pick: PickRow): string {
+  const stake = stakeLabel(pick.units);
+  return resolvePickTier(pick) === "soft_floor" ? `${stake} desk` : `${stake} LOCK`;
+}
+
+export function matchupVsChip(pick: PickRow, game?: GameCard | null): string {
+  if (game?.away?.name && game?.home?.name) return `${game.away.name} vs ${game.home.name}`;
+  const raw = (pick.matchup || "").trim();
+  if (!raw) return "Matchup TBD";
+  return raw.replace(/\s*@\s*/, " vs ");
+}
+
+export function pickedSideTitle(pick: PickRow, game?: GameCard | null): string {
+  if (pick.side === "home") return game?.home.name ?? pick.selection;
+  if (pick.side === "away") return game?.away.name ?? pick.selection;
+  if (pick.side === "over") return "Over";
+  if (pick.side === "under") return "Under";
+  return pick.selection;
+}
+
+/** Bold bet line for embed description, e.g. **Lakers -3.5** @ **-110**. */
+export function boldBetLine(pick: PickRow): string {
+  return `**${pick.selection}** @ **${formatAmerican(pick.lockedOdds)}**`;
+}
+
+/** Real DraftKings deep-link only — never invent from Odds API event ids. */
+export function verifiedPlaceBetUrl(pick: PickRow): string | undefined {
+  try {
+    const frozen = JSON.parse(pick.freezeJson ?? "{}") as { placeBetUrl?: unknown };
+    const url = typeof frozen.placeBetUrl === "string" ? frozen.placeBetUrl.trim() : "";
+    if (!url) return undefined;
+    const u = new URL(url);
+    if (u.protocol !== "https:") return undefined;
+    const host = u.hostname.toLowerCase();
+    if (host !== "sportsbook.draftkings.com" && host !== "draftkings.com" && !host.endsWith(".draftkings.com")) {
+      return undefined;
+    }
+    return u.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function whyEmbedLines(reason: string): string[] {
+  const parsed = parseWhy(reason);
+  const lines: string[] = [];
+  if (parsed.writeup) {
+    const sentences = parsed.writeup.replace(/\s+/g, " ").trim().split(/(?<=\.)\s+/).filter(Boolean);
+    lines.push(...sentences.slice(0, 4));
+  }
+  for (const b of parsed.bullets.slice(0, 3)) {
+    if (lines.length >= 4) break;
+    lines.push(b);
+  }
+  if (!lines.length) {
+    lines.push("BoatBoyzPicks scanned the board and this is the strongest straight bet left on the slate.");
+  }
+  return lines.slice(0, 4);
+}
+
+/**
+ * Official Discord embed card — gold bar, navy desk vibe, straights only look.
+ * Soft-floor badge is never LOCK.
+ */
+export function buildOfficialPickEmbed(pick: PickRow, game?: GameCard | null): DiscordEmbed {
+  const reason = (pick.reason?.trim() || (game ? defaultPlayReason(game, pick.side) : "")).trim();
+  const why = whyEmbedLines(reason);
+  const kick = formatKick(pick.startAt, "America/Los_Angeles");
+  const edge = pick.modelEdge ?? pick.edgePct;
+  const book = (pick.lockedOddsJson?.book || "DraftKings").trim() || "DraftKings";
+  const matchup = matchupVsChip(pick, game);
+  const sideTitle = pickedSideTitle(pick, game);
+  const placeUrl = verifiedPlaceBetUrl(pick);
+  const sub = officialPlaySubhead(pick);
+  const description = [
+    `${sportEmoji(pick.sport)} **${sideTitle}** | ${matchup}`,
+    boldBetLine(pick),
+    `\`${matchup}\``,
+    "",
+    sub,
+    "",
+    "🔎 **WHY BoatBoyzPicks LIKES IT**",
+    ...why,
+  ]
+    .filter((line): line is string => line != null && line !== undefined)
+    .join("\n");
+
+  const embed: DiscordEmbed = {
+    author: { name: `${officialTierBadgePlain(pick)} · BoatBoyzPicks OFFICIAL` },
+    description: description.slice(0, 4096),
+    color: OFFICIAL_EMBED_COLOR,
+    fields: [
+      { name: "Edge %", value: edgeLabel(edge), inline: true },
+      { name: "Book", value: book, inline: true },
+      { name: "Units", value: unitsFieldLabel(pick), inline: true },
+      { name: "Kick PT", value: `${kick} PT`, inline: true },
+    ],
+    footer: { text: `BoatBoyzPicks · ${kick} PT` },
+  };
+  if (placeUrl) embed.url = placeUrl;
+  return embed;
+}
+
+/** Webhook body for official picks: embed card, empty/short content. */
+export function buildOfficialPickPayload(pick: PickRow, game?: GameCard | null): DiscordWebhookPayload {
+  return {
+    content: "",
+    embeds: [buildOfficialPickEmbed(pick, game)],
+  };
 }
 
 export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): string {

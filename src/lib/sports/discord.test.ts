@@ -1,16 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  OFFICIAL_EMBED_COLOR,
+  boldBetLine,
   buildDiscordMessage,
+  buildOfficialPickEmbed,
+  buildOfficialPickPayload,
   buildOperatorPost,
   buildTestPreviewMessage,
   discordWebhookOk,
   favoredLine,
+  matchupVsChip,
   officialPlayHeadline,
   officialTierBadge,
+  officialTierBadgePlain,
   postWebhook,
   resolvePickTier,
   resolveWebhook,
+  unitsFieldLabel,
+  verifiedPlaceBetUrl,
 } from "./discord.ts";
 import type { GameCard, PickRow } from "./types.ts";
 
@@ -39,6 +47,36 @@ test("webhook posts send BoatBoyzPicks User-Agent", async () => {
     const headers = new Headers(calls[0].init?.headers);
     assert.equal(headers.get("User-Agent"), "BoatBoyzPicks/1.0");
     assert.equal(headers.get("Content-Type"), "application/json");
+    const body = JSON.parse(String(calls[0].init?.body));
+    assert.equal(body.username, "BoatBoyzPicks");
+    assert.equal(body.content, "health");
+    assert.equal(body.flags, 4);
+    assert.equal(body.embeds, undefined);
+  } finally {
+    globalThis.fetch = prev;
+  }
+});
+
+test("webhook posts with embeds skip SUPPRESS_EMBEDS flag and keep username", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const prev = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), init });
+    return new Response(JSON.stringify({ id: "embed1" }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const r = await postWebhook("https://discord.com/api/webhooks/123/abc", {
+      content: "",
+      embeds: [{ description: "card", color: OFFICIAL_EMBED_COLOR }],
+    });
+    assert.equal(r.ok, true);
+    const body = JSON.parse(String(calls[0].init?.body));
+    assert.equal(body.username, "BoatBoyzPicks");
+    assert.equal(body.content, undefined);
+    assert.equal(body.flags, undefined);
+    assert.equal(body.embeds.length, 1);
+    assert.equal(body.embeds[0].color, OFFICIAL_EMBED_COLOR);
+    assert.deepEqual(body.allowed_mentions, { parse: [] });
   } finally {
     globalThis.fetch = prev;
   }
@@ -251,3 +289,206 @@ test("LOCK and soft-floor headers differ when both tiers are present on the desk
   assert.match(softMsg, /💵 Stake: \*\*0\.5u\*\*/);
 });
 
+
+test("official LOCK embed matches BetStars-style card shape with 1u", () => {
+  const pick = {
+    id: 9,
+    sport: "NBA",
+    selection: "Lakers -3.5",
+    matchup: "GSW @ LAL",
+    market: "spread",
+    side: "home",
+    lockedOdds: -110,
+    lockedLine: -3.5,
+    units: 1,
+    confidence: 67,
+    modelProbability: 0.6,
+    modelEdge: 3.2,
+    edgePct: 3.2,
+    modelVersion: "v2-nba",
+    reason:
+      "Lakers get the home spot against Warriors. Model likes the number.\nWhy BoatBoyzPicks likes it:\n* Lakers are playing at home\n* Warriors missing Steph Curry",
+    startAt: new Date("2026-09-04T02:30:00Z").toISOString(),
+    lockedOddsJson: { book: "DraftKings", source: "odds-api", capturedAt: new Date("2026-09-04T01:00:00Z").toISOString() },
+    freezeJson: JSON.stringify({ pickTier: "lock", softFloor: false }),
+  } as import("./types.ts").PickRow;
+  const game = {
+    status: "scheduled",
+    away: { name: "Warriors", abbr: "GSW", score: null },
+    home: { name: "Lakers", abbr: "LAL", score: null },
+  } as import("./types.ts").GameCard;
+
+  const embed = buildOfficialPickEmbed(pick, game);
+  const payload = buildOfficialPickPayload(pick, game);
+
+  assert.equal(embed.color, OFFICIAL_EMBED_COLOR);
+  assert.equal(OFFICIAL_EMBED_COLOR, 0xD4AF37);
+  assert.match(embed.author?.name ?? "", /🔒 LOCK/);
+  assert.doesNotMatch(embed.author?.name ?? "", /BEST AVAILABLE/);
+  assert.match(embed.description ?? "", /🏀 \*\*Lakers\*\* \| Warriors vs Lakers/);
+  assert.match(embed.description ?? "", /\*\*Lakers -3\.5\*\* @ \*\*-110\*\*/);
+  assert.match(embed.description ?? "", /`Warriors vs Lakers`/);
+  assert.match(embed.description ?? "", /WHY BoatBoyzPicks LIKES IT/);
+  assert.match(embed.description ?? "", /playing at home|missing Steph|home spot/i);
+  assert.equal(boldBetLine(pick), "**Lakers -3.5** @ **-110**");
+  assert.equal(matchupVsChip(pick, game), "Warriors vs Lakers");
+  assert.equal(unitsFieldLabel(pick), "1u LOCK");
+  assert.equal(officialTierBadgePlain(pick), "🔒 LOCK");
+
+  const names = (embed.fields ?? []).map((f) => f.name);
+  assert.deepEqual(names, ["Edge %", "Book", "Units", "Kick PT"]);
+  const byName = Object.fromEntries((embed.fields ?? []).map((f) => [f.name, f.value]));
+  assert.match(byName["Edge %"]!, /\+3\.2%/);
+  assert.equal(byName.Book, "DraftKings");
+  assert.equal(byName.Units, "1u LOCK");
+  assert.match(byName["Kick PT"]!, /PT$/);
+  assert.match(embed.footer?.text ?? "", /^BoatBoyzPicks · .+ PT$/);
+  assert.equal(embed.url, undefined);
+  assert.equal(payload.content, "");
+  assert.equal(payload.embeds?.length, 1);
+  assert.doesNotMatch(JSON.stringify(embed), /https?:\/\/sportsbook\.draftkings/);
+});
+
+test("official soft-floor embed is BEST AVAILABLE / DESK PICK with 0.5u desk and never LOCK", () => {
+  const pick = {
+    id: 11,
+    sport: "NFL",
+    selection: "SEA -3",
+    matchup: "DEN @ SEA",
+    market: "spread",
+    side: "home",
+    lockedOdds: -110,
+    lockedLine: -3,
+    units: 0.5,
+    confidence: 54,
+    modelProbability: 0.54,
+    modelEdge: 1.8,
+    edgePct: 1.8,
+    modelVersion: "v2-nfl",
+    reason: "",
+    startAt: new Date("2026-09-04T02:30:00Z").toISOString(),
+    lockedOddsJson: { book: "DraftKings", source: "odds-api", capturedAt: new Date("2026-09-04T01:00:00Z").toISOString() },
+    freezeJson: JSON.stringify({ pickTier: "soft_floor", softFloor: true, marketProbability: 0.52 }),
+  } as import("./types.ts").PickRow;
+  const game = {
+    status: "scheduled",
+    league: "nfl",
+    sport: "NFL",
+    startAt: pick.startAt,
+    away: { name: "Broncos", abbr: "DEN", score: null, record: "8-8", roadSplit: "3-5", starter: null },
+    home: { name: "Seahawks", abbr: "SEA", score: null, record: "10-6", homeSplit: "6-2", starter: null },
+    injuries: [],
+    weather: "54° F, calm",
+    odds: pick.lockedOddsJson,
+    rank: null,
+  } as unknown as import("./types.ts").GameCard;
+
+  const embed = buildOfficialPickEmbed(pick, game);
+  assert.equal(resolvePickTier(pick), "soft_floor");
+  assert.equal(officialTierBadgePlain(pick), "📋 BEST AVAILABLE / DESK PICK");
+  assert.equal(unitsFieldLabel(pick), "0.5u desk");
+  assert.match(embed.author?.name ?? "", /BEST AVAILABLE \/ DESK PICK/);
+  assert.doesNotMatch(embed.author?.name ?? "", /\bLOCK\b/);
+  assert.doesNotMatch(embed.description ?? "", /\bLOCK\b/);
+  assert.doesNotMatch(JSON.stringify(embed.fields), /\bLOCK\b/);
+  const units = embed.fields?.find((f) => f.name === "Units")?.value;
+  assert.equal(units, "0.5u desk");
+  assert.match(embed.description ?? "", /🏈 \*\*Seahawks\*\*/);
+  assert.match(embed.description ?? "", /`Broncos vs Seahawks`/);
+  assert.match(embed.description ?? "", /Soft floor/);
+  assert.match(embed.description ?? "", /WHY BoatBoyzPicks LIKES IT/);
+  assert.equal(embed.color, OFFICIAL_EMBED_COLOR);
+});
+
+test("ML bold bet line and optional Place Bet only for real DK deep-link", () => {
+  const base = {
+    id: 12,
+    sport: "NFL",
+    selection: "KC ML",
+    matchup: "KC @ BUF",
+    market: "moneyline",
+    side: "away",
+    lockedOdds: 100,
+    lockedLine: null,
+    units: 1,
+    confidence: 61,
+    modelProbability: 0.55,
+    modelEdge: 2.5,
+    edgePct: 2.5,
+    reason: "Chiefs priced right on the road.",
+    startAt: new Date("2026-09-04T00:20:00Z").toISOString(),
+    lockedOddsJson: { book: "DraftKings", source: "odds-api", eventId: "odds-api-not-a-dk-link" },
+    freezeJson: JSON.stringify({ pickTier: "lock" }),
+  } as import("./types.ts").PickRow;
+
+  assert.equal(boldBetLine(base), "**KC ML** @ **+100**");
+  assert.equal(verifiedPlaceBetUrl(base), undefined);
+  assert.equal(buildOfficialPickEmbed(base).url, undefined);
+
+  const withFake = {
+    ...base,
+    freezeJson: JSON.stringify({ pickTier: "lock", placeBetUrl: "https://example.com/bet/123" }),
+  } as import("./types.ts").PickRow;
+  assert.equal(verifiedPlaceBetUrl(withFake), undefined);
+  assert.equal(buildOfficialPickEmbed(withFake).url, undefined);
+
+  const withOddsApiLookalike = {
+    ...base,
+    freezeJson: JSON.stringify({
+      pickTier: "lock",
+      placeBetUrl: "https://api.the-odds-api.com/v4/events/abc",
+    }),
+  } as import("./types.ts").PickRow;
+  assert.equal(verifiedPlaceBetUrl(withOddsApiLookalike), undefined);
+
+  const real = {
+    ...base,
+    freezeJson: JSON.stringify({
+      pickTier: "lock",
+      placeBetUrl: "https://sportsbook.draftkings.com/event/12345",
+    }),
+  } as import("./types.ts").PickRow;
+  assert.equal(verifiedPlaceBetUrl(real), "https://sportsbook.draftkings.com/event/12345");
+  assert.equal(buildOfficialPickEmbed(real).url, "https://sportsbook.draftkings.com/event/12345");
+});
+
+test("LOCK vs soft-floor embed badges and units differ on the same slate", () => {
+  const base = {
+    id: 1,
+    sport: "NBA",
+    selection: "Lakers ML",
+    matchup: "GSW @ LAL",
+    market: "moneyline",
+    side: "home",
+    lockedOdds: -135,
+    lockedLine: null,
+    units: 1,
+    confidence: 67,
+    modelProbability: 0.6,
+    modelEdge: 3.2,
+    edgePct: 3.2,
+    reason: "Lakers host Warriors.\nWhy BoatBoyzPicks likes it:\n* Lakers are playing at home",
+    startAt: new Date("2026-09-04T02:30:00Z").toISOString(),
+    lockedOddsJson: { book: "DraftKings", source: "odds-api" },
+  } as import("./types.ts").PickRow;
+  const lockPick = { ...base, freezeJson: JSON.stringify({ pickTier: "lock", softFloor: false }) } as import("./types.ts").PickRow;
+  const softPick = {
+    ...base,
+    freezeJson: JSON.stringify({ pickTier: "soft_floor", softFloor: true }),
+    units: 0.5,
+    confidence: 52,
+    modelEdge: 1.1,
+    edgePct: 1.1,
+  } as import("./types.ts").PickRow;
+
+  const lockEmbed = buildOfficialPickEmbed(lockPick);
+  const softEmbed = buildOfficialPickEmbed(softPick);
+  assert.match(lockEmbed.author?.name ?? "", /🔒 LOCK/);
+  assert.match(softEmbed.author?.name ?? "", /BEST AVAILABLE \/ DESK PICK/);
+  assert.doesNotMatch(softEmbed.author?.name ?? "", /\bLOCK\b/);
+  assert.doesNotMatch(JSON.stringify(softEmbed), /\bLOCK\b/);
+  assert.equal(lockEmbed.fields?.find((f) => f.name === "Units")?.value, "1u LOCK");
+  assert.equal(softEmbed.fields?.find((f) => f.name === "Units")?.value, "0.5u desk");
+  assert.equal(lockEmbed.color, softEmbed.color);
+  assert.equal(lockEmbed.color, 0xD4AF37);
+});

@@ -10,6 +10,7 @@ import { getSql } from "@/lib/db";
 import { officialKey } from "@/lib/sports/day";
 import {
   buildDiscordMessage,
+  buildOfficialPickPayload,
   buildRecapMessage,
   postWebhook,
   resolveWebhook,
@@ -421,7 +422,7 @@ export async function postPickById(
   const result = await sendOnce(
     pick.id,
     sqlLocker(sql, { workerToken: opts.workerToken, target: (await loadMeta()).maxDailyPicks, ledger: activeLedger() }),
-    paper ? paperSimulateSend : () => postWebhook(hook, message),
+    paper ? paperSimulateSend : () => postWebhook(hook, buildOfficialPickPayload(asRow, liveGame)),
     {
       freezeJson: JSON.stringify(gate.freeze),
       discordMessage: message,
