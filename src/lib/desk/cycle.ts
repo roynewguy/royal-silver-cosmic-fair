@@ -33,7 +33,8 @@ import { automationStatus } from "./health";
 import { isFreeBetaMode } from "@/lib/sports/free-beta";
 import { isPaperLedger, paperLockMessage, paperSimulateSend, activeLedger } from "@/lib/sports/paper-mode";
 import { isDraftKingsLine, mergeDraftKingsOdds } from "@/lib/sports/odds-api";
-import { dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, selectSlatePicks, softFloorOnSlate, unitsForTier } from "@/lib/sports/rank";
+import { dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, selectSlatePicks, unitsForTier } from "@/lib/sports/rank";
+import { formatPassFunnelLog, summarizeSlatePass } from "@/lib/sports/pass-funnel";
 import { formatWhy } from "@/lib/sports/why";
 import { confirmDraftKings, pruneFreeBetaCaches, readDkCache } from "./dk-verify";
 import { recordClosingResult, recordPostedPrediction, recordPregameSnapshots } from "./warehouse";
@@ -631,15 +632,9 @@ export async function selectOfficialCard(
   }
 
   if (plan.keepIds.length === 0 && plan.remaining > 0) {
-    const softN = softFloorOnSlate(games, minEdge, minConf).length;
-    if (softN > 0) {
-      await addLog(
-        "research",
-        `PASS (correct): ${softN} DESK/BEST AVAILABLE research-only — no LOCK cleared truth gate; not queued to Discord (target ${target} max).`,
-      );
-    } else {
-      await addLog("skip", `PASS: no LOCK candidates on live slate (target ${target} max).`);
-    }
+    // Zero LOCKs = correct PASS. Funnel codes explain edge/conf/truth; soft stays research-only (never queued).
+    const funnel = summarizeSlatePass(games, minEdge, minConf);
+    await addLog(funnel.softResearch > 0 ? "research" : "skip", formatPassFunnelLog(funnel, target));
   }
 
   const existingByGame = await loadLatestPicksByGames(wanted.map((g) => g.id));
