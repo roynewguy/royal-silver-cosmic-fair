@@ -30,13 +30,13 @@ test("selectFreePickOfDay waits for LOCK still on card", () => {
   assert.equal(selectFreePickOfDay(card), null);
 });
 
-test("selectFreePickOfDay falls back to best posted DESK when no LOCK", () => {
+test("selectFreePickOfDay does not force DESK/soft_floor onto free channel", () => {
   const card: FreePickCandidate[] = [
     { id: 1, status: "posted", edgePct: 1.2, tier: "soft_floor" },
     { id: 2, status: "posted", edgePct: 2.5, tier: "soft_floor" },
     { id: 3, status: "queued", edgePct: 9, tier: "soft_floor" },
   ];
-  assert.equal(selectFreePickOfDay(card)?.id, 2);
+  assert.equal(selectFreePickOfDay(card), null);
 });
 
 test("free webhook is isolated from VIP picks and other roles", () => {

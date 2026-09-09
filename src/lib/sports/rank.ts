@@ -185,7 +185,7 @@ export function liveSlateGames(games: GameCard[], now = new Date()): GameCard[] 
   return today.length > 0 ? today : upcoming;
 }
 
-/** Soft-floor board: best ranked tickets that missed the hard edge/confidence gate. */
+/** Research-only soft-floor board: best ranked tickets that missed the hard edge/confidence gate. Never auto-queued to Discord. */
 export function softFloorOnSlate(games: GameCard[], minEdge = 3, minConf = 58, now = new Date()): GameCard[] {
   const pool = liveSlateGames(games, now);
   const poolIds = new Set(pool.map((g) => g.id));
@@ -202,37 +202,29 @@ export function softFloorOnSlate(games: GameCard[], minEdge = 3, minConf = 58, n
 }
 
 /**
- * Always-pick floor: use hard LOCKs when any qualify. When the live slate
- * (today's PT tips, else next loaded upcoming official window) has games and the
- * hard gate yields 0, select best-available soft-floor candidates up to the
- * daily target. Never invent odds.
+ * Official Discord card: hard LOCKs only.
+ * DAILY_PICK_TARGET is a max/cap — never a floor that invents DESK/soft-floor posts.
+ * Zero qualifying locks on a bad slate = correct PASS (empty card).
+ * softFloorOnSlate remains for research/internal logging only.
  */
 export function selectSlatePicks(
   games: GameCard[],
   minEdge = 3,
   minConf = 58,
-  target = DEFAULT_DAILY_PICKS,
+  _target = DEFAULT_DAILY_PICKS,
   now = new Date(),
 ): SlatePick[] {
-  const cap = clampDailyPicks(target);
+  // _target cap applied by planDailyCard / remaining slots — not by inventing soft fills
   if (liveSlateGames(games, now).length === 0) return [];
   const locks = bestOnSlate(games, minEdge, minConf, now);
-  if (locks.length > 0) {
-    // Full lock board for planDailyCard rotation; caller caps by remaining slots.
-    return locks.map((game) => ({
-      game: { ...game, rank: game.rank ? { ...game.rank, pickTier: "lock" as const } : null },
-      tier: "lock" as const,
-    }));
-  }
-  return softFloorOnSlate(games, minEdge, minConf, now)
-    .slice(0, cap)
-    .map((game) => ({
-      game: { ...game, rank: game.rank ? { ...game.rank, pickTier: "soft_floor" as const } : null },
-      tier: "soft_floor" as const,
-    }));
+  // Full lock board for planDailyCard rotation; caller caps by remaining slots.
+  return locks.map((game) => ({
+    game: { ...game, rank: game.rank ? { ...game.rank, pickTier: "lock" as const } : null },
+    tier: "lock" as const,
+  }));
 }
 
-/** Ranked game ids in card priority order (locks then soft floor). */
+/** Ranked game ids in official card priority order (LOCKs only). */
 export function slatePickIds(picks: SlatePick[]): string[] {
   return picks.map((p) => p.game.id);
 }

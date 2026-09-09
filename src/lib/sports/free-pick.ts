@@ -30,21 +30,17 @@ function isDeliverable(status: string): boolean {
 }
 
 /**
- * Prefer LOCK of day if any; else best DESK / BEST AVAILABLE (soft_floor).
+ * FREE channel mirrors official truth gate: LOCK only.
+ * DAILY_FREE_PICK_TARGET is a max (0/1) — never a floor that invents or promotes DESK.
  * Waits while a LOCK is still on the card but not yet VIP-posted.
- * Soft never wins a LOCK badge — tier comes from freeze / resolvePickTier.
+ * Soft/DESK never forces a free Discord post and never wins a LOCK badge.
  */
 export function selectFreePickOfDay(candidates: FreePickCandidate[]): FreePickCandidate | null {
   if (!candidates.length) return null;
   const locks = candidates.filter((c) => c.tier === "lock").sort(byEdgeThenId);
-  if (locks.length) {
-    const best = locks[0]!;
-    return isDeliverable(best.status) ? best : null;
-  }
-  const softPosted = candidates
-    .filter((c) => c.tier === "soft_floor" && isDeliverable(c.status))
-    .sort(byEdgeThenId);
-  return softPosted[0] ?? null;
+  if (!locks.length) return null;
+  const best = locks[0]!;
+  return isDeliverable(best.status) ? best : null;
 }
 
 export function freeCandidatesFromOfficial(picks: PickRow[]): FreePickCandidate[] {
