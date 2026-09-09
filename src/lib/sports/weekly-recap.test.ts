@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { weeklyPeriod, buildWeeklyRecap } from "./weekly-recap.ts";
 import { channelWebhook } from "./discord-routing.ts";
+import { summarizeClv } from "./closing.ts";
 
 test("weekly recap becomes due Monday at 9 Pacific, never Sunday night", () => {
   assert.equal(weeklyPeriod(new Date("2026-09-14T15:59:59Z")).end,"2026-09-07");
@@ -20,6 +21,15 @@ test("recap preserves losses, voids, pending and undefined ROI", () => {
   assert.match(content,/-100.0%/); assert.match(content,/Pending at publication: \*\*2/);
   assert.match(content,/1 VOID/);
   assert.match(buildWeeklyRecap({start:"2026-09-07",end:"2026-09-14"},{...record,riskedUnits:0,voids:0},record),/ROI: \*\*—/);
+});
+test("recap extends with CLV summary for real closes only", () => {
+  const record={wins:2,losses:1,pushes:0,units:0.8,riskedUnits:3,pending:0};
+  const clv=summarizeClv([{clv:0.02},{clv:-0.01},{clv:null}]);
+  const content=buildWeeklyRecap({start:"2026-09-07",end:"2026-09-14"},{...record,voids:0},record,clv);
+  assert.match(content,/CLV \(straights · tip closes\)/);
+  assert.match(content,/1\/2/);
+  assert.match(content,/never invented/);
+  assert.match(content,/\*\*1\*\* missing close/);
 });
 test("weekly recap never falls back into official picks or operator alerts", () => {
   const h="https://discord.com/api/webhooks/1/token";

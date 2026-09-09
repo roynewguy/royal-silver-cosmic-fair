@@ -2,12 +2,19 @@ import { getSql } from "../db";
 import { loadRecord } from "./store";
 import { channelWebhook, webhookIdentity, type DiscordRole } from "../sports/discord-routing";
 import { buildRecordScoreboard, postWebhook, editWebhookMessage } from "../sports/discord";
+import { summarizeClv } from "../sports/closing";
 import { alertOwner } from "./alerts";
 import { recordEvent } from "./telemetry";
 
 /** Called under the production worker lease. Durable first-send fence prevents duplicates. */
 export async function syncRecordScoreboard(): Promise<void> {
-  await syncPersistentMessage("record", "record", buildRecordScoreboard(await loadRecord()));
+  const sql = await getSql();
+  const clvRows = await sql<{ clv: number | null }>`
+    select clv from picks
+    where ledger='official' and coalesce(pick_source,'auto')='auto' and official_key is not null and posted_at is not null
+      and status='graded' and result in ('WIN','LOSS','PUSH','VOID')`;
+  const clv = summarizeClv(clvRows.map((row) => ({ clv: row.clv == null ? null : Number(row.clv) })));
+  await syncPersistentMessage("record", "record", buildRecordScoreboard(await loadRecord(), clv));
 }
 
 export async function syncPersistentMessage(purpose: string, role: DiscordRole, content: string, updateExisting = true): Promise<void> {

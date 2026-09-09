@@ -1,6 +1,11 @@
 import { sqlLocker } from "./sql-locker";
 export { sqlLocker } from "./sql-locker";
-import { verifiedClosingPrice } from "../sports/closing";
+import {
+  verifiedClosingPrice,
+  closingCaptureAction,
+  formatOpenCloseLog,
+  ticketOpenPrice,
+} from "../sports/closing";
 import { flushResultRecaps } from "./result-delivery";
 import { syncRecordScoreboard } from "./scoreboard";
 import { sendWeeklyRecap } from "./weekly-recap";
@@ -15,6 +20,7 @@ import {
   serializeResultWebhookBody,
   postWebhook,
   resolveWebhook,
+  resolvePickTier,
 } from "@/lib/sports/discord";
 import { fetchAllSlates, beginEspnScan, espnScanStats } from "@/lib/sports/espn";
 import { mergeFetchedSlate, inLookahead } from "@/lib/sports/slate-merge";
@@ -26,10 +32,10 @@ import { alertOwner } from "./alerts";
 import { automationStatus } from "./health";
 import { isFreeBetaMode } from "@/lib/sports/free-beta";
 import { isPaperLedger, paperLockMessage, paperSimulateSend, activeLedger } from "@/lib/sports/paper-mode";
-import { mergeDraftKingsOdds } from "@/lib/sports/odds-api";
+import { isDraftKingsLine, mergeDraftKingsOdds } from "@/lib/sports/odds-api";
 import { dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, selectSlatePicks, unitsForTier } from "@/lib/sports/rank";
 import { formatWhy } from "@/lib/sports/why";
-import { confirmDraftKings, pruneFreeBetaCaches } from "./dk-verify";
+import { confirmDraftKings, pruneFreeBetaCaches, readDkCache } from "./dk-verify";
 import { recordClosingResult, recordPostedPrediction, recordPregameSnapshots } from "./warehouse";
 import { recordV2Candidates } from "@/lib/sports/candidate-log";
 import { recordMlbShadow, gradeShadowPredictions } from "@/lib/models-v3/shadow-store";
@@ -647,14 +653,70 @@ export async function selectOfficialCard(
 
 async function captureClosingQuotes(games: GameCard[]): Promise<void> {
   const sql = await getSql();
-  const rows = await sql<{id:number;game_id:string;market:string}>`select id, game_id, market from picks
+  const freeBeta = isFreeBetaMode();
+  const rows = await sql<{
+    id: number;
+    game_id: string;
+    market: string;
+    selection: string;
+    side: string;
+    locked_line: number | null;
+    locked_odds: number;
+    posted_odds: number | null;
+    closing_snapshot_json: string | null;
+    freeze_json: string | null;
+    start_at: string;
+  }>`select id, game_id, market, selection, side, locked_line, locked_odds, posted_odds,
+      closing_snapshot_json, freeze_json, start_at::text as start_at
+    from picks
     where status = 'posted' and result is null and pick_source = 'auto'
       and start_at > now() and start_at <= now() + interval '20 minutes'`;
   for (const row of rows) {
     const game = games.find(g => g.id === row.game_id && g.status === 'scheduled');
     if (!game) continue;
-    const verified = await confirmDraftKings(game, row.market as PickRow['market']);
-    if (verified.ok) await sql`update picks set closing_snapshot_json = ${JSON.stringify(verified.game.odds)} where id = ${row.id} and status = 'posted'`;
+    const market = row.market as PickRow['market'];
+    const cached = await readDkCache(game.id, market);
+    const startMs = Date.parse(row.start_at);
+    const cacheCapturedAt = cached?.odds.capturedAt ? Date.parse(cached.odds.capturedAt) : NaN;
+    const cacheBeforeStart = Number.isFinite(cacheCapturedAt) && Number.isFinite(startMs) && cacheCapturedAt < startMs;
+    const action = closingCaptureAction({
+      freeBeta,
+      hasClosingSnapshot: Boolean(row.closing_snapshot_json),
+      cacheIsDk: Boolean(cached && isDraftKingsLine(cached.odds)),
+      cacheAgeMs: cached?.ageMs ?? null,
+      cacheBeforeStart,
+    });
+    let oddsJson: string | null = null;
+    if (action === "use-cache" && cached) {
+      oddsJson = JSON.stringify(cached.odds);
+    } else if (action === "fetch") {
+      const verified = await confirmDraftKings(game, market);
+      if (verified.ok) oddsJson = JSON.stringify(verified.game.odds);
+    }
+    if (!oddsJson) continue;
+    const close = verifiedClosingPrice(oddsJson, {
+      startAt: row.start_at,
+      market,
+      side: row.side as PickRow["side"],
+      lockedLine: row.locked_line,
+    });
+    // Real closes only — skip storing a snapshot that fails the tip verifier.
+    if (close == null) continue;
+    const prevClose = verifiedClosingPrice(row.closing_snapshot_json, {
+      startAt: row.start_at,
+      market,
+      side: row.side as PickRow["side"],
+      lockedLine: row.locked_line,
+    });
+    await sql`update picks set closing_snapshot_json = ${oddsJson} where id = ${row.id} and status = 'posted'`;
+    if (prevClose === close) continue;
+    const open = ticketOpenPrice({ postedOdds: row.posted_odds, lockedOdds: row.locked_odds });
+    const tier = resolvePickTier({ freezeJson: row.freeze_json } as PickRow);
+    await addLog(
+      "scan",
+      formatOpenCloseLog({ selection: row.selection, openPrice: open, closePrice: close, pickTier: tier }),
+      game.sport,
+    );
   }
 }
 

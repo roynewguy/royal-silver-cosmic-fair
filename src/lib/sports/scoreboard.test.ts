@@ -26,3 +26,13 @@ test("scoreboard defaults to results and never inherits picks or alerts", () => 
   assert.equal(channelWebhook("record","",{DISCORD_RECORD_WEBHOOK:hook}), hook);
   assert.equal(channelWebhook("record","",{DISCORD_RESULTS_WEBHOOK:hook}), hook);
 });
+
+test("scoreboard can append CLV without inventing closes", () => {
+  const text = buildRecordScoreboard(
+    { wins: 2, losses: 1, pushes: 0, units: 0.5, pending: 0, riskedUnits: 3 },
+    { sample: 3, withClose: 2, missingClose: 1, beatClose: 1, avgClv: 0.01 },
+  );
+  assert.match(text, /CLV \(straights · tip closes\)/);
+  assert.match(text, /never invented/);
+  assert.match(text, /1\/2/);
+});
