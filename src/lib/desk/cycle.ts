@@ -25,7 +25,7 @@ import { automationStatus } from "./health";
 import { isFreeBetaMode } from "@/lib/sports/free-beta";
 import { isPaperLedger, paperLockMessage, paperSimulateSend, activeLedger } from "@/lib/sports/paper-mode";
 import { mergeDraftKingsOdds } from "@/lib/sports/odds-api";
-import { dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, selectSlatePicks, unitsFor } from "@/lib/sports/rank";
+import { dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, selectSlatePicks, unitsForTier } from "@/lib/sports/rank";
 import { formatWhy } from "@/lib/sports/why";
 import { confirmDraftKings, pruneFreeBetaCaches } from "./dk-verify";
 import { recordClosingResult, recordPostedPrediction, recordPregameSnapshots } from "./warehouse";
@@ -570,7 +570,7 @@ export async function selectOfficialCard(
     const tier = tierById.get(game.id) ?? rank.pickTier ?? "lock";
     const reason = formatWhy(game, rank).trim().slice(0, 1000);
     const confidence = Math.round(rank.confidence);
-    const units = tier === "soft_floor" ? 1 : unitsFor(confidence);
+    const units = unitsForTier(tier === "soft_floor" ? "soft_floor" : "lock");
     const postAt = queuePostAt(tier, game.startAt, leadMinutes);
     const matchup = `${game.away.abbr} @ ${game.home.abbr}`;
     const key = officialKey(game.league, game.id);

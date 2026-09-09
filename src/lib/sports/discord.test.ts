@@ -100,7 +100,8 @@ test("play card has pick, favored %, units, score, and line", () => {
   assert.match(msg, /Market /);
   assert.match(msg, /Estimated Edge:/);
   assert.match(msg, /DraftKings: -135/);
-  assert.match(msg, /1\.0U/);
+  assert.match(msg, /\*\*1u\*\*/);
+  assert.match(msg, /💵 Stake:/);
   assert.match(msg, /WHY BoatBoyzPicks LIKES IT/);
   assert.match(msg, /playing at home/);
   assert.match(msg, /Score: Not started/);
@@ -147,7 +148,7 @@ test("soft-floor Discord payload is labeled BEST AVAILABLE / DESK PICK and alway
     side: "home",
     lockedOdds: -110,
     lockedLine: -3,
-    units: 1,
+    units: 0.5,
     confidence: 54,
     modelProbability: 0.54,
     modelEdge: 1.8,
@@ -177,6 +178,8 @@ test("soft-floor Discord payload is labeled BEST AVAILABLE / DESK PICK and alway
   assert.match(msg, /BEST AVAILABLE/);
   assert.match(msg, /DESK PICK/);
   assert.match(msg, /Soft floor/);
+  assert.match(msg, /💵 Stake: \*\*0\.5u\*\*/);
+  assert.doesNotMatch(msg, /\*\*1u\*\*/);
   // Soft-floor must never look like LOCK: no LOCK primary badge.
   assert.doesNotMatch(msg, /🔒\s*\*\*LOCK\*\*/);
   assert.doesNotMatch(msg, /\*\*LOCK\*\*/);
@@ -211,7 +214,7 @@ test("LOCK and soft-floor headers differ when both tiers are present on the desk
   const softPick = {
     ...base,
     freezeJson: JSON.stringify({ pickTier: "soft_floor", softFloor: true }),
-    units: 1,
+    units: 0.5,
     confidence: 52,
     modelEdge: 1.1,
     edgePct: 1.1,
@@ -244,5 +247,7 @@ test("LOCK and soft-floor headers differ when both tiers are present on the desk
 
   assert.match(lockMsg, /WHY BoatBoyzPicks LIKES IT/);
   assert.match(softMsg, /WHY BoatBoyzPicks LIKES IT/);
+  assert.match(lockMsg, /💵 Stake: \*\*1u\*\*/);
+  assert.match(softMsg, /💵 Stake: \*\*0\.5u\*\*/);
 });
 

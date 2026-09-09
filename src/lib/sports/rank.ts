@@ -45,6 +45,11 @@ export function unitsFor(confidence: number): number {
   return 1;
 }
 
+/** Official stake sizing: LOCK = 1u, DESK/soft_floor = 0.5u (not confidence-scaled). */
+export function unitsForTier(tier: PickTier): number {
+  return tier === "soft_floor" ? 0.5 : 1;
+}
+
 export const MIN_DAILY_PICKS = 1;
 export const MAX_DAILY_PICKS = 6;
 export const DEFAULT_DAILY_PICKS = 3;
