@@ -6,7 +6,10 @@ import {
   buildDiscordMessage,
   buildOfficialPickEmbed,
   buildOfficialPickPayload,
+  buildOfficialResultEmbed,
+  buildOfficialResultPayload,
   buildOperatorPost,
+  buildRecapMessage,
   buildTestPreviewMessage,
   discordWebhookOk,
   favoredLine,
@@ -14,9 +17,12 @@ import {
   officialPlayHeadline,
   officialTierBadge,
   officialTierBadgePlain,
+  parseResultWebhookBody,
   postWebhook,
   resolvePickTier,
   resolveWebhook,
+  resultBadgePlain,
+  serializeResultWebhookBody,
   unitsFieldLabel,
   verifiedPlaceBetUrl,
 } from "./discord.ts";
@@ -491,4 +497,73 @@ test("LOCK vs soft-floor embed badges and units differ on the same slate", () =>
   assert.equal(softEmbed.fields?.find((f) => f.name === "Units")?.value, "0.5u desk");
   assert.equal(lockEmbed.color, softEmbed.color);
   assert.equal(lockEmbed.color, 0xD4AF37);
+});
+
+test("official result embed is gold-bar WIN/LOSS/PUSH with clean fields and never LOCK", () => {
+  const pick = {
+    id: 42,
+    sport: "MLB",
+    selection: "ATH ML",
+    matchup: "TOR @ ATH",
+    market: "moneyline",
+    side: "home",
+    lockedOdds: 144,
+    lockedLine: null,
+    units: 2,
+    confidence: 61,
+    modelProbability: 0.55,
+    modelEdge: 2.1,
+    edgePct: 2.1,
+    reason: "Athletics ML",
+    startAt: new Date("2026-09-04T02:30:00Z").toISOString(),
+    lockedOddsJson: { book: "DraftKings", source: "odds-api" },
+    freezeJson: JSON.stringify({ pickTier: "soft_floor", softFloor: true }),
+    pickSource: "auto",
+  } as import("./types.ts").PickRow;
+  const game = {
+    status: "final",
+    sport: "MLB",
+    away: { name: "Blue Jays", abbr: "TOR", score: 0 },
+    home: { name: "Athletics", abbr: "ATH", score: 2 },
+  } as import("./types.ts").GameCard;
+  const record = { wins: 3, losses: 1, pushes: 0, units: 3.8, riskedUnits: 5, pending: 0 };
+
+  const winEmbed = buildOfficialResultEmbed(pick, game, "WIN", 2.88, record);
+  assert.equal(winEmbed.color, OFFICIAL_EMBED_COLOR);
+  assert.equal(OFFICIAL_EMBED_COLOR, 0xD4AF37);
+  assert.match(winEmbed.author?.name ?? "", /✅ WIN/);
+  assert.match(winEmbed.author?.name ?? "", /BoatBoyzPicks RESULT/);
+  assert.doesNotMatch(winEmbed.author?.name ?? "", /\bLOCK\b/);
+  assert.doesNotMatch(JSON.stringify(winEmbed), /\bLOCK\b/);
+  assert.match(winEmbed.description ?? "", /⚾ \*\*MLB\*\*/);
+  assert.match(winEmbed.description ?? "", /\*\*ATH ML\*\* @ \*\*\+144\*\*/);
+  const names = (winEmbed.fields ?? []).map((f) => f.name);
+  assert.deepEqual(names, ["Result", "Sport", "Pick", "Final", "This ticket", "Auto record"]);
+  const byName = Object.fromEntries((winEmbed.fields ?? []).map((f) => [f.name, f.value]));
+  assert.equal(byName.Result, "✅ WIN");
+  assert.equal(byName.Sport, "MLB");
+  assert.equal(byName.Pick, "ATH ML (+144)");
+  assert.equal(byName.Final, "Final TOR 0 @ ATH 2");
+  assert.equal(byName["This ticket"], "+2.88u");
+  assert.equal(byName["Auto record"], "3-1-0 · +3.80u · ROI 76.0%");
+  assert.match(winEmbed.footer?.text ?? "", /^BoatBoyzPicks · .+ PT$/);
+
+  const lossEmbed = buildOfficialResultEmbed(pick, game, "LOSS", -2, { ...record, wins: 2, losses: 2, units: -0.2, riskedUnits: 5 });
+  assert.match(lossEmbed.author?.name ?? "", /❌ LOSS/);
+  assert.equal(lossEmbed.color, OFFICIAL_EMBED_COLOR);
+
+  const pushEmbed = buildOfficialResultEmbed(pick, game, "PUSH", 0, { ...record, pushes: 1 });
+  assert.match(pushEmbed.author?.name ?? "", /↔️ PUSH/);
+  assert.equal(resultBadgePlain("PUSH"), "↔️ PUSH");
+
+  const payload = buildOfficialResultPayload(pick, game, "WIN", 2.88, record);
+  assert.equal(payload.content, "");
+  assert.equal(payload.embeds?.length, 1);
+
+  const wire = serializeResultWebhookBody(payload);
+  const parsed = parseResultWebhookBody(wire);
+  assert.equal(typeof parsed, "object");
+  assert.equal((parsed as { embeds?: unknown[] }).embeds?.length, 1);
+  assert.equal(parseResultWebhookBody("**WIN** · MLB\nATH ML"), "**WIN** · MLB\nATH ML");
+  assert.match(buildRecapMessage(pick, game, "WIN", 2.88, record), /\*\*WIN\*\* · MLB/);
 });

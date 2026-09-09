@@ -11,7 +11,8 @@ import { officialKey } from "@/lib/sports/day";
 import {
   buildDiscordMessage,
   buildOfficialPickPayload,
-  buildRecapMessage,
+  buildOfficialResultPayload,
+  serializeResultWebhookBody,
   postWebhook,
   resolveWebhook,
 } from "@/lib/sports/discord";
@@ -230,7 +231,9 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
       record.riskedUnits = (record.riskedUnits ?? 0) + (result === "VOID" ? 0 : fake.units);
       record.pending = Math.max(0, record.pending - 1);
     }
-    const recap = buildRecapMessage({ ...fake, result, profitUnits: profit }, game, result, profit, record);
+    const recap = serializeResultWebhookBody(
+      buildOfficialResultPayload({ ...fake, result, profitUnits: profit }, game, result, profit, record),
+    );
     const updated = await sql<{id: number}>`
       update picks
       set status = 'graded', result = ${result}, profit_units = ${profit}, graded_at = now(),

@@ -24,7 +24,8 @@
     "test:template": "node --test 'scripts/**/*.test.mjs'",
     "discord:sample-embeds": "node --experimental-strip-types scripts/discord-sample-embeds.ts",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "discord:sample-result-embeds": "node --experimental-strip-types scripts/discord-sample-result-embeds.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",

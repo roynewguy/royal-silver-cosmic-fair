@@ -421,17 +421,47 @@ export const settleReviewedPick = createServerFn({ method: "POST" })
       const rows = await sql`select * from picks where id = ${data.pickId} and status = 'posted' and needs_manual_grade = true and result is null`;
       if (!rows[0]) return { ok: false, error: "Only pending tickets marked NEEDS_MANUAL_GRADE may be settled here." };
       const pick = pickFromRow(rows[0] as never);
+      let game: import("../sports/types").GameCard | undefined;
       if (data.result !== "VOID") {
         const games = await refreshSlate();
-        const game = games.find(g => g.id === pick.gameId);
+        game = games.find(g => g.id === pick.gameId);
         const { gradeTruth } = await import("../sports/truth-gate");
         if (!game || !gradeTruth(pick, game).ok) return { ok: false, error: "A verified final event and score are required." };
       }
       const { settle } = await import("../sports/grade");
       const result = data.result as import("../sports/types").PickResult;
       const { profit } = settle(pick, result);
+      const { loadRecord } = await import("./store");
+      const { buildOfficialResultPayload, serializeResultWebhookBody } = await import("../sports/discord");
+      const stubGame = {
+        id: pick.gameId,
+        sport: pick.sport,
+        league: "",
+        startAt: pick.startAt,
+        status: "final" as const,
+        away: { name: "Away", abbr: "AWAY", score: null },
+        home: { name: "Home", abbr: "HOME", score: null },
+        injuries: [],
+        weather: null,
+        odds: pick.lockedOddsJson,
+        rank: null,
+      } as unknown as import("../sports/types").GameCard;
+      const recapGame = game ?? stubGame;
+      const record = await loadRecord();
+      const { isManualSource } = await import("../sports/manual-post");
+      if (!isManualSource(pick.pickSource) && pick.ledger !== "paper") {
+        record.wins += Number(result === "WIN");
+        record.losses += Number(result === "LOSS");
+        record.pushes += Number(result === "PUSH");
+        record.units += profit;
+        record.riskedUnits = (record.riskedUnits ?? 0) + (result === "VOID" ? 0 : pick.units);
+        record.pending = Math.max(0, record.pending - 1);
+      }
+      const recap = serializeResultWebhookBody(
+        buildOfficialResultPayload({ ...pick, result, profitUnits: profit }, recapGame, result, profit, record),
+      );
       const updated = await sql<{id:number}>`update picks set status = 'graded', result = ${result}, profit_units = ${profit}, graded_at = now(),
-        settlement_evidence = ${data.evidence}, result_message = ${`REVIEWED ${result} · ${pick.selection} · ${profit.toFixed(2)}U`},
+        settlement_evidence = ${data.evidence}, result_message = ${recap},
         result_delivery = ${pick.ledger === 'paper' ? null : 'queued'}
         where id = ${pick.id} and status = 'posted' and result is null returning id`;
       if (!updated.length) return { ok: false, error: "Ticket already settled." };
