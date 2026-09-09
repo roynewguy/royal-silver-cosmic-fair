@@ -104,8 +104,10 @@ test("production MLB ranker is still v2-mlb", () => {
   const r = rankMlb(card()) ?? rankGame(card());
   if (r) assert.equal(r.model, "v2-mlb");
   assert.equal(canQueueOfficial("v3-mlb-logreg-2026-09-04"), false);
+  assert.equal(canQueueOfficial("v4-mlb-ensemble"), false);
   assert.equal(canQueueOfficial("v2-mlb"), true);
   assert.equal(isShadowModel("v3-mlb-logreg-2026-09-04"), true);
+  assert.equal(isShadowModel("v4-mlb-ensemble"), true);
 });
 
 test("prior games never include the current or future start", () => {

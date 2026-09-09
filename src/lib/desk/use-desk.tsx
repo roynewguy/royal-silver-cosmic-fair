@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, type ReactNode } from "react";
 import { toast } from "sonner";
-import { deleteDiscordPost, getDesk, lockDesk, postManualPick, postTestPreview, pushPick, refreshBoard, runDesk, saveDailyPicks, saveDeskSettings, saveWebhook, sendDiscordNote, unlockDesk } from "@/lib/desk/api";
+import { deleteDiscordPost, getDesk, lockDesk, postManualPick, postTestPreview, promoteModel, pushPick, refreshBoard, runDesk, saveDailyPicks, saveDeskSettings, saveWebhook, sendDiscordNote, unlockDesk } from "@/lib/desk/api";
 import { EMPTY_HEALTH } from "@/lib/desk/health";
 import type { DeskState, Market, Side } from "@/lib/sports/types";
 
@@ -29,6 +29,8 @@ const empty: DeskState = {
   researchModels: null,
   paperMode: false,
   paperRecord: null,
+  modelLab: null,
+  skippedToday: 0,
 };
 
 type DeskApi = {
@@ -56,6 +58,7 @@ type DeskApi = {
   saveHook: (webhookUrl: string) => void;
   saveSettings: (input: { minEdgePct: number; minConfidence: number; postLeadMinutes: number }) => void;
   setDailyPicks: (count: number) => void;
+  promote: (input: { version: string; sport: string }) => void;
   unlock: (pin: string) => void;
   lock: () => void;
   sendNote: (message: string, onSent?: () => void) => void;
@@ -205,6 +208,19 @@ function useDeskController(): DeskApi {
     },
   });
 
+  const promote = useMutation({
+    mutationFn: (input: { version: string; sport: string }) => promoteModel({ data: input }),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        toast.error(res.error ?? "Could not promote.");
+        return;
+      }
+      if ("state" in res && res.state) qc.setQueryData(["desk"], res.state);
+      toast.success(res.note ?? "Recorded. V2 stays live.");
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Promote failed."),
+  });
+
   const unlock = useMutation({
     mutationFn: (pin: string) => unlockDesk({ data: { pin } }),
     onSuccess: (res) => {
@@ -246,6 +262,7 @@ function useDeskController(): DeskApi {
     saveHook: (webhookUrl) => saveHook.mutate(webhookUrl),
     saveSettings: (input) => saveSettings.mutate(input),
     setDailyPicks: (count) => savePlays.mutate(count),
+    promote: (input) => promote.mutate(input),
     unlock: (pin) => unlock.mutate(pin),
     lock: () => lock.mutate(),
     sendNote: (message, onSent) => {

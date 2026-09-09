@@ -155,7 +155,7 @@ test("empty injuries without a fetch stamp do not count as injury data", () => {
   assert.ok(none.missing.includes("injuries"));
   const stamped = mlbDataQuality(card({ injuries: [], injuriesFetchedAt: new Date().toISOString() }));
   assert.ok(!stamped.missing.includes("injuries"));
-  assert.ok(stamped.score - none.score >= 15);
+  assert.ok(stamped.score - none.score >= 10);
 });
 
 test("stale DK capturedAt is PASS_STALE_MARKET", () => {

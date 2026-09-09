@@ -84,8 +84,8 @@ export function buildLiveTrainingRow(
       sportsbook: game.odds.book,
       homeOpen: game.odds.openHomeMl,
       awayOpen: null,
-      homeClose: game.odds.homeMl,
-      awayClose: game.odds.awayMl,
+      homeClose: null,
+      awayClose: null,
       impliedHomeClose: null,
     },
   };

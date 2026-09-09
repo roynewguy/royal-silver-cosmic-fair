@@ -9,6 +9,9 @@ import { isFreeBetaMode } from "@/lib/sports/free-beta";
 import { activeLedger, isPaperMode } from "@/lib/sports/paper-mode";
 import { buildDeskHealth } from "./health.ts";
 import { loadResearchSummary } from "@/lib/models-v3/summary";
+import { loadModelLab } from "@/lib/models-v3/lab";
+import { loadStoredShadows } from "@/lib/models-v3/challenger-board";
+import { countSkippedToday } from "@/lib/sports/pass-log";
 import type {
   DeskLog,
   DeskRecord,
@@ -562,17 +565,20 @@ export function scansFrom(games: GameCard[], picks: PickRow[]): SportScan[] {
 
 export async function readDesk(opts: { operator?: boolean } = {}): Promise<DeskState> {
   const operator = opts.operator === true;
-  const [games, picks, record, log, meta] = await Promise.all([
+  const [rawGames, picks, record, log, meta] = await Promise.all([
     loadGames(),
     loadPicks(),
     loadRecord(),
     operator ? loadLog() : Promise.resolve([]),
     loadMeta(),
   ]);
+  const games = operator ? await loadStoredShadows(rawGames) : rawGames;
   const hook = resolveWebhook(await readWebhook());
   const espnErrors = operator ? log.filter((l) => l.kind === "scan" && /error/i.test(l.message)).length : 0;
   const researchModels = operator ? await loadResearchSummary() : null;
   const paperRecord = operator ? await loadPaperRecord() : null;
+  const modelLab = operator ? await loadModelLab() : null;
+  const skippedToday = operator ? await countSkippedToday() : 0;
   return {
     record,
     games,
@@ -606,6 +612,8 @@ export async function readDesk(opts: { operator?: boolean } = {}): Promise<DeskS
     livePosting: livePostingEnabled(),
     paperMode: isPaperMode(),
     paperRecord,
+    modelLab,
+    skippedToday,
   };
 }
 

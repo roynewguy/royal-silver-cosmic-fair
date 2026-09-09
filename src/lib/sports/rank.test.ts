@@ -21,6 +21,7 @@ import {
   unitsForTier,
 } from "./rank.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
+import { selectFreePickOfDay } from "./free-pick.ts";
 
 const odds: OddsSnapshot = {
   book: "DraftKings",
@@ -467,6 +468,38 @@ test("official selectSlatePicks is LOCK-only; soft research stays off Discord", 
   assert.equal(withLock[0]?.tier, "lock");
   assert.equal(withLock[0]?.game.id, "nfl:lock");
   assert.ok(withLock.every((p) => p.tier === "lock"));
+});
+
+test("0 qualifying LOCKs → 0 official picks and 0 free bets", () => {
+  const now = new Date("2026-09-04T15:00:00-07:00");
+  const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
+  const weak = card({
+    id: "nfl:desk-only",
+    startAt: kick,
+    rank: {
+      edgePct: 1.2,
+      confidence: 52,
+      market: "spread",
+      side: "home",
+      selection: "SEA -3",
+      line: -3,
+      price: -110,
+      probability: 0.51,
+      why: "thin",
+      model: "v2-nfl",
+    },
+  });
+  assert.deepEqual(selectSlatePicks([weak], 3, 58, 3, now), []);
+  assert.equal(bestOnSlate([weak], 3, 58, now).length, 0);
+  assert.equal(
+    selectFreePickOfDay([
+      { id: 1, status: "posted", edgePct: 2.5, tier: "soft_floor" },
+      { id: 2, status: "posted", edgePct: 1.8, tier: "soft_floor" },
+      { id: 3, status: "queued", edgePct: 9, tier: "soft_floor" },
+    ]),
+    null,
+  );
+  assert.equal(selectFreePickOfDay([]), null);
 });
 
 test("research soft floor prefers up to daily target ranked by edge; official stays empty", () => {
