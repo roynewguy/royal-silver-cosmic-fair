@@ -6,7 +6,10 @@ import {
   buildTestPreviewMessage,
   discordWebhookOk,
   favoredLine,
+  officialPlayHeadline,
+  officialTierBadge,
   postWebhook,
+  resolvePickTier,
   resolveWebhook,
 } from "./discord.ts";
 import type { GameCard, PickRow } from "./types.ts";
@@ -89,7 +92,8 @@ test("play card has pick, favored %, units, score, and line", () => {
   } as GameCard;
   const msg = buildDiscordMessage(pick, game);
   assert.equal(favoredLine(pick), "BoatBoyzPicks Probability: 60%");
-  assert.match(msg, /OFFICIAL PLAY · LOCK/);
+  assert.match(msg, /🔒 \*\*LOCK\*\*/);
+  assert.match(msg, /BoatBoyzPicks OFFICIAL PLAY/);
   assert.match(msg, /\*\*Lakers ML\*\*/);
   assert.match(msg, /vs Warriors/);
   assert.match(msg, /BoatBoyzPicks Probability: 60%/);
@@ -152,7 +156,7 @@ test("soft-floor Discord payload is labeled BEST AVAILABLE / DESK PICK and alway
     reason: "",
     startAt: new Date("2026-09-04T02:30:00Z").toISOString(),
     lockedOddsJson: { book: "DraftKings", source: "odds-api", capturedAt: new Date("2026-09-04T01:00:00Z").toISOString() },
-    freezeJson: JSON.stringify({ pickTier: "soft_floor", marketProbability: 0.52 }),
+    freezeJson: JSON.stringify({ pickTier: "soft_floor", softFloor: true, marketProbability: 0.52 }),
   } as PickRow;
   const game = {
     status: "scheduled",
@@ -167,9 +171,17 @@ test("soft-floor Discord payload is labeled BEST AVAILABLE / DESK PICK and alway
     rank: null,
   } as unknown as GameCard;
   const msg = buildDiscordMessage(pick, game);
+  assert.equal(resolvePickTier(pick), "soft_floor");
+  assert.equal(officialTierBadge(pick), "📋 **BEST AVAILABLE / DESK PICK**");
+  assert.match(msg, /^📋 \*\*BEST AVAILABLE \/ DESK PICK\*\*/m);
   assert.match(msg, /BEST AVAILABLE/);
   assert.match(msg, /DESK PICK/);
+  assert.match(msg, /Soft floor/);
+  // Soft-floor must never look like LOCK: no LOCK primary badge.
+  assert.doesNotMatch(msg, /🔒\s*\*\*LOCK\*\*/);
+  assert.doesNotMatch(msg, /\*\*LOCK\*\*/);
   assert.doesNotMatch(msg, /OFFICIAL PLAY · LOCK/);
+  assert.doesNotMatch(officialPlayHeadline(pick), /\bLOCK\b/);
   assert.match(msg, /WHY BoatBoyzPicks LIKES IT/);
   assert.match(msg, /Seahawks|home|edge|slate|BoatBoyzPicks/i);
   assert.doesNotMatch(msg, /ESPN/);
@@ -195,13 +207,41 @@ test("LOCK and soft-floor headers differ when both tiers are present on the desk
     startAt: new Date("2026-09-04T02:30:00Z").toISOString(),
     lockedOddsJson: { book: "DraftKings", source: "odds-api" },
   } as PickRow;
-  const lockMsg = buildDiscordMessage({ ...base, freezeJson: JSON.stringify({ pickTier: "lock" }) } as PickRow);
-  const softMsg = buildDiscordMessage({ ...base, freezeJson: JSON.stringify({ pickTier: "soft_floor" }), units: 1, confidence: 52, modelEdge: 1.1, edgePct: 1.1 } as PickRow);
-  assert.match(lockMsg, /OFFICIAL PLAY · LOCK|BoatBoyzPicks LOCK/);
+  const lockPick = { ...base, freezeJson: JSON.stringify({ pickTier: "lock", softFloor: false }) } as PickRow;
+  const softPick = {
+    ...base,
+    freezeJson: JSON.stringify({ pickTier: "soft_floor", softFloor: true }),
+    units: 1,
+    confidence: 52,
+    modelEdge: 1.1,
+    edgePct: 1.1,
+  } as PickRow;
+  const softFloorFlagOnly = {
+    ...base,
+    freezeJson: JSON.stringify({ softFloor: true }),
+  } as PickRow;
+  const lockMsg = buildDiscordMessage(lockPick);
+  const softMsg = buildDiscordMessage(softPick);
+  const softFlagMsg = buildDiscordMessage(softFloorFlagOnly);
+
+  assert.equal(resolvePickTier(lockPick), "lock");
+  assert.equal(officialTierBadge(lockPick), "🔒 **LOCK**");
+  assert.match(lockMsg, /^🔒 \*\*LOCK\*\*/m);
+  assert.match(lockMsg, /Hard-edge qualifying play/);
   assert.doesNotMatch(lockMsg, /BEST AVAILABLE/);
-  assert.match(softMsg, /BEST AVAILABLE/);
+  assert.doesNotMatch(lockMsg, /DESK PICK/);
+
+  assert.equal(resolvePickTier(softPick), "soft_floor");
+  assert.equal(resolvePickTier(softFloorFlagOnly), "soft_floor");
+  assert.match(softMsg, /^📋 \*\*BEST AVAILABLE \/ DESK PICK\*\*/m);
+  assert.match(softFlagMsg, /^📋 \*\*BEST AVAILABLE \/ DESK PICK\*\*/m);
   assert.match(softMsg, /DESK PICK/);
-  assert.doesNotMatch(softMsg, /OFFICIAL PLAY · LOCK/);
+  assert.doesNotMatch(softMsg, /🔒\s*\*\*LOCK\*\*/);
+  assert.doesNotMatch(softMsg, /\*\*LOCK\*\*/);
+  assert.doesNotMatch(softFlagMsg, /\*\*LOCK\*\*/);
+  assert.doesNotMatch(officialPlayHeadline(softPick), /\bLOCK\b/);
+  assert.doesNotMatch(officialPlayHeadline(softFloorFlagOnly), /\bLOCK\b/);
+
   assert.match(lockMsg, /WHY BoatBoyzPicks LIKES IT/);
   assert.match(softMsg, /WHY BoatBoyzPicks LIKES IT/);
 });
