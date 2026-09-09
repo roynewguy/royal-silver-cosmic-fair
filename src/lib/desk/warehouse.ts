@@ -152,6 +152,7 @@ export async function recordClosingResult(input: {
           result = excluded.result,
           closing_price = excluded.closing_price,
           clv = excluded.clv
+        where model_predictions.result is null
       `;
     }
   });

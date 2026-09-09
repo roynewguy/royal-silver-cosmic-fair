@@ -1,6 +1,7 @@
 import { discordWebhookOk, postWebhook } from "./discord.ts";
 import { formatAmerican } from "../utils.ts";
 import type { GameCard, ModelCall } from "./types.ts";
+import { livePostingEnabled } from "../desk/production-policy.ts";
 
 export const MODEL_LAB_USERNAME = "BoatBoyz Model Lab";
 
@@ -91,6 +92,7 @@ export async function postShadowLabSlate(games: GameCard[], officialUrl?: string
 }
 
 export async function maybePostNoPlay(officialUrl: string, ptDay: string): Promise<boolean> {
+  if (!livePostingEnabled()) return false;
   if (!noPlayEnabled()) return false;
   if (!discordWebhookOk(officialUrl)) return false;
   try {

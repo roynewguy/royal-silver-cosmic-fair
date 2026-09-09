@@ -1,4 +1,3 @@
-import { resolvePickTier } from "./discord.ts";
 import type { PickRow } from "./types.ts";
 
 export const DEFAULT_DAILY_FREE_PICKS = 1;
@@ -43,11 +42,21 @@ export function selectFreePickOfDay(candidates: FreePickCandidate[]): FreePickCa
   return isDeliverable(best.status) ? best : null;
 }
 
+/** Explicit freeze pickTier=lock only. Missing freeze is not a free LOCK. */
+export function isExplicitLockTier(pick: PickRow): boolean {
+  try {
+    const frozen = JSON.parse(pick.freezeJson ?? "") as { pickTier?: string; softFloor?: boolean };
+    return frozen.pickTier === "lock" && frozen.softFloor !== true;
+  } catch {
+    return false;
+  }
+}
+
 export function freeCandidatesFromOfficial(picks: PickRow[]): FreePickCandidate[] {
   return picks.map((p) => ({
     id: p.id,
     status: p.status,
     edgePct: Number.isFinite(p.edgePct) ? p.edgePct : 0,
-    tier: resolvePickTier(p),
+    tier: isExplicitLockTier(p) ? "lock" : "soft_floor",
   }));
 }

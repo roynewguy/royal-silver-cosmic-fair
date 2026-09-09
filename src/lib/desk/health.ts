@@ -1,4 +1,5 @@
 import type { AutomationStatus, DeskHealth, ServiceLevel } from "../sports/types.ts";
+import { isShadowSoak } from "./production-policy.ts";
 
 export type { AutomationStatus, DeskHealth, ServiceLevel };
 
@@ -54,6 +55,16 @@ export function buildDeskHealth(input: {
   oddsUsed: number | null;
   freeBeta: boolean;
   now?: number;
+  lastSportsbookAt?: string | null;
+  lastOfficialPostAt?: string | null;
+  lastGradeAt?: string | null;
+  pendingGrades?: number;
+  deliveryUnknown?: number;
+  staleJobs?: number;
+  staleInjuryFeeds?: boolean;
+  staleMarketFeeds?: boolean;
+  latestAlert?: string | null;
+  shadowSoak?: boolean;
 }): DeskHealth {
   const now = input.now ?? Date.now();
   const auto = automationStatus(input.lastTickAt, now);
@@ -78,6 +89,16 @@ export function buildDeskHealth(input: {
     oddsRemaining: input.oddsRemaining,
     oddsUsed: input.oddsUsed,
     freeBeta: input.freeBeta,
+    lastSportsbookAt: input.lastSportsbookAt ?? null,
+    lastOfficialPostAt: input.lastOfficialPostAt ?? null,
+    lastGradeAt: input.lastGradeAt ?? null,
+    pendingGrades: input.pendingGrades ?? 0,
+    deliveryUnknown: input.deliveryUnknown ?? 0,
+    staleJobs: input.staleJobs ?? 0,
+    staleInjuryFeeds: input.staleInjuryFeeds ?? false,
+    staleMarketFeeds: input.staleMarketFeeds ?? false,
+    latestAlert: input.latestAlert ?? null,
+    shadowSoak: input.shadowSoak ?? isShadowSoak(),
   };
 }
 
@@ -91,4 +112,3 @@ export const EMPTY_HEALTH: DeskHealth = buildDeskHealth({
   oddsUsed: null,
   freeBeta: true,
 });
-

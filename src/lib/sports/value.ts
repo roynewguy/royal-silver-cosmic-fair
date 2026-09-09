@@ -1,5 +1,5 @@
-import { clamp, impliedFromAmerican } from "./odds.ts";
-import type { Market, PassReason } from "./types.ts";
+import { clamp, impliedFromAmerican, priceFor } from "./odds.ts";
+import type { GameCard, Market, PassReason, Side } from "./types.ts";
 
 /** Official bets need a real data-quality floor. Ranking display can still show near-misses. */
 export const OFFICIAL_MIN_QUALITY = 70;
@@ -12,6 +12,9 @@ export type BetOpportunityInput = {
   modelProbability: number;
   marketProbability: number | null;
   price: number | null;
+  opposingPrice?: number | null;
+  sportsbook?: string | null;
+  capturedAt?: string | null;
   line?: number | null;
   dataQuality: number;
   modelUncertainty: number;
@@ -48,6 +51,31 @@ export function americanProfit(odds: number): number {
 
 function orGuard(odds: number): boolean {
   return Number.isFinite(odds) && odds !== 0;
+}
+
+export function isVerifiedSportsbook(book: string | null | undefined): boolean {
+  return Boolean(book && /draft\s*kings/i.test(book));
+}
+
+export function oppositeSide(side: Side): Side {
+  if (side === "home") return "away";
+  if (side === "away") return "home";
+  if (side === "over") return "under";
+  return "over";
+}
+
+export function officialQuoteFields(game: GameCard, market: Market, side: Side): {
+  price: number | null;
+  opposingPrice: number | null;
+  sportsbook: string | null;
+  capturedAt: string | null;
+} {
+  return {
+    price: priceFor(game.odds, market, side),
+    opposingPrice: priceFor(game.odds, market, oppositeSide(side)),
+    sportsbook: game.odds.book ?? null,
+    capturedAt: game.odds.capturedAt ?? null,
+  };
 }
 
 /** EV as a percent of stake. At -110, p=0.55 → about +4.5%. Not the same as model edge. */
@@ -95,6 +123,15 @@ export function evaluateBetOpportunity(input: BetOpportunityInput): BetDecision 
   }
   if (input.price == null || !orGuard(input.price)) {
     return fail("PASS_DK_UNAVAILABLE", "No verified price.");
+  }
+  if (input.opposingPrice == null || !orGuard(input.opposingPrice)) {
+    return fail("PASS_MARKET_INCOMPLETE", "Opposing price missing. Single-sided implied is not a market.");
+  }
+  if (!isVerifiedSportsbook(input.sportsbook)) {
+    return fail("PASS_MARKET_INCOMPLETE", "Verified sportsbook required.");
+  }
+  if (!input.capturedAt || !Number.isFinite(Date.parse(input.capturedAt))) {
+    return fail("PASS_MARKET_STALE", "Market timestamp missing.");
   }
   if (input.marketProbability == null) {
     return fail("PASS_MARKET_INCOMPLETE", "Both sides of the no-vig market are required.");

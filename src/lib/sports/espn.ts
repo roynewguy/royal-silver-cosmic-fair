@@ -4,6 +4,7 @@ import { parseAmerican, parseLine } from "./odds.ts";
 import { parseInjuryBoard, type BoardInj } from "./injury-board.ts";
 import { parseInjuryStatus } from "./models/injury.ts";
 import type { GameCard, GameStatus, Injury, OddsSnapshot, Starter, TeamInfo } from "./types.ts";
+import { espnEventOk, espnScoreboardOk } from "./schema-guard.ts";
 
 type EspnCompetitor = {
   homeAway?: string;
@@ -372,9 +373,12 @@ export function espnScoreboardUrlCount(now = new Date()): number {
 }
 
 function absorb(payload: unknown, league: LeagueConfig, byId: Map<string, GameCard>, fetchedAt = new Date().toISOString()) {
-  const events = (payload as { events?: EspnEvent[] })?.events;
-  if (!Array.isArray(events)) { scanStats.errors.push(`${league.id}: scoreboard schema unavailable`); return; }
+  const guard = espnScoreboardOk(payload);
+  if (!guard.ok) { scanStats.errors.push(`${league.id}: ${guard.detail}`); return; }
+  const events = (payload as { events?: EspnEvent[] }).events ?? [];
   for (const event of events) {
+    const eventGuard = espnEventOk(event);
+    if (!eventGuard.ok) { scanStats.errors.push(`${league.id}: ${eventGuard.detail}`); continue; }
     for (const game of eventToGames(event, league, fetchedAt)) {
       byId.set(game.id, game);
     }

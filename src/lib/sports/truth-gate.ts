@@ -50,11 +50,11 @@ export function startersChanged(queued: QueuedContext, live: GameCard): boolean 
 }
 
 export function startersMissingInWindow(live: GameCard, now = Date.now()): boolean {
-  if (live.league !== "mlb") return false;
+  if (live.league !== "mlb" && live.league !== "nhl") return false;
   const start = new Date(live.startAt).getTime();
   if (!Number.isFinite(start) || start - now > STARTER_WINDOW_MS || start <= now) return false;
   return [live.home.starter?.name, live.away.starter?.name].some(
-    name => !name?.trim() || /^(probable( starting)? pitcher|starting pitcher|tbd|unknown|undecided)$/i.test(name.trim()),
+    name => !name?.trim() || /^(probable( starting)? (pitcher|goalie)|starting (pitcher|goalie)|tbd|unknown|undecided|goalie)$/i.test(name.trim()),
   );
 }
 
@@ -123,20 +123,26 @@ export function prePostTruthCheck(input: {
   if (!LEAGUE_BY_ID[live.league]?.official || !isFreshTimestamp(live.fetchedAt, 15 * 60_000, now)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Unapproved model or stale game data" };
   // Legacy queue tiers must never weaken the official/paper truth gate.
   if (!isFreshTimestamp(live.injuriesFetchedAt, 180 * 60_000, now)) {
-    return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Injury report was not successfully fetched" };
+    return { ok: false, reason: "PASS_INJURY_UNCONFIRMED", detail: "Injury report was not successfully fetched" };
   }
   if (!isDraftKingsLine(live.odds)) return { ok: false, reason: "PASS_DK_UNAVAILABLE", detail: "Line is not verified DraftKings." };
   const dkAge = live.odds.capturedAt ? now - new Date(live.odds.capturedAt).getTime() : null;
   if (!isFreshOfficialDkCache(dkAge)) return { ok: false, reason: "PASS_DK_STALE", detail: "DraftKings capturedAt too old." };
 
   if (startersMissingInWindow(live, now)) {
-    return { ok: false, reason: "PASS_MISSING_STARTER", detail: "Both MLB starters required in the post window." };
+    return { ok: false, reason: "PASS_MISSING_STARTER", detail: live.league === "nhl" ? "Both NHL starting goalies required in the post window." : "Both MLB starters required in the post window." };
   }
   if (live.league === "mlb" && liveStart - now <= STARTER_WINDOW_MS &&
       (!isFreshTimestamp(live.startersFetchedAt, 15 * 60_000, now) ||
        live.home.starter?.era == null || live.away.starter?.era == null ||
        !Number.isFinite(live.home.starter.era) || !Number.isFinite(live.away.starter.era))) {
-    return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Fresh starter identities and pitching inputs required" };
+    return { ok: false, reason: "PASS_STARTER_UNCONFIRMED", detail: "Fresh starter identities and pitching inputs required" };
+  }
+  if (live.league === "nhl" && liveStart - now <= STARTER_WINDOW_MS &&
+      (!isFreshTimestamp(live.startersFetchedAt, 15 * 60_000, now) ||
+       live.home.starter?.savePct == null || live.away.starter?.savePct == null ||
+       !Number.isFinite(live.home.starter.savePct) || !Number.isFinite(live.away.starter.savePct))) {
+    return { ok: false, reason: "PASS_STARTER_UNCONFIRMED", detail: "Fresh starting goalie identities and save% required" };
   }
   if (startersChanged(queued, live) && startersMissingInWindow(live, now)) {
     return { ok: false, reason: "PASS_STARTER_CHANGED", detail: "Starter changed and current arms are missing." };
@@ -203,6 +209,7 @@ export function prePostTruthCheck(input: {
     rawMarketProbability: rank.rawImplied,
     sourceFetchedAt: live.fetchedAt,
     pickTier: rank.pickTier,
+    opposingPrice: otherPrice,
   });
   if (freeze.llmFacts !== false) return { ok: false, reason: "PASS_DATA_CONFLICT", detail: "LLM facts blocked on freeze." };
   return { ok: true, rank, freeze, units, selection, lockedOdds, lockedLine };

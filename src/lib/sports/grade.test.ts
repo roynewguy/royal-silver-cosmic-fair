@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { gradePick } from "./grade.ts";
+import { gradeOutcome, gradePick, ledgerResult } from "./grade.ts";
 import type { GameCard, OddsSnapshot, PickRow } from "./types.ts";
 
 const odds: OddsSnapshot = {
@@ -127,12 +127,18 @@ test("NFL moneyline tie is a push", () => {
 
 test("postponed game voids the ticket", () => {
   assert.equal(gradePick(pick(), game({ status: "postponed" })), null);
+  assert.equal(gradeOutcome(pick(), game({ status: "postponed" })), "POSTPONED");
+  assert.equal(ledgerResult("POSTPONED"), "VOID");
 });
 
 test("cancelled game voids the ticket", () => {
   assert.equal(gradePick(pick(), game({ status: "cancelled" })), null);
+  assert.equal(gradeOutcome(pick(), game({ status: "cancelled" })), "CANCELLED");
+  assert.equal(ledgerResult("CANCELLED"), "VOID");
 });
 
 test("in-progress does not grade", () => {
   assert.equal(gradePick(pick(), game({ status: "in_progress" })), null);
+  assert.equal(gradeOutcome(pick(), game({ status: "in_progress" })), "UNRESOLVED");
+  assert.equal(ledgerResult("UNRESOLVED"), null);
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -105,6 +106,10 @@ export function HomeBoard() {
           <Service label="Discord" level={health.discord} note={health.discordLabel} />
           <Service label="DraftKings" level={health.odds} note={health.oddsLabel} />
         </div>
+        <p className="mt-2 text-xs text-subtle">
+          Pending grades {health.pendingGrades} · delivery_unknown {health.deliveryUnknown} ·{" "}
+          <Link to="/health" className="text-accent underline-offset-2 hover:underline">Full health board</Link>
+        </p>
       </section>
 
       <section>

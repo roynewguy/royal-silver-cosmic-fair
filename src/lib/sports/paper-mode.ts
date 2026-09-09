@@ -1,7 +1,10 @@
+import { isShadowSoak } from "../desk/production-policy.ts";
+
 export const PAPER_LEDGER = "paper";
 export const OFFICIAL_LEDGER = "official";
 
 export function isPaperMode(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (isShadowSoak(env)) return true;
   const v = env.PAPER_MODE?.trim().toLowerCase();
   return v === "true" || v === "1" || v === "yes" || v === "on";
 }

@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdvancedRouteImport } from './routes/advanced'
 import { Route as LedgerRouteImport } from './routes/ledger'
 import { Route as ModelsRouteImport } from './routes/models'
+import { Route as HealthRouteImport } from './routes/health'
 import { Route as RecordRouteImport } from './routes/record'
 import { Route as SlateRouteImport } from './routes/slate'
 import { Route as ApiCronTickRouteImport } from './routes/api/cron/tick'
@@ -37,6 +38,11 @@ const ModelsRoute = ModelsRouteImport.update({
   path: '/models',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HealthRoute = HealthRouteImport.update({
+  id: '/health',
+  path: '/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RecordRoute = RecordRouteImport.update({
   id: '/record',
   path: '/record',
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/advanced': typeof AdvancedRoute
   '/ledger': typeof LedgerRoute
   '/models': typeof ModelsRoute
+  '/health': typeof HealthRoute
   '/record': typeof RecordRoute
   '/slate': typeof SlateRoute
   '/api/cron/tick': typeof ApiCronTickRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/advanced': typeof AdvancedRoute
   '/ledger': typeof LedgerRoute
   '/models': typeof ModelsRoute
+  '/health': typeof HealthRoute
   '/record': typeof RecordRoute
   '/slate': typeof SlateRoute
   '/api/cron/tick': typeof ApiCronTickRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/advanced': typeof AdvancedRoute
   '/ledger': typeof LedgerRoute
   '/models': typeof ModelsRoute
+  '/health': typeof HealthRoute
   '/record': typeof RecordRoute
   '/slate': typeof SlateRoute
   '/api/cron/tick': typeof ApiCronTickRoute
@@ -84,15 +93,16 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/advanced' | '/ledger' | '/models' | '/record' | '/slate' | '/api/cron/tick'
+    '/' | '/advanced' | '/ledger' | '/models' | '/health' | '/record' | '/slate' | '/api/cron/tick'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/advanced' | '/ledger' | '/models' | '/record' | '/slate' | '/api/cron/tick'
+  to: '/' | '/advanced' | '/ledger' | '/models' | '/health' | '/record' | '/slate' | '/api/cron/tick'
   id:
     | '__root__'
     | '/'
     | '/advanced'
     | '/ledger'
     | '/models'
+    | '/health'
     | '/record'
     | '/slate'
     | '/api/cron/tick'
@@ -103,6 +113,7 @@ export interface RootRouteChildren {
   AdvancedRoute: typeof AdvancedRoute
   LedgerRoute: typeof LedgerRoute
   ModelsRoute: typeof ModelsRoute
+  HealthRoute: typeof HealthRoute
   RecordRoute: typeof RecordRoute
   SlateRoute: typeof SlateRoute
   ApiCronTickRoute: typeof ApiCronTickRoute
@@ -138,6 +149,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ModelsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/health': {
+      id: '/health'
+      path: '/health'
+      fullPath: '/health'
+      preLoaderRoute: typeof HealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/record': {
       id: '/record'
       path: '/record'
@@ -167,6 +185,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdvancedRoute: AdvancedRoute,
   LedgerRoute: LedgerRoute,
   ModelsRoute: ModelsRoute,
+  HealthRoute: HealthRoute,
   RecordRoute: RecordRoute,
   SlateRoute: SlateRoute,
   ApiCronTickRoute: ApiCronTickRoute,

@@ -398,7 +398,7 @@ test("legacy softFloor cannot bypass missing injuries or low data quality", () =
     now,
   });
   assert.equal(soft.ok, false);
-  if (!soft.ok) assert.equal(soft.reason, "PASS_CRITICAL_DATA_MISSING");
+  if (!soft.ok) assert.equal(soft.reason, "PASS_INJURY_UNCONFIRMED");
   game.injuriesFetchedAt = new Date(now).toISOString();
   const lowQuality = prePostTruthCheck({ queued: queued(game), live: game,
     rank: baseRank, minEdge: 3, minConf: 58, softFloor: true, now });
@@ -452,4 +452,16 @@ test("LOCK freezes flat 1u even at high confidence; soft_floor freezes 0.5u", ()
     assert.equal(soft.rank.pickTier, "soft_floor");
     assert.equal(soft.freeze.pickTier, "soft_floor");
   }
+});
+
+test("NHL starting goalie is required in the post window", () => {
+  const g = live({
+    league: "nhl",
+    sport: "NHL",
+    home: { name: "Kraken", abbr: "SEA", logo: null, score: null, record: "1-0", homeSplit: null, roadSplit: null, starter: { name: "Grubauer", era: null, whip: null, savePct: 0.91, position: "G" } },
+    away: { name: "Kings", abbr: "LAK", logo: null, score: null, record: "1-0", homeSplit: null, roadSplit: null, starter: { name: "TBD", era: null, whip: null, savePct: null, position: "G" } },
+  });
+  const result = prePostTruthCheck({ queued: queued(g), live: g, rank: rank(), minEdge: 3, minConf: 58, now });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.reason, "PASS_MISSING_STARTER");
 });

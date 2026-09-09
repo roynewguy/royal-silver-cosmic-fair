@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dailyFreePickTarget, selectFreePickOfDay, type FreePickCandidate } from "./free-pick.ts";
+import { dailyFreePickTarget, isExplicitLockTier, selectFreePickOfDay, type FreePickCandidate } from "./free-pick.ts";
 import { channelWebhook } from "./discord-routing.ts";
 
 const hook = (id: string) => `https://discord.com/api/webhooks/${id}/token`;
@@ -53,4 +53,11 @@ test("free webhook is isolated from VIP picks and other roles", () => {
   assert.equal(channelWebhook("picks", "", env), picks);
   assert.equal(channelWebhook("free", "", { ...env, DISCORD_FREE_PICKS_WEBHOOK: picks }), "");
   assert.equal(channelWebhook("picks", "", { ...env, DISCORD_FREE_PICKS_WEBHOOK: picks }), "");
+});
+
+test("missing freeze pickTier is not a free LOCK", () => {
+  assert.equal(isExplicitLockTier({ freezeJson: null } as import("./types.ts").PickRow), false);
+  assert.equal(isExplicitLockTier({ freezeJson: "{}" } as import("./types.ts").PickRow), false);
+  assert.equal(isExplicitLockTier({ freezeJson: JSON.stringify({ pickTier: "soft_floor" }) } as import("./types.ts").PickRow), false);
+  assert.equal(isExplicitLockTier({ freezeJson: JSON.stringify({ pickTier: "lock" }) } as import("./types.ts").PickRow), true);
 });

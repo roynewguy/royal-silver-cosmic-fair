@@ -27,6 +27,8 @@ export type PickStatus = "queued" | "posting" | "posted" | "skipped" | "graded" 
 
 export type PickResult = "WIN" | "LOSS" | "PUSH" | "VOID";
 
+export type GradeOutcome = "WIN" | "LOSS" | "PUSH" | "VOID" | "POSTPONED" | "CANCELLED" | "UNRESOLVED";
+
 export type OddsSnapshot = {
   book: string;
   details: string | null;
@@ -323,6 +325,16 @@ export type DeskHealth = {
   oddsRemaining: number | null;
   oddsUsed: number | null;
   freeBeta: boolean;
+  lastSportsbookAt: string | null;
+  lastOfficialPostAt: string | null;
+  lastGradeAt: string | null;
+  pendingGrades: number;
+  deliveryUnknown: number;
+  staleJobs: number;
+  staleInjuryFeeds: boolean;
+  staleMarketFeeds: boolean;
+  latestAlert: string | null;
+  shadowSoak: boolean;
 };
 
 export type DeskState = {
@@ -425,4 +437,3 @@ export type ModelLabState = {
   livePostingLockedToV2: true;
   passReasons: Array<{ reason: string; n: number }>;
 };
-

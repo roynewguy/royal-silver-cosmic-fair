@@ -3,6 +3,7 @@ import { dataQualityFor, marketAgeMs } from "../sports/data-quality.ts";
 import { evaluateBetOpportunity, expectedValuePct, uncertaintyFromQuality } from "../sports/value.ts";
 import { canQueueOfficial, challengerVersion } from "./registry.ts";
 import { applySportAdjust } from "./sport-adjust.ts";
+import { mlbShadowFeatures } from "./mlb-shadow-features.ts";
 import type { GameCard, ModelCall } from "../sports/types.ts";
 import type { ShadowCall } from "./shadow.ts";
 
@@ -41,6 +42,7 @@ export function v4Predict(
   const marketProbability = pickHome ? mkt.noVigA : mkt.noVigB;
   const quality = dataQualityFor(game, now);
   const disagreement = v3 ? Math.abs(v2HomeProb - v3.probability) : 0;
+  const mlb = game.league === "mlb" ? mlbShadowFeatures(game) : null;
   const uncertainty = uncertaintyFromQuality({
     dataQuality: quality.score,
     missingCount: quality.missing.length,
@@ -51,8 +53,11 @@ export function v4Predict(
     modelProbability: probability,
     marketProbability,
     price,
+    opposingPrice: pickHome ? game.odds.awayMl : game.odds.homeMl,
+    sportsbook: game.odds.book,
+    capturedAt: game.odds.capturedAt,
     dataQuality: quality.score,
-    modelUncertainty: Math.max(uncertainty, adjusted.adjust.shrink * 0.5),
+    modelUncertainty: Math.max(uncertainty, adjusted.adjust.shrink * 0.5, mlb?.uncertaintyBump ?? 0),
     marketAgeMs: marketAgeMs(game, now),
     sport: game.league,
     marketType: "moneyline",
