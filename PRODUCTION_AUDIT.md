@@ -64,6 +64,7 @@ Writeups are deterministic prose and short bullets from the current structured f
 | DISCORD_ALERT_WEBHOOK | Private #bot-health | Legacy OPERATOR_WEBHOOK_URL only |
 | DISCORD_TEST_WEBHOOK | #test-lab previews and test notes | None |
 | DISCORD_MANUAL_WEBHOOK | Optional separate operator-selected play feed | Test-lab only |
+| DISCORD_FREE_PICKS_WEBHOOK | #free-picks, max 1 free-of-day LOCK-or-DESK gold embed | None |
 
 One `postWebhook` sender is shared. Alert/customer webhook identity collisions are rejected, including URL-query aliases. Results and tests do not fall back to picks. Manual tools cannot use the automated picks webhook. Webhook IDs are not Discord channel IDs: two different webhook IDs could still target the same channel. Verify destination channels and private permissions in Discord before launch. No live webhook values were exposed or changed in this audit.
 
@@ -94,7 +95,7 @@ Paper uses the same scan/rank/queue/verify/truth/freeze/grade pipeline with a si
 
 **GitHub Actions authentication:** the current main branch added signed GitHub OIDC, which is preserved. Only this repository tick workflow on main is accepted. No repository secrets are required with OIDC. Optional overrides: `APP_URL` (production origin, no path) and `CRON_SECRET` (exactly the deployed value).
 
-**Vercel Production:** `DATABASE_URL` (persistent PostgreSQL), `CRON_SECRET`, `ODDS_API_KEY`, `BOATBOYZ_PIN`, `FREE_BETA_MODE`, `DAILY_PICK_TARGET`, `BOATBOYZ_LIVE_POSTING`, `PAPER_MODE`, plus the four separated webhook settings above. Optional manual webhook and legacy picks fallback are documented in `.env.example`. LLM keys are not required for official operation. No payment integration was added.
+**Vercel Production:** `DATABASE_URL` (persistent PostgreSQL), `CRON_SECRET`, `ODDS_API_KEY`, `BOATBOYZ_PIN`, `FREE_BETA_MODE`, `DAILY_PICK_TARGET`, `DAILY_FREE_PICK_TARGET`, `BOATBOYZ_LIVE_POSTING`, `PAPER_MODE`, plus the separated webhook settings above (including `DISCORD_FREE_PICKS_WEBHOOK` for #free-picks). Optional manual webhook and legacy picks fallback are documented in `.env.example`. LLM keys are not required for official operation. No payment integration was added.
 
 Use `FREE_BETA_MODE=true`, `DAILY_PICK_TARGET=3`, `PAPER_MODE=true`, `BOATBOYZ_LIVE_POSTING=false` for initial forward paper operation. Free beta reduces board-wide odds calls; it does not relax fresh-DK or truth gates. Do not promise continuous use fits a free Odds API quota: each verification consumes provider quota, and capacity must be measured. Exhaustion means PASS/private alert.
 
