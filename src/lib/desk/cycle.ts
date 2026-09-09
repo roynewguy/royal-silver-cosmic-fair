@@ -33,7 +33,7 @@ import { automationStatus } from "./health";
 import { isFreeBetaMode } from "@/lib/sports/free-beta";
 import { isPaperLedger, paperLockMessage, paperSimulateSend, activeLedger } from "@/lib/sports/paper-mode";
 import { isDraftKingsLine, mergeDraftKingsOdds } from "@/lib/sports/odds-api";
-import { dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, selectSlatePicks, unitsForTier } from "@/lib/sports/rank";
+import { dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, selectSlatePicks, softFloorOnSlate, unitsForTier } from "@/lib/sports/rank";
 import { formatWhy } from "@/lib/sports/why";
 import { confirmDraftKings, pruneFreeBetaCaches, readDkCache } from "./dk-verify";
 import { recordClosingResult, recordPostedPrediction, recordPregameSnapshots } from "./warehouse";
@@ -481,30 +481,21 @@ export async function postPickById(
 
 export async function prefetchDueDraftKings(games: GameCard[], minEdge: number, minConf: number, lead: number, maxDailyPicks = 3): Promise<GameCard[]> {
   const next = new Map(games.map(g => [g.id, g]));
+  // Official path: LOCK-only slate. Soft/DESK is research-only and never kept alive for Discord.
   const slate = selectSlatePicks(games, minEdge, minConf, dailyPickTarget(maxDailyPicks));
-  for (const { game, tier } of slate) {
+  for (const { game } of slate) {
     if (Date.parse(game.startAt) - Date.now() > lead * 60_000 || !game.rank) continue;
-    const softFloor = tier === "soft_floor";
     const verified = await confirmDraftKings(game, game.rank.market);
     if (verified.ok) {
       const ranked = rankGame(verified.game);
       const checked = prePostTruthCheck({ queued: {
         gameId: game.id, league: game.league, homeName: game.home.name, awayName: game.away.name,
-        startAt: game.startAt, market: game.rank.market, softFloor, pickTier: softFloor ? "soft_floor" : "lock",
-      }, live: verified.game, rank: ranked ? { ...ranked, pickTier: softFloor ? "soft_floor" : "lock" } : null, minEdge, minConf, softFloor });
-      // Soft-floor: never poison the priced ticket with a hard PASS before selectOfficialCard.
-      // Hard locks still stamp passReason so they fall through to soft floor when appropriate.
-      let nextRank = checked.ok ? checked.rank : ranked ? { ...ranked, passReason: checked.reason } : null;
-      if (!checked.ok && softFloor && game.rank) {
-        nextRank = { ...game.rank, pickTier: "soft_floor" };
-      }
+        startAt: game.startAt, market: game.rank.market, softFloor: false, pickTier: "lock",
+      }, live: verified.game, rank: ranked ? { ...ranked, pickTier: "lock" } : null, minEdge, minConf, softFloor: false });
+      const nextRank = checked.ok ? checked.rank : ranked ? { ...ranked, passReason: checked.reason } : null;
       const fresh = { ...verified.game, rank: nextRank };
       verifiedThisTick.set(fresh, Date.now());
       next.set(game.id, fresh);
-    } else if (softFloor && game.rank) {
-      // Keep soft-floor selection alive; post path re-verifies DK.
-      next.set(game.id, { ...game, rank: { ...game.rank, pickTier: "soft_floor" } });
-      await recordEvent(verified.error.includes("AMBIGUOUS") ? "ambiguous_match" : "dk_failure", verified.error);
     } else {
       next.set(game.id, { ...game, rank: game.rank ? { ...game.rank, passReason: "PASS_DK_UNAVAILABLE" } : null });
       await recordEvent(verified.error.includes("AMBIGUOUS") ? "ambiguous_match" : "dk_failure", verified.error);
@@ -537,7 +528,6 @@ export async function selectOfficialCard(
 ): Promise<number> {
   const target = dailyPickTarget(maxDailyPicks);
   const slate = selectSlatePicks(games, minEdge, minConf, target);
-  const tierById = new Map(slate.map((s) => [s.game.id, s.tier]));
   const ranked = slate.map((s) => s.game);
   const committed = await loadTodayOfficial();
   const plan = planDailyCard(
@@ -561,11 +551,15 @@ export async function selectOfficialCard(
   }
 
   if (plan.keepIds.length === 0 && plan.remaining > 0) {
-    await addLog("skip", `PASS: no lock or soft-floor candidates on live slate (target ${target}).`);
-  } else if (wanted.some((g) => tierById.get(g.id) === "soft_floor")) {
-    const softN = wanted.filter((g) => tierById.get(g.id) === "soft_floor").length;
-    const lockN = wanted.length - softN;
-    await addLog("research", `Card mix · ${lockN} LOCK · ${softN} BEST AVAILABLE / DESK PICK (target ${target}).`);
+    const softN = softFloorOnSlate(games, minEdge, minConf).length;
+    if (softN > 0) {
+      await addLog(
+        "research",
+        `PASS (correct): ${softN} DESK/BEST AVAILABLE research-only — no LOCK cleared truth gate; not queued to Discord (target ${target} max).`,
+      );
+    } else {
+      await addLog("skip", `PASS: no LOCK candidates on live slate (target ${target} max).`);
+    }
   }
 
   const existingByGame = await loadLatestPicksByGames(wanted.map((g) => g.id));
@@ -578,11 +572,11 @@ export async function selectOfficialCard(
     const existing = existingByGame.get(game.id) ?? null;
     if (existing && (existing.status === "posted" || existing.status === "graded" || existing.status === "posting")) continue;
 
-    const tier = tierById.get(game.id) ?? rank.pickTier ?? "lock";
+    // Official auto-queue is LOCK-only; soft_floor never bypasses truth gate onto Discord.
     const reason = formatWhy(game, rank).trim().slice(0, 1000);
     const confidence = Math.round(rank.confidence);
-    const units = unitsForTier(tier === "soft_floor" ? "soft_floor" : "lock");
-    const postAt = queuePostAt(tier, game.startAt, leadMinutes);
+    const units = unitsForTier("lock");
+    const postAt = queuePostAt("lock", game.startAt, leadMinutes);
     const matchup = `${game.away.abbr} @ ${game.home.abbr}`;
     const key = officialKey(game.league, game.id);
     const snapshot = JSON.stringify(game.odds);
@@ -593,8 +587,8 @@ export async function selectOfficialCard(
       homeStarter: game.home.starter?.name ?? null,
       awayStarter: game.away.starter?.name ?? null,
       startAt: game.startAt,
-      pickTier: tier,
-      softFloor: tier === "soft_floor",
+      pickTier: "lock",
+      softFloor: false,
     });
     if (existing && (existing.status === "queued" || existing.status === "skipped") && !existing.freezeJson) {
       await sql`

@@ -282,7 +282,7 @@ test("target below already-posted count queues nothing new", () => {
   assert.equal(plan.lockedCount, 2);
 });
 
-test("soft floor fills Discord when hard edge clears nothing", () => {
+test("soft floor is research-only — does not fill Discord when hard edge clears nothing", () => {
   const now = new Date("2026-09-04T15:00:00-07:00");
   const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
   const weak = card({
@@ -306,14 +306,12 @@ test("soft floor fills Discord when hard edge clears nothing", () => {
   });
   assert.equal(bestOnSlate([weak], 3, 58, now).length, 0);
   assert.equal(softFloorOnSlate([weak], 3, 58, now).length, 1);
-  const slate = selectSlatePicks([weak], 3, 58, 3, now);
-  assert.equal(slate.length, 1);
-  assert.equal(slate[0]?.tier, "soft_floor");
-  assert.equal(slate[0]?.game.rank?.pickTier, "soft_floor");
-  assert.equal(slate[0]?.game.rank?.price, -120);
+  assert.equal(softFloorOnSlate([weak], 3, 58, now)[0]?.rank?.price, -120);
+  // Official card: zero locks = PASS (correct). Target is max, not a floor.
+  assert.deepEqual(selectSlatePicks([weak], 3, 58, 3, now), []);
 });
 
-test("locks win the card; soft floor only engages when hard gate is empty", () => {
+test("locks win the card; soft floor never engages for official Discord when hard gate is empty", () => {
   const now = new Date("2026-09-04T15:00:00-07:00");
   const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
   const lock = card({
@@ -355,12 +353,11 @@ test("locks win the card; soft floor only engages when hard gate is empty", () =
   assert.equal(withLock.length, 1);
   assert.equal(withLock[0]?.tier, "lock");
   assert.equal(withLock[0]?.game.id, "nba:lock");
-  const softOnly = selectSlatePicks([soft], 3, 58, 3, now);
-  assert.equal(softOnly.length, 1);
-  assert.equal(softOnly[0]?.tier, "soft_floor");
+  assert.equal(softFloorOnSlate([soft], 3, 58, now).length, 1);
+  assert.deepEqual(selectSlatePicks([soft], 3, 58, 3, now), []);
 });
 
-test("soft floor prefers up to DAILY_PICK_TARGET best available", () => {
+test("research soft floor ranks up to target; official selectSlatePicks stays empty", () => {
   const now = new Date("2026-09-04T15:00:00-07:00");
   const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
   const mk = (id: string, edge: number) =>
@@ -383,13 +380,14 @@ test("soft floor prefers up to DAILY_PICK_TARGET best available", () => {
         passReason: "PASS_EDGE_TOO_SMALL",
       },
     });
-  const slate = selectSlatePicks([mk("a", 2.5), mk("b", 1.8), mk("c", 1.2), mk("d", 0.4)], 3, 58, 3, now);
-  assert.equal(slate.length, 3);
-  assert.ok(slate.every((s) => s.tier === "soft_floor"));
-  assert.deepEqual(slate.map((s) => s.game.id), ["a", "b", "c"]);
+  const games = [mk("a", 2.5), mk("b", 1.8), mk("c", 1.2), mk("d", 0.4)];
+  const research = softFloorOnSlate(games, 3, 58, now).slice(0, 3);
+  assert.equal(research.length, 3);
+  assert.deepEqual(research.map((g) => g.id), ["a", "b", "c"]);
+  assert.deepEqual(selectSlatePicks(games, 3, 58, 3, now), []);
 });
 
-test("soft floor accepts PASS_LOW_DATA_QUALITY when a real price exists", () => {
+test("research soft floor accepts PASS_LOW_DATA_QUALITY when a real price exists; official stays empty", () => {
   const now = new Date("2026-09-04T15:00:00-07:00");
   const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
   const weak = card({
@@ -413,10 +411,10 @@ test("soft floor accepts PASS_LOW_DATA_QUALITY when a real price exists", () => 
     },
   });
   assert.equal(bestOnSlate([weak], 3, 58, now).length, 0);
-  const slate = selectSlatePicks([weak], 3, 58, 3, now);
-  assert.equal(slate.length, 1);
-  assert.equal(slate[0]?.tier, "soft_floor");
-  assert.equal(slate[0]?.game.rank?.price, -118);
+  const research = softFloorOnSlate([weak], 3, 58, now);
+  assert.equal(research.length, 1);
+  assert.equal(research[0]?.rank?.price, -118);
+  assert.deepEqual(selectSlatePicks([weak], 3, 58, 3, now), []);
 });
 
 test("empty slate day still returns no soft floor", () => {
@@ -425,7 +423,7 @@ test("empty slate day still returns no soft floor", () => {
 });
 
 
-test("soft floor activates only when hard gate is empty", () => {
+test("official selectSlatePicks is LOCK-only; soft research stays off Discord", () => {
   const now = new Date("2026-09-04T15:00:00-07:00");
   const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
   const weak = card({
@@ -461,10 +459,8 @@ test("soft floor activates only when hard gate is empty", () => {
     },
   });
   assert.equal(bestOnSlate([weak], 3, 58, now).length, 0);
-  const softOnly = selectSlatePicks([weak], 3, 58, 3, now);
-  assert.equal(softOnly.length, 1);
-  assert.equal(softOnly[0]?.tier, "soft_floor");
-  assert.equal(softOnly[0]?.game.rank?.pickTier, "soft_floor");
+  assert.equal(softFloorOnSlate([weak], 3, 58, now).length, 1);
+  assert.deepEqual(selectSlatePicks([weak], 3, 58, 3, now), []);
 
   const withLock = selectSlatePicks([weak, lock], 3, 58, 3, now);
   assert.equal(withLock.length, 1);
@@ -473,7 +469,7 @@ test("soft floor activates only when hard gate is empty", () => {
   assert.ok(withLock.every((p) => p.tier === "lock"));
 });
 
-test("soft floor prefers up to daily target ranked by edge", () => {
+test("research soft floor prefers up to daily target ranked by edge; official stays empty", () => {
   const now = new Date("2026-09-04T15:00:00-07:00");
   const kick = new Date("2026-09-04T20:00:00-07:00").toISOString();
   const mk = (id: string, edge: number) =>
@@ -493,10 +489,11 @@ test("soft floor prefers up to daily target ranked by edge", () => {
         model: "v2-nfl",
       },
     });
-  const picks = selectSlatePicks([mk("a", 0.5), mk("b", 2.2), mk("c", 1.1), mk("d", 1.8)], 3, 58, 3, now);
-  assert.equal(picks.length, 3);
-  assert.deepEqual(picks.map((p) => p.game.id), ["b", "d", "c"]);
-  assert.ok(picks.every((p) => p.tier === "soft_floor"));
+  const games = [mk("a", 0.5), mk("b", 2.2), mk("c", 1.1), mk("d", 1.8)];
+  const research = softFloorOnSlate(games, 3, 58, now).slice(0, 3);
+  assert.equal(research.length, 3);
+  assert.deepEqual(research.map((g) => g.id), ["b", "d", "c"]);
+  assert.deepEqual(selectSlatePicks(games, 3, 58, 3, now), []);
 });
 
 test("empty slate stays empty even with soft floor", () => {
@@ -504,7 +501,7 @@ test("empty slate stays empty even with soft floor", () => {
   assert.deepEqual(selectSlatePicks([], 3, 58, 3, now), []);
 });
 
-test("Sat night PT falls back to Sunday loaded slate for soft floor", () => {
+test("Sat night PT falls back to Sunday loaded slate for research soft floor; official stays PASS", () => {
   // Production repro: Sat ~19:30 PT, today's tips already started, 97 games include Sunday NFL.
   const now = new Date("2026-09-05T19:30:00-07:00");
   const startedToday = new Date("2026-09-05T13:00:00-07:00").toISOString();
@@ -546,14 +543,14 @@ test("Sat night PT falls back to Sunday loaded slate for soft floor", () => {
   });
   assert.equal(liveSlateGames([started, weakSunday], now).map((g) => g.id).join(","), "nfl:sun");
   assert.equal(bestOnSlate([started, weakSunday], 3, 58, now).length, 0);
-  const slate = selectSlatePicks([started, weakSunday], 3, 58, 3, now);
-  assert.equal(slate.length, 1);
-  assert.equal(slate[0]?.tier, "soft_floor");
-  assert.equal(slate[0]?.game.id, "nfl:sun");
-  assert.equal(slate[0]?.game.rank?.price, -110);
+  const research = softFloorOnSlate([started, weakSunday], 3, 58, now);
+  assert.equal(research.length, 1);
+  assert.equal(research[0]?.id, "nfl:sun");
+  assert.equal(research[0]?.rank?.price, -110);
+  assert.deepEqual(selectSlatePicks([started, weakSunday], 3, 58, 3, now), []);
 });
 
-test("soft floor stays on today when future PT tips remain", () => {
+test("research soft floor stays on today when future PT tips remain; official stays PASS", () => {
   const now = new Date("2026-09-05T16:00:00-07:00");
   const tonight = new Date("2026-09-05T20:00:00-07:00").toISOString();
   const sunday = new Date("2026-09-06T13:00:00-07:00").toISOString();
@@ -593,10 +590,10 @@ test("soft floor stays on today when future PT tips remain", () => {
       passReason: "PASS_EDGE_TOO_SMALL",
     },
   });
-  const slate = selectSlatePicks([todayWeak, sundayStronger], 3, 58, 3, now);
-  assert.equal(slate.length, 1);
-  assert.equal(slate[0]?.game.id, "ncaaf:tonight");
-  assert.equal(slate[0]?.tier, "soft_floor");
+  const research = softFloorOnSlate([todayWeak, sundayStronger], 3, 58, now);
+  assert.equal(research.length, 1);
+  assert.equal(research[0]?.id, "ncaaf:tonight");
+  assert.deepEqual(selectSlatePicks([todayWeak, sundayStronger], 3, 58, 3, now), []);
 });
 
 test("unitsForTier: LOCK is flat 1u; soft_floor / DESK is 0.5u", () => {
