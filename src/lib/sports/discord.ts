@@ -253,19 +253,28 @@ export function resolvePickTier(pick: PickRow): "lock" | "soft_floor" {
   return "lock";
 }
 
+/**
+ * Loud primary badge for official Discord posts.
+ * Soft-floor must NEVER emit a LOCK badge — only BEST AVAILABLE / DESK PICK.
+ * LOCK only when pickTier is lock and softFloor is not true.
+ */
+export function officialTierBadge(pick: PickRow): string {
+  if (resolvePickTier(pick) === "soft_floor") {
+    return "📋 **BEST AVAILABLE / DESK PICK**";
+  }
+  return "🔒 **LOCK**";
+}
+
 /** LOCK for hard-edge plays; BEST AVAILABLE / DESK PICK for soft-floor. */
 export function officialPlayHeadline(pick: PickRow): string {
-  if (resolvePickTier(pick) === "soft_floor") {
-    return "🌊 BoatBoyzPicks OFFICIAL PLAY · BEST AVAILABLE / DESK PICK";
-  }
-  return "🌊 BoatBoyzPicks OFFICIAL PLAY · LOCK";
+  return `${officialTierBadge(pick)} · 🌊 BoatBoyzPicks OFFICIAL PLAY`;
 }
 
 export function officialPlaySubhead(pick: PickRow): string | null {
   if (resolvePickTier(pick) === "soft_floor") {
-    return "Below hard edge/qualifying floor — verified DraftKings number only";
+    return "Soft floor · below hard edge/qualifying — verified DraftKings number only · not a hard-edge play";
   }
-  return null;
+  return "Hard-edge qualifying play · verified DraftKings number";
 }
 
 export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): string {
