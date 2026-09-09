@@ -42,6 +42,7 @@ import { recordMlbShadow, gradeShadowPredictions } from "@/lib/models-v3/shadow-
 import { gradeDisposition, UNPOSTED_SKIP } from "./posting";
 import { queuePostAt } from "./queue-post-at";
 import { sendOnce } from "./post-pipeline";
+import { maybePostDailyFreePick } from "./free-pick-delivery";
 import type { GameCard, PickRow } from "@/lib/sports/types";
 import {
   addLog,
@@ -752,6 +753,8 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
       meta.maxDailyPicks,
     );
     const posted = await flushDuePosts(games, meta.minEdgePct, meta.minConfidence, locked);
+    let freePosted = false;
+    try { freePosted = await maybePostDailyFreePick(games); } catch { await alertOwner("DISCORD_FAIL", "Free picks delivery failed; inspect #free-picks before resending."); }
     try { await syncRecordScoreboard(); } catch { await alertOwner("DISCORD_FAIL", "Scoreboard storage/update failed; automatic grading remains active."); }
     try { await sendWeeklyRecap(); } catch { await alertOwner("DISCORD_FAIL", "Weekly recap failed; inspect delivery state before resending."); }
     if (source === "cron") { await touchCronTick(source); await recordEvent("cron_success"); }
@@ -761,7 +764,7 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
       : "";
     await addLog(
       "scan",
-      `Tick ${source}: ${games.length} games · espn ${espn.espn_request_count} req · ${espn.scan_duration_ms}ms${espnErrors} · queued ${queued} · posted ${posted} · graded ${graded}`,
+      `Tick ${source}: ${games.length} games · espn ${espn.espn_request_count} req · ${espn.scan_duration_ms}ms${espnErrors} · queued ${queued} · posted ${posted} · free ${freePosted ? 1 : 0} · graded ${graded}`,
     );
     return {
       ok: true as const,

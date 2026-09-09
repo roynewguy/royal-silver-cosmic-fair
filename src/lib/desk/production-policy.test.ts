@@ -56,3 +56,10 @@ test("production has a single scheduler; browser reads cannot start a worker",as
   assert.match(job,/cancel-in-progress: false/);
   assert.doesNotMatch(job,/--retry/);
 });
+
+test("free webhook fails closed on picks collision and stays isolated", ()=>{
+  const env={DISCORD_PICKS_WEBHOOK:hook("picks"),DISCORD_FREE_PICKS_WEBHOOK:hook("free"),DISCORD_RESULTS_WEBHOOK:hook("results"),DISCORD_ALERT_WEBHOOK:hook("alerts")};
+  assert.equal(channelWebhook("free","",env),hook("free"));
+  assert.equal(channelWebhook("free","",{...env,DISCORD_FREE_PICKS_WEBHOOK:hook("picks")}),"");
+  assert.equal(channelWebhook("picks","",{...env,DISCORD_FREE_PICKS_WEBHOOK:hook("picks")}),"");
+});
