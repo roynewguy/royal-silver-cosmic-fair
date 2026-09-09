@@ -1,6 +1,6 @@
 import { getSql } from "../db";
 import { channelWebhook } from "../sports/discord-routing";
-import { postWebhook } from "../sports/discord";
+import { parseResultWebhookBody, postWebhook } from "../sports/discord";
 import { recordEvent } from "./telemetry";
 import { alertOwner } from "./alerts";
 
@@ -18,7 +18,7 @@ export async function flushResultRecaps(): Promise<void> {
       where id = ${row.id} and result_delivery = 'queued' returning id`;
     if (!claim.length) continue;
     try {
-      const sent = await postWebhook(hook, row.result_message);
+      const sent = await postWebhook(hook, parseResultWebhookBody(row.result_message));
       if (!sent.ok) {
         await sql`update picks set result_delivery = ${sent.uncertain ? 'delivery_unknown' : 'queued'} where id = ${row.id} and result_delivery = 'sending'`;
         await recordEvent(sent.uncertain ? "delivery_unknown" : "discord_failure", "Results delivery failed");

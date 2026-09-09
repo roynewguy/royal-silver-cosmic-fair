@@ -478,8 +478,114 @@ export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): stri
   ].filter((line): line is string => line != null && line !== undefined).join("\n");
 }
 
+export function resultBadgePlain(result: PickResult): string {
+  if (result === "WIN") return "✅ WIN";
+  if (result === "LOSS") return "❌ LOSS";
+  if (result === "PUSH") return "↔️ PUSH";
+  return "⚪ VOID";
+}
+
+export function finalScoreLine(game: GameCard): string {
+  if (game.home.score != null && game.away.score != null) {
+    return `Final ${game.away.abbr} ${game.away.score} @ ${game.home.abbr} ${game.home.score}`;
+  }
+  return game.status.toUpperCase();
+}
+
+export function autoRecordLine(record: DeskRecord): string {
+  const roi = record.riskedUnits
+    ? ` · ROI ${(record.units / record.riskedUnits * 100).toFixed(1)}%`
+    : "";
+  return `${record.wins}-${record.losses}-${record.pushes} · ${formatUnits(record.units)}${roi}`;
+}
+
+/** Plain-text recap (legacy / logs). Live Discord delivery uses buildOfficialResultPayload. */
 export function buildRecapMessage(pick: PickRow, game: GameCard, result: PickResult, profit: number, record: DeskRecord): string {
   const tag = result === "WIN" ? "WIN" : result === "LOSS" ? "LOSS" : result === "PUSH" ? "PUSH" : "VOID";
-  const final = game.home.score != null && game.away.score != null ? `Final ${game.away.abbr} ${game.away.score} @ ${game.home.abbr} ${game.home.score}` : game.status.toUpperCase();
-  return [`**${tag}** · ${pick.sport}${pick.pickSource && pick.pickSource !== "auto" ? " · MANUAL" : ""}`, pick.selection, final, `${formatUnits(profit)} · this ticket`, `Auto record ${record.wins}-${record.losses}-${record.pushes} · ${formatUnits(record.units)}${record.riskedUnits ? ` · ROI ${(record.units / record.riskedUnits * 100).toFixed(1)}%` : ""}`].join("\n");
+  const manual = pick.pickSource && pick.pickSource !== "auto" ? " · MANUAL" : "";
+  return [
+    `**${tag}** · ${pick.sport}${manual}`,
+    pick.selection,
+    finalScoreLine(game),
+    `${formatUnits(profit)} · this ticket`,
+    `Auto record ${autoRecordLine(record)}`,
+  ].join("\n");
+}
+
+/**
+ * Official #results Discord embed — same gold bar as pick cards (#D4AF37).
+ * Does not touch pick LOCK / soft-floor badge logic.
+ */
+export function buildOfficialResultEmbed(
+  pick: PickRow,
+  game: GameCard,
+  result: PickResult,
+  profit: number,
+  record: DeskRecord,
+): DiscordEmbed {
+  const kick = formatKick(pick.startAt, "America/Los_Angeles");
+  const manual = pick.pickSource && pick.pickSource !== "auto" ? " · MANUAL" : "";
+  const badge = resultBadgePlain(result);
+  const pickLine = `${pick.selection} (${formatAmerican(pick.lockedOdds)})`;
+  const description = [
+    `${sportEmoji(pick.sport)} **${pick.sport}** · ${matchupVsChip(pick, game)}`,
+    boldBetLine(pick),
+  ].join("\n");
+
+  return {
+    author: { name: `${badge}${manual} · BoatBoyzPicks RESULT` },
+    description: description.slice(0, 4096),
+    color: OFFICIAL_EMBED_COLOR,
+    fields: [
+      { name: "Result", value: badge, inline: true },
+      { name: "Sport", value: pick.sport, inline: true },
+      { name: "Pick", value: pickLine, inline: true },
+      { name: "Final", value: finalScoreLine(game), inline: false },
+      { name: "This ticket", value: formatUnits(profit), inline: true },
+      { name: "Auto record", value: autoRecordLine(record), inline: true },
+    ],
+    footer: { text: `BoatBoyzPicks · ${kick} PT` },
+  };
+}
+
+export function buildOfficialResultPayload(
+  pick: PickRow,
+  game: GameCard,
+  result: PickResult,
+  profit: number,
+  record: DeskRecord,
+): DiscordWebhookPayload {
+  return {
+    content: "",
+    embeds: [buildOfficialResultEmbed(pick, game, result, profit, record)],
+  };
+}
+
+/** Persist webhook body in picks.result_message (JSON embed payload or legacy plain text). */
+export function serializeResultWebhookBody(body: string | DiscordWebhookPayload): string {
+  if (typeof body === "string") return body;
+  return JSON.stringify({
+    content: body.content ?? "",
+    embeds: body.embeds ?? [],
+  });
+}
+
+/** Decode stored result_message for postWebhook — JSON embed payload or legacy plain text. */
+export function parseResultWebhookBody(raw: string): string | DiscordWebhookPayload {
+  const text = (raw ?? "").trim();
+  if (!text) return "";
+  if (text.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(text) as DiscordWebhookPayload;
+      if (parsed && typeof parsed === "object" && (Array.isArray(parsed.embeds) || typeof parsed.content === "string")) {
+        return {
+          content: typeof parsed.content === "string" ? parsed.content : "",
+          embeds: Array.isArray(parsed.embeds) ? parsed.embeds.slice(0, 10) : undefined,
+        };
+      }
+    } catch {
+      /* fall through to plain text */
+    }
+  }
+  return text;
 }
