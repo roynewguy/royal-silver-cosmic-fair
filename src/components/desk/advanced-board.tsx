@@ -53,7 +53,11 @@ export function AdvancedBoard() {
 
       {desk.data.preflight ? <section className="space-y-3">
         <h2 className="font-display text-xl">Launch readiness / Preflight</h2>
-        <p className="text-sm text-muted">Paper: {desk.data.preflight.paper ? "ON" : "OFF"}. Missing evidence stays unverified. Counts begin when audit logging is deployed.</p>
+        <p className="text-sm">
+          Verdict: <strong>{desk.data.preflight.verdict}</strong>
+          <span className="text-muted"> — {desk.data.preflight.verdictReason}</span>
+        </p>
+        <p className="text-sm text-muted">Paper: {desk.data.preflight.paper ? "ON" : "OFF"}. Live posting: {desk.data.preflight.livePosting ? "ON" : "OFF"} (CEO switch — preflight never flips it). Missing evidence stays unverified.</p>
         <div className="grid gap-2 sm:grid-cols-2">{desk.data.preflight.checks.map(c => <div key={c.name} className="rounded-lg bg-surface p-3"><p>{c.name} · <strong>{c.status}</strong></p><p className="text-xs text-muted">{c.detail}</p></div>)}</div>
         <details><summary>Last 24 hours</summary><dl className="grid gap-2 sm:grid-cols-3">{Object.entries(desk.data.preflight.counts).map(([name, count]) => <div key={name} className="p-2"><dt>{name.replaceAll("_", " ")}</dt><dd>{count}</dd></div>)}</dl></details>
       </section> : null}

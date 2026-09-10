@@ -26,7 +26,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "discord:sample-free-embed": "node --experimental-strip-types scripts/discord-sample-free-embed.ts",
-    "discord:sample-result-embeds": "node --experimental-strip-types scripts/discord-sample-result-embeds.ts"
+    "discord:sample-result-embeds": "node --experimental-strip-types scripts/discord-sample-result-embeds.ts",
+    "discord:launch-preview": "node --experimental-strip-types scripts/discord-launch-preview.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",

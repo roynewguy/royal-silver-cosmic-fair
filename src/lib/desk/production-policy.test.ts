@@ -27,7 +27,7 @@ test("missing, future and stale source timestamps are never fresh",()=>{
   for(const stamp of [null,undefined,"invalid",new Date(now+1).toISOString(),new Date(0).toISOString()]) assert.equal(isFreshTimestamp(stamp,60000,now),false);
   assert.equal(isFreshTimestamp(new Date(now-1).toISOString(),60000,now),true);
 });
-test("Discord transport: one attempt, uncertain 5xx/timeout/missing acknowledgement; 429 is definitive",async()=>{
+test("Discord transport: 5xx/timeout/missing acknowledgement are uncertain; 429 retries once and is definitive",async()=>{
   const original=globalThis.fetch;
   try {
     for(const mode of ["500","timeout","missing","429","ok"]) {
@@ -37,10 +37,11 @@ test("Discord transport: one attempt, uncertain 5xx/timeout/missing acknowledgem
         assert.equal(new URL(String(input)).searchParams.get("wait"),"true");
         assert.deepEqual(JSON.parse(String(init?.body)).allowed_mentions,{parse:[]});
         if(mode==="timeout") throw new Error("timeout");
-        return new Response(JSON.stringify(mode==="ok"?{id:"message"}:{}),{status:mode==="500"?500:mode==="429"?429:200});
+        return new Response(JSON.stringify(mode==="ok"?{id:"message"}:{}),{status:mode==="500"?500:mode==="429"?429:200, headers: mode==="429"?{"retry-after":"0"}:{}});
       };
       const res=await postWebhook(hook("test"),"test only");
-      assert.equal(calls,1);
+      if(mode==="429") assert.equal(calls,2);
+      else assert.equal(calls,1);
       assert.equal(res.ok,mode==="ok");
       assert.equal(Boolean(res.uncertain),["500","timeout","missing"].includes(mode));
     }

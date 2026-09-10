@@ -679,7 +679,10 @@ export async function postPickById(
   const result = await sendOnce(
     pick.id,
     sqlLocker(sql, { workerToken: opts.workerToken, target: (await loadMeta()).maxDailyPicks, ledger: activeLedger() }),
-    paper ? paperSimulateSend : () => postWebhook(hook, buildOfficialPickPayload(asRow, liveGame)),
+    paper ? paperSimulateSend : () => postWebhook(hook, buildOfficialPickPayload({
+      ...asRow,
+      postedAt: asRow.postedAt ?? new Date().toISOString(),
+    }, liveGame)),
     {
       freezeJson: JSON.stringify(gate.freeze),
       discordMessage: message,

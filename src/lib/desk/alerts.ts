@@ -1,5 +1,5 @@
 import { channelWebhook } from "../sports/discord-routing.ts";
-import { postWebhook } from "../sports/discord.ts";
+import { postWebhook, buildOwnerAlertPayload } from "../sports/discord.ts";
 
 export type AlertCode =
   | "CRON_STALE"
@@ -108,9 +108,8 @@ export async function alertOwner(code: AlertCode, detail: string): Promise<void>
     /* this instance still throttles in memory */
   }
   const url = resolveAlertWebhook();
-  const text = formatOwnerAlert(code, detail);
   if (!url) return;
-  const result = await postWebhook(url, text);
+  const result = await postWebhook(url, buildOwnerAlertPayload(code, detail));
   try {
     const { recordEvent } = await import("./telemetry.ts");
     await recordEvent(result.ok ? "discord_alerts_success" : "discord_failure", result.ok ? "" : "Private alert failed");

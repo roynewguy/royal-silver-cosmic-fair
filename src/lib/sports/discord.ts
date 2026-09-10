@@ -4,6 +4,57 @@ import { formatClvSummaryLine, type ClvSummary } from "./closing.ts";
 import { parseWhy, previewNotes, defaultPlayReason } from "./why.ts";
 import { buildWeeklyRecap, weekSunday } from "./weekly-recap.ts";
 import type { DeskRecord, GameCard, PickResult, PickRow } from "./types.ts";
+import {
+  OFFICIAL_EMBED_COLOR,
+  type DiscordWebhookPayload,
+  sportEmoji,
+  stakeLabel,
+  officialPlayHeadline,
+  officialPlaySubhead,
+  autoRecordLine,
+  finalScoreLine,
+} from "./discord-embeds.ts";
+
+export type { DiscordEmbed, DiscordEmbedField, DiscordWebhookPayload, LaunchPreviewKind } from "./discord-embeds.ts";
+export {
+  ALERT_EMBED_COLOR,
+  NO_PLAY_EMBED_COLOR,
+  OFFICIAL_EMBED_COLOR,
+  autoRecordLine,
+  boldBetLine,
+  buildNoPlayEmbed,
+  buildNoPlayMessage,
+  buildNoPlayPayload,
+  buildOfficialPickEmbed,
+  buildOfficialPickPayload,
+  buildOfficialResultEmbed,
+  buildOfficialResultPayload,
+  buildOwnerAlertEmbed,
+  buildOwnerAlertPayload,
+  customerPickLine,
+  finalScoreLine,
+  launchPreviewLabel,
+  lineLabel,
+  marketLabel,
+  matchupVsChip,
+  officialPlayHeadline,
+  officialPlaySubhead,
+  officialTierBadge,
+  officialTierBadgePlain,
+  parseResultWebhookBody,
+  pickedSideTitle,
+  postedClockPt,
+  publicModelLabel,
+  resolvePickTier,
+  resultBadgePlain,
+  serializeResultWebhookBody,
+  sportEmoji,
+  sportsbookName,
+  stakeLabel,
+  ticketId,
+  unitsFieldLabel,
+  verifiedPlaceBetUrl,
+} from "./discord-embeds.ts";
 
 export function discordWebhookOk(url: string): boolean {
   try {
@@ -28,25 +79,9 @@ function waitUrl(url: string) {
   return u.toString();
 }
 
-/** Discord embed subset used for official pick cards. */
-export type DiscordEmbedField = { name: string; value: string; inline?: boolean };
-export type DiscordEmbed = {
-  title?: string;
-  description?: string;
-  url?: string;
-  color?: number;
-  fields?: DiscordEmbedField[];
-  footer?: { text: string };
-  author?: { name: string };
-};
-
-export type DiscordWebhookPayload = {
-  content?: string;
-  embeds?: DiscordEmbed[];
-};
-
-/** Brand gold left-bar (#D4AF37) — BoatBoyzPicks official pick cards. */
-export const OFFICIAL_EMBED_COLOR = 0xD4AF37;
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 export function normalizeWebhookPayload(body: string | DiscordWebhookPayload): DiscordWebhookPayload {
   if (typeof body === "string") return { content: body };
@@ -66,40 +101,52 @@ export async function postWebhook(
   const content = (payload.content ?? "").slice(0, 1900);
   const embeds = payload.embeds?.length ? payload.embeds : undefined;
   if (!content && !embeds?.length) return { ok: false, error: "Discord payload empty." };
-  try {
-    const wire: Record<string, unknown> = {
-      username: opts?.username?.trim() || "BoatBoyzPicks",
-      allowed_mentions: { parse: [] },
-    };
-    if (content) wire.content = content;
-    if (embeds?.length) wire.embeds = embeds;
-    // Suppress link unfurls on plain-text posts only — never suppress our own embeds[].
-    if (!embeds?.length) wire.flags = 4;
-    const res = await fetch(waitUrl(url), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent": "BoatBoyzPicks/1.0",
-      },
-      signal: AbortSignal.timeout(12_000),
-      body: JSON.stringify(wire),
-    });
-    // 5xx/transport failures may occur AFTER Discord accepted the message.
-    // 401/403 are definite auth failures → alerts path; never uncertain blind-repost.
-    if (!res.ok) {
-      const authFailure = res.status === 401 || res.status === 403;
-      return {
-        ok: false,
-        uncertain: res.status >= 500,
-        authFailure,
-        error: `Discord HTTP ${res.status}`,
-      };
+  const wire: Record<string, unknown> = {
+    username: opts?.username?.trim() || "BoatBoyzPicks",
+    allowed_mentions: { parse: [] },
+  };
+  if (content) wire.content = content;
+  if (embeds?.length) wire.embeds = embeds;
+  // Suppress link unfurls on plain-text posts only — never suppress our own embeds[].
+  if (!embeds?.length) wire.flags = 4;
+
+  let retried429 = false;
+  while (true) {
+    try {
+      const res = await fetch(waitUrl(url), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "BoatBoyzPicks/1.0",
+        },
+        signal: AbortSignal.timeout(12_000),
+        body: JSON.stringify(wire),
+      });
+      // 429 = Discord rejected the message. One short retry is safe (no duplicate).
+      if (res.status === 429 && !retried429) {
+        retried429 = true;
+        const retry = Number(res.headers.get("retry-after") ?? "1");
+        const waitMs = Number.isFinite(retry) ? Math.min(2_000, Math.max(400, retry * 1000)) : 400;
+        await sleep(waitMs);
+        continue;
+      }
+      // 5xx/transport failures may occur AFTER Discord accepted the message.
+      // 401/403 are definite auth failures → alerts path; never uncertain blind-repost.
+      if (!res.ok) {
+        const authFailure = res.status === 401 || res.status === 403;
+        return {
+          ok: false,
+          uncertain: res.status >= 500,
+          authFailure,
+          error: `Discord HTTP ${res.status}`,
+        };
+      }
+      const json = await res.json() as { id?: string };
+      if (!json.id) return { ok: false, uncertain: true, error: "Discord confirmation missing message id" };
+      return { ok: true, id: json.id };
+    } catch {
+      return { ok: false, uncertain: true, error: "DELIVERY_UNKNOWN: Discord transport/confirmation failed" };
     }
-    const json = await res.json() as { id?: string };
-    if (!json.id) return { ok: false, uncertain: true, error: "Discord confirmation missing message id" };
-    return { ok: true, id: json.id };
-  } catch {
-    return { ok: false, uncertain: true, error: "DELIVERY_UNKNOWN: Discord transport/confirmation failed" };
   }
 }
 
@@ -223,15 +270,6 @@ export function buildTestPreviewMessage(game: GameCard): string {
     .join("\n");
 }
 
-/** Official stake text on Discord cards, e.g. 1u / 0.5u. */
-export function stakeLabel(n: number | null | undefined): string {
-  const v = Number(n ?? 1);
-  if (!Number.isFinite(v)) return "1u";
-  const rounded = Math.round(v * 100) / 100;
-  const text = Number.isInteger(rounded) ? String(rounded) : String(rounded);
-  return `${text}u`;
-}
-
 function opponentName(pick: PickRow, game?: GameCard | null): string {
   if (pick.side === "home") return `vs ${game?.away.name ?? "opponent"}`;
   if (pick.side === "away") return `at ${game?.home.name ?? "opponent"}`;
@@ -306,174 +344,10 @@ export function currentLine(pick: PickRow): string {
   return `${book} ${odds}${line}`;
 }
 
-export function sportEmoji(sport: string): string {
-  const s = sport.toUpperCase();
-  if (s === "NBA" || s === "WNBA" || s === "NCAAB") return "🏀";
-  if (s === "NFL" || s === "NCAAF") return "🏈";
-  if (s === "MLB") return "⚾";
-  if (s === "NHL") return "🏒";
-  if (s === "UFC") return "🥊";
-  if (s === "MLS" || s === "EPL") return "⚽";
-  return "🌊";
-}
-
 export function vsLine(pick: PickRow, game?: GameCard | null): string {
   if (pick.side === "home") return `vs ${game?.away.name ?? pick.matchup.split("@")[0]?.trim() ?? "opponent"}`;
   if (pick.side === "away") return `at ${game?.home.name ?? pick.matchup.split("@")[1]?.trim() ?? "opponent"}`;
   return pick.matchup;
-}
-
-export function resolvePickTier(pick: PickRow): "lock" | "soft_floor" {
-  try {
-    const frozen = JSON.parse(pick.freezeJson ?? "{}") as { pickTier?: string; softFloor?: boolean };
-    if (frozen.pickTier === "soft_floor" || frozen.softFloor === true) return "soft_floor";
-    if (frozen.pickTier === "lock") return "lock";
-  } catch {
-    /* missing freeze is fine for previews */
-  }
-  return "lock";
-}
-
-/**
- * Loud primary badge for official Discord posts.
- * Soft-floor must NEVER emit a LOCK badge — only BEST AVAILABLE / DESK PICK.
- * LOCK only when pickTier is lock and softFloor is not true.
- */
-export function officialTierBadge(pick: PickRow): string {
-  if (resolvePickTier(pick) === "soft_floor") {
-    return "📋 **BEST AVAILABLE / DESK PICK**";
-  }
-  return "🔒 **LOCK**";
-}
-
-/** LOCK for hard-edge plays; BEST AVAILABLE / DESK PICK for soft-floor. */
-export function officialPlayHeadline(pick: PickRow): string {
-  return `${officialTierBadge(pick)} · 🌊 BoatBoyzPicks OFFICIAL PLAY`;
-}
-
-export function officialPlaySubhead(pick: PickRow): string | null {
-  if (resolvePickTier(pick) === "soft_floor") {
-    return "Soft floor · below hard edge/qualifying — verified DraftKings number only · not a hard-edge play";
-  }
-  return "Hard-edge qualifying play · verified DraftKings number";
-}
-
-/** Plain badge text for embed author (no markdown). Soft never says LOCK. */
-export function officialTierBadgePlain(pick: PickRow): string {
-  if (resolvePickTier(pick) === "soft_floor") return "📋 BEST AVAILABLE / DESK PICK";
-  return "🔒 LOCK";
-}
-
-/** Units field on embed cards: "1u LOCK" vs "0.5u desk". */
-export function unitsFieldLabel(pick: PickRow): string {
-  const stake = stakeLabel(pick.units);
-  return resolvePickTier(pick) === "soft_floor" ? `${stake} desk` : `${stake} LOCK`;
-}
-
-export function matchupVsChip(pick: PickRow, game?: GameCard | null): string {
-  if (game?.away?.name && game?.home?.name) return `${game.away.name} vs ${game.home.name}`;
-  const raw = (pick.matchup || "").trim();
-  if (!raw) return "Matchup TBD";
-  return raw.replace(/\s*@\s*/, " vs ");
-}
-
-export function pickedSideTitle(pick: PickRow, game?: GameCard | null): string {
-  if (pick.side === "home") return game?.home.name ?? pick.selection;
-  if (pick.side === "away") return game?.away.name ?? pick.selection;
-  if (pick.side === "over") return "Over";
-  if (pick.side === "under") return "Under";
-  return pick.selection;
-}
-
-/** Bold bet line for embed description, e.g. **Lakers -3.5** @ **-110**. */
-export function boldBetLine(pick: PickRow): string {
-  return `**${pick.selection}** @ **${formatAmerican(pick.lockedOdds)}**`;
-}
-
-/** Real DraftKings deep-link only — never invent from Odds API event ids. */
-export function verifiedPlaceBetUrl(pick: PickRow): string | undefined {
-  try {
-    const frozen = JSON.parse(pick.freezeJson ?? "{}") as { placeBetUrl?: unknown };
-    const url = typeof frozen.placeBetUrl === "string" ? frozen.placeBetUrl.trim() : "";
-    if (!url) return undefined;
-    const u = new URL(url);
-    if (u.protocol !== "https:") return undefined;
-    const host = u.hostname.toLowerCase();
-    if (host !== "sportsbook.draftkings.com" && host !== "draftkings.com" && !host.endsWith(".draftkings.com")) {
-      return undefined;
-    }
-    return u.toString();
-  } catch {
-    return undefined;
-  }
-}
-
-function whyEmbedLines(reason: string): string[] {
-  const parsed = parseWhy(reason);
-  const lines: string[] = [];
-  if (parsed.writeup) {
-    const sentences = parsed.writeup.replace(/\s+/g, " ").trim().split(/(?<=\.)\s+/).filter(Boolean);
-    lines.push(...sentences.slice(0, 4));
-  }
-  for (const b of parsed.bullets.slice(0, 3)) {
-    if (lines.length >= 4) break;
-    lines.push(b);
-  }
-  if (!lines.length) {
-    lines.push("BoatBoyzPicks scanned the board and this is the strongest straight bet left on the slate.");
-  }
-  return lines.slice(0, 4);
-}
-
-/**
- * Official Discord embed card — gold bar, navy desk vibe, straights only look.
- * Soft-floor badge is never LOCK.
- */
-export function buildOfficialPickEmbed(pick: PickRow, game?: GameCard | null): DiscordEmbed {
-  const reason = (pick.reason?.trim() || (game ? defaultPlayReason(game, pick.side) : "")).trim();
-  const why = whyEmbedLines(reason);
-  const kick = formatKick(pick.startAt, "America/Los_Angeles");
-  const edge = pick.modelEdge ?? pick.edgePct;
-  const book = (pick.lockedOddsJson?.book || "DraftKings").trim() || "DraftKings";
-  const matchup = matchupVsChip(pick, game);
-  const sideTitle = pickedSideTitle(pick, game);
-  const placeUrl = verifiedPlaceBetUrl(pick);
-  const sub = officialPlaySubhead(pick);
-  const description = [
-    `${sportEmoji(pick.sport)} **${sideTitle}** | ${matchup}`,
-    boldBetLine(pick),
-    `\`${matchup}\``,
-    "",
-    sub,
-    "",
-    "🔎 **WHY BoatBoyzPicks LIKES IT**",
-    ...why,
-  ]
-    .filter((line): line is string => line != null && line !== undefined)
-    .join("\n");
-
-  const embed: DiscordEmbed = {
-    author: { name: `${officialTierBadgePlain(pick)} · BoatBoyzPicks OFFICIAL` },
-    description: description.slice(0, 4096),
-    color: OFFICIAL_EMBED_COLOR,
-    fields: [
-      { name: "Edge %", value: edgeLabel(edge), inline: true },
-      { name: "Book", value: book, inline: true },
-      { name: "Units", value: unitsFieldLabel(pick), inline: true },
-      { name: "Kick PT", value: `${kick} PT`, inline: true },
-    ],
-    footer: { text: `BoatBoyzPicks · ${kick} PT` },
-  };
-  if (placeUrl) embed.url = placeUrl;
-  return embed;
-}
-
-/** Webhook body for official picks: embed card, empty/short content. */
-export function buildOfficialPickPayload(pick: PickRow, game?: GameCard | null): DiscordWebhookPayload {
-  return {
-    content: "",
-    embeds: [buildOfficialPickEmbed(pick, game)],
-  };
 }
 
 export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): string {
@@ -512,27 +386,6 @@ export function buildDiscordMessage(pick: PickRow, game?: GameCard | null): stri
   ].filter((line): line is string => line != null && line !== undefined).join("\n");
 }
 
-export function resultBadgePlain(result: PickResult): string {
-  if (result === "WIN") return "✅ WIN";
-  if (result === "LOSS") return "❌ LOSS";
-  if (result === "PUSH") return "↔️ PUSH";
-  return "⚪ VOID";
-}
-
-export function finalScoreLine(game: GameCard): string {
-  if (game.home.score != null && game.away.score != null) {
-    return `Final ${game.away.abbr} ${game.away.score} @ ${game.home.abbr} ${game.home.score}`;
-  }
-  return game.status.toUpperCase();
-}
-
-export function autoRecordLine(record: DeskRecord): string {
-  const roi = record.riskedUnits
-    ? ` · ROI ${(record.units / record.riskedUnits * 100).toFixed(1)}%`
-    : "";
-  return `${record.wins}-${record.losses}-${record.pushes} · ${formatUnits(record.units)}${roi}`;
-}
-
 /**
  * Official #weekly-recap Discord embed — same gold bar as picks/results (#D4AF37).
  * Presentation polish only; does not invent odds or touch soft/LOCK.
@@ -542,7 +395,7 @@ export function buildWeeklyRecapEmbed(
   week: DeskRecord & { voids: number },
   overall: DeskRecord,
   clv?: ClvSummary | null,
-): DiscordEmbed {
+): import("./discord-embeds.ts").DiscordEmbed {
   const sunday = weekSunday(period.end);
   const body = buildWeeklyRecap(period, week, overall, clv);
   const description = body.replace(/^🌊 \*\*BOATBOYZ • WEEKLY RECAP\*\*\n?/, "").trim();
@@ -577,83 +430,4 @@ export function buildRecapMessage(pick: PickRow, game: GameCard, result: PickRes
     `${formatUnits(profit)} · this ticket`,
     `W-L-P ${autoRecordLine(record)}`,
   ].join("\n");
-}
-
-/**
- * Official #results Discord embed — same gold bar as pick cards (#D4AF37).
- * Does not touch pick LOCK / soft-floor badge logic.
- */
-export function buildOfficialResultEmbed(
-  pick: PickRow,
-  game: GameCard,
-  result: PickResult,
-  profit: number,
-  record: DeskRecord,
-): DiscordEmbed {
-  const kick = formatKick(pick.startAt, "America/Los_Angeles");
-  const manual = pick.pickSource && pick.pickSource !== "auto" ? " · MANUAL" : "";
-  const badge = resultBadgePlain(result);
-  const pickLine = `${pick.selection} (${formatAmerican(pick.lockedOdds)})`;
-  const description = [
-    `${sportEmoji(pick.sport)} **${pick.sport}** · ${matchupVsChip(pick, game)}`,
-    boldBetLine(pick),
-  ].join("\n");
-
-  return {
-    author: { name: `${badge}${manual} · BoatBoyzPicks RESULT` },
-    description: description.slice(0, 4096),
-    color: OFFICIAL_EMBED_COLOR,
-    fields: [
-      { name: "Result", value: badge, inline: true },
-      { name: "Sport", value: pick.sport, inline: true },
-      { name: "Pick", value: pickLine, inline: true },
-      { name: "Final", value: finalScoreLine(game), inline: false },
-      { name: "This ticket", value: formatUnits(profit), inline: true },
-      { name: "W-L-P", value: autoRecordLine(record), inline: true },
-      { name: "Kick PT", value: `${kick} PT`, inline: true },
-    ],
-    footer: { text: `BoatBoyzPicks · ${kick} PT` },
-  };
-}
-
-export function buildOfficialResultPayload(
-  pick: PickRow,
-  game: GameCard,
-  result: PickResult,
-  profit: number,
-  record: DeskRecord,
-): DiscordWebhookPayload {
-  return {
-    content: "",
-    embeds: [buildOfficialResultEmbed(pick, game, result, profit, record)],
-  };
-}
-
-/** Persist webhook body in picks.result_message (JSON embed payload or legacy plain text). */
-export function serializeResultWebhookBody(body: string | DiscordWebhookPayload): string {
-  if (typeof body === "string") return body;
-  return JSON.stringify({
-    content: body.content ?? "",
-    embeds: body.embeds ?? [],
-  });
-}
-
-/** Decode stored result_message for postWebhook — JSON embed payload or legacy plain text. */
-export function parseResultWebhookBody(raw: string): string | DiscordWebhookPayload {
-  const text = (raw ?? "").trim();
-  if (!text) return "";
-  if (text.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(text) as DiscordWebhookPayload;
-      if (parsed && typeof parsed === "object" && (Array.isArray(parsed.embeds) || typeof parsed.content === "string")) {
-        return {
-          content: typeof parsed.content === "string" ? parsed.content : "",
-          embeds: Array.isArray(parsed.embeds) ? parsed.embeds.slice(0, 10) : undefined,
-        };
-      }
-    } catch {
-      /* fall through to plain text */
-    }
-  }
-  return text;
 }
