@@ -65,7 +65,7 @@ Alerts, free, weekly, test, and model-lab webhooks fail closed if they share the
 
 ## Alerting (private channel only)
 
-`DISCORD_401`, `DISCORD_403`, `DISCORD_DELIVERY_UNKNOWN`, `DATABASE_ERROR`, `ESPN_FAIL`, `ODDS_API_ERROR`, `ODDS_QUOTA_LOW`, `ODDS_QUOTA_EXHAUSTED`, `MARKET_FEED_STALE`, `INJURY_FEED_STALE`, `GRADING_BACKLOG`, `MIGRATION_ERROR`, `MODEL_DATA_FAILURE`, plus legacy codes. 30-minute cooldown.
+`DISCORD_401`, `DISCORD_403`, `DISCORD_DELIVERY_UNKNOWN`, `DATABASE_ERROR`, `ESPN_FAIL`, `ODDS_API_ERROR`, `ODDS_QUOTA_LOW`, `ODDS_QUOTA_EXHAUSTED`, `MARKET_FEED_STALE`, `INJURY_FEED_STALE`, `GRADING_BACKLOG`, `MIGRATION_ERROR`, `MODEL_DATA_FAILURE`, plus legacy codes. 30-minute cooldown. Optional `ALERT_MUTE_CODES` (comma/space/colon list) skips Discord for named codes only — LIVE stays on; soft never LOCK.
 
 ## Health board
 

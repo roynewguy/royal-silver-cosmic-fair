@@ -64,6 +64,19 @@ export function shouldAlert(
   return true;
 }
 
+
+export function isAlertMuted(code: AlertCode | string, env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.ALERT_MUTE_CODES;
+  if (raw == null || String(raw).trim() === "") return false;
+  const needle = String(code).trim().toUpperCase();
+  if (!needle) return false;
+  const parts = String(raw)
+    .split(/[,\s:]+/)
+    .map((p) => p.trim().toUpperCase())
+    .filter(Boolean);
+  return parts.includes(needle);
+}
+
 export async function loadAlertMap(): Promise<Record<string, number>> {
   try {
     const { getSql } = await import("../db.ts");
@@ -96,6 +109,7 @@ export function discordAlertCode(result: { authFailure?: boolean; uncertain?: bo
 }
 
 export async function alertOwner(code: AlertCode, detail: string): Promise<void> {
+  if (isAlertMuted(code)) return;
   const persisted = await loadAlertMap();
   for (const [k, v] of Object.entries(persisted)) {
     const cur = lastSent.get(k) ?? 0;
