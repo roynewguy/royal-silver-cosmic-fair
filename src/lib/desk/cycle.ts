@@ -56,6 +56,7 @@ import {
   SOFT_FLOOR_EXPIRED_REASON,
   isSoftFloorQueuedContext,
   postAttemptBlockReason,
+  shouldQueueOfficialResultPost,
 } from "./lifecycle";
 import { maybePostDailyFreePick } from "./free-pick-delivery";
 import type { GameCard, PickRow } from "@/lib/sports/types";
@@ -348,6 +349,44 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
             skip_reason = ${outcome}
         where id = ${row.id} and status = 'posted'
       `;
+      if (shouldQueueOfficialResultPost({ ledger: row.ledger, result: "VOID", gameStatus: game.status })) {
+        const record = await loadRecord();
+        const recap = serializeResultWebhookBody(
+          buildOfficialResultPayload({
+            ...asPickRow({
+              id: row.id,
+              gameId: row.game_id,
+              sport: row.sport,
+              league: row.league,
+              matchup: row.matchup,
+              market: row.market as PickRow["market"],
+              selection: row.selection,
+              side: row.side as PickRow["side"],
+              lockedLine: row.locked_line,
+              lockedOdds: row.locked_odds,
+              lockedOddsJson: JSON.parse(row.locked_odds_json || "{}"),
+              reason: row.reason,
+              confidence: row.confidence,
+              edgePct: row.edge_pct,
+              units: Number(row.units),
+              status: "graded",
+              startAt: String(row.start_at),
+              postAt: String(row.post_at),
+              createdAt: new Date().toISOString(),
+              modelVersion: row.model_version,
+              freezeJson: row.freeze_json,
+              postedOdds: row.posted_odds,
+            }),
+            result: "VOID",
+            profitUnits: 0,
+          }, game, "VOID", 0, record),
+        );
+        await sql`
+          update picks
+          set result_message = ${recap}, result_delivery = 'queued'
+          where id = ${row.id} and status = 'graded' and result = 'VOID' and result_message is null
+        `;
+      }
       await addLog("grade", `${row.matchup} ${outcome} VOID 0.00u`, game.sport);
       graded += 1;
       continue;
@@ -423,7 +462,7 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
       set status = 'graded', result = ${result}, profit_units = ${profit}, graded_at = now(),
           closing_odds = ${closing}, clv = ${clv},
           grade_snapshot_json = ${gradeSnapshot},
-          result_message = ${recap}, result_delivery = ${isPaperLedger(row.ledger) ? null : "queued"}
+          result_message = ${recap}, result_delivery = ${shouldQueueOfficialResultPost({ ledger: row.ledger, result, gameStatus: game.status }) ? "queued" : null}
       where id = ${row.id} and status = 'posted' returning id
     `;
     if (!updated.length) continue;
@@ -679,7 +718,10 @@ export async function postPickById(
   const result = await sendOnce(
     pick.id,
     sqlLocker(sql, { workerToken: opts.workerToken, target: (await loadMeta()).maxDailyPicks, ledger: activeLedger() }),
-    paper ? paperSimulateSend : () => postWebhook(hook, buildOfficialPickPayload(asRow, liveGame)),
+    paper ? paperSimulateSend : () => postWebhook(hook, buildOfficialPickPayload({
+      ...asRow,
+      postedAt: gate.freeze.postedTimestamp ?? gate.freeze.frozenAt ?? asRow.postedAt,
+    }, liveGame)),
     {
       freezeJson: JSON.stringify(gate.freeze),
       discordMessage: message,

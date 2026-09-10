@@ -1,16 +1,25 @@
-import { discordWebhookOk, postWebhook } from "./discord.ts";
+import { discordWebhookOk, postWebhook, buildNoPlayPayload, buildNoPlayMessage } from "./discord.ts";
+import { channelWebhook, webhookIdentity } from "./discord-routing.ts";
 import { formatAmerican } from "../utils.ts";
 import type { GameCard, ModelCall } from "./types.ts";
 import { isShadowSoak, livePostingEnabled } from "../desk/production-policy.ts";
 
 export const MODEL_LAB_USERNAME = "BoatBoyz Model Lab";
 
+export { buildNoPlayMessage };
+
 export function resolveModelLabWebhook(officialUrl?: string | null): { url: string; reason: string | null } {
-  const env = process.env.DISCORD_MODEL_LAB_WEBHOOK?.trim() ?? "";
-  if (!discordWebhookOk(env)) return { url: "", reason: "unset" };
-  const official = officialUrl?.trim() ?? process.env.DISCORD_WEBHOOK_URL?.trim() ?? "";
-  if (official && env === official) return { url: "", reason: "collides with official picks webhook" };
-  return { url: env, reason: null };
+  const raw = process.env.DISCORD_MODEL_LAB_WEBHOOK?.trim() ?? "";
+  const official = officialUrl?.trim() ?? process.env.DISCORD_WEBHOOK_URL?.trim() ?? process.env.DISCORD_PICKS_WEBHOOK?.trim() ?? "";
+  if (raw && official && webhookIdentity(raw) === webhookIdentity(official)) {
+    return { url: "", reason: "collides with official picks webhook" };
+  }
+  const url = channelWebhook("lab");
+  if (!url) {
+    if (!raw || !discordWebhookOk(raw)) return { url: "", reason: "unset" };
+    return { url: "", reason: "collides with a customer or ops webhook" };
+  }
+  return { url, reason: null };
 }
 
 export function buildShadowLabMessage(game: GameCard, call: ModelCall): string {
@@ -32,10 +41,6 @@ export function buildShadowLabMessage(game: GameCard, call: ModelCall): string {
     "",
     "NOT AN OFFICIAL PICK",
   ].join("\n");
-}
-
-export function buildNoPlayMessage(): string {
-  return ["🅱️ BOAT BOYZ", "", "No qualifying plays currently.", "Market still cooking. 🧑‍🍳"].join("\n");
 }
 
 export function noPlayEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -103,7 +108,7 @@ export async function maybePostNoPlay(officialUrl: string, ptDay: string): Promi
     const sql = await getSql();
     const rows = await sql<{ no_play_on: string | null }>`select no_play_on from desk_meta where id = 1`;
     if (rows[0]?.no_play_on === ptDay) return false;
-    const sent = await postWebhook(officialUrl, buildNoPlayMessage());
+    const sent = await postWebhook(officialUrl, buildNoPlayPayload());
     if (!sent.ok) return false;
     await sql`update desk_meta set no_play_on = ${ptDay}, updated_at = now() where id = 1`;
     return true;

@@ -56,8 +56,9 @@ test("shadow copy is never an official pick and V4 cannot queue official", () =>
 
 test("no-play copy is optional and never an official ticket", () => {
   const msg = buildNoPlayMessage();
-  assert.match(msg, /No qualifying plays/);
-  assert.match(msg, /BOAT BOYZ/);
+  assert.match(msg, /NO QUALIFYING PLAYS TODAY/);
+  assert.match(msg, /production requirements/);
+  assert.doesNotMatch(msg, /PASS_/);
   assert.equal(noPlayEnabled({}), false);
   assert.equal(noPlayEnabled({ DISCORD_NO_PLAY_ENABLED: "1" }), true);
 });

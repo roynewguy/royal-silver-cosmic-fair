@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatOwnerAlert, parseAlertMap, resolveAlertWebhook, shouldAlert, discordAlertCode } from "./alerts.ts";
+import { formatOwnerAlert, parseAlertMap, resolveAlertWebhook, shouldAlert, discordAlertCode, resultDeliveryAlertCode } from "./alerts.ts";
 
 test("alert cooldown is honored on a durable map", () => {
   const store = new Map<string, number>();
@@ -45,4 +45,6 @@ test("discord alert codes isolate 401/403 from unknown delivery", () => {
   assert.equal(discordAlertCode({ authFailure: true, error: "Discord HTTP 401" }), "DISCORD_401");
   assert.equal(discordAlertCode({ authFailure: true, error: "Discord HTTP 403" }), "DISCORD_403");
   assert.equal(discordAlertCode({ uncertain: true, error: "timeout" }), "DISCORD_DELIVERY_UNKNOWN");
+  assert.equal(resultDeliveryAlertCode({ uncertain: true }), "DISCORD_DELIVERY_UNKNOWN");
+  assert.equal(resultDeliveryAlertCode({ uncertain: false }), "DISCORD_FAIL");
 });
