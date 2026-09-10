@@ -1,0 +1,33 @@
+import { missing, spec, type SportFeatureContract } from "./spec.ts";
+
+export const NFL_FEATURE_CONTRACT: SportFeatureContract = {
+  sport: "nfl",
+  displayName: "NFL",
+  independentEngine: true,
+  features: [
+    missing("epa_off", "EPA/play offense", "efficiency", "nflfastR / tracking with as-of week"),
+    missing("epa_def", "EPA/play defense", "efficiency", "nflfastR as-of week"),
+    missing("success_rate", "success rate", "efficiency", "Play-by-play success rate as-of"),
+    missing("explosive_play_rate", "explosive play rate", "efficiency", "Play-by-play explosive run/pass rates"),
+    missing("early_down_efficiency", "early-down efficiency", "efficiency", "Play-by-play early-down EPA"),
+    missing("qb_efficiency", "QB efficiency", "qb", "nflfastR EPA + CPOE"),
+    missing("cpoe", "CPOE", "qb", "nflfastR CPOE as-of week"),
+    missing("pressure_sack", "pressure/sack rates", "line", "PFF or tracking — not licensed"),
+    missing("ol_dl_matchup", "OL/DL matchup", "line", "PFF or similar. Leave missing rather than invent."),
+    missing("turnover_worthy", "turnover-worthy metrics", "ball", "Licensed tracking. Not ESPN."),
+    spec({ key: "injuries", label: "injuries", group: "availability", availability: "partial", source: "ESPN injury board + injuriesFetchedAt", usableAsFeature: true, notes: "Missing board → quality penalty." }),
+    spec({ key: "qb_status", label: "QB status", group: "availability", availability: "partial", source: "Injury board QB listing", usableAsFeature: true, notes: "Uncertain QB lowers dataQuality. Do not assume starter." }),
+    missing("skill_player_availability", "offensive skill-player availability", "availability", "Injury report with known_at"),
+    missing("defensive_injuries_detail", "defensive injuries", "availability", "Position-level injury feed"),
+    spec({ key: "rest_days", label: "rest", group: "context", availability: "partial", source: "prior finals", usableAsFeature: true, notes: "Start-to-start rest." }),
+    missing("travel", "travel", "context", "Miles / timezone from dated schedule"),
+    spec({ key: "home_field", label: "home field", group: "context", availability: "available", source: "game card", usableAsFeature: true, notes: "Schedule-time known." }),
+    spec({ key: "weather_string", label: "weather", group: "weather", availability: "partial", source: "ESPN weather + weatherFetchedAt", usableAsFeature: true, notes: "NFL parser exists in V2; Yacht uses the string with provenance." }),
+    missing("wind_structured", "wind", "weather", "Structured wind for outdoor sites"),
+    missing("surface", "surface", "context", "Stadium surface table keyed on venue"),
+    missing("pace", "pace", "efficiency", "Plays per game from play-by-play, as-of week"),
+    spec({ key: "market_opener", label: "market opener", group: "market", availability: "partial", source: "proven openCapturedAt", usableAsFeature: true, usableAsStake: true, notes: "Unproven openers are not features." }),
+    spec({ key: "market_current", label: "current market movement", group: "market", availability: "partial", source: "proven open vs current", usableAsFeature: true, notes: "Close is evaluation-only." }),
+    spec({ key: "team_form", label: "team form", group: "form", availability: "available", source: "historical_games priors", usableAsFeature: true, notes: "Baseline form. Not the whole model." }),
+  ],
+};
