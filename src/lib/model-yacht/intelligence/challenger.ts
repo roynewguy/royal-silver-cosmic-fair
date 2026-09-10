@@ -6,6 +6,9 @@ import type { ChallengerPrediction, CandidateKind } from "./prediction.ts";
 import type { ModelLifecycle } from "./lifecycle.ts";
 import { soccerLifecycle, soccerMayPostOfficial, isSoccerSport } from "./soccer.ts";
 import { predictMlbChallenger, type MlbChallengerArtifacts } from "./sports/mlb/engine.ts";
+import { predictNflChallenger, type NflChallengerArtifacts } from "./sports/nfl/engine.ts";
+
+export type ChallengerArtifacts = MlbChallengerArtifacts & Partial<NflChallengerArtifacts>;
 
 export type SportChallengerEngine = {
   sport: YachtSport;
@@ -14,7 +17,7 @@ export type SportChallengerEngine = {
   contract: SportFeatureContract;
   candidates: CandidateKind[];
   official: false;
-  predict(input: { snapshot: YachtSnapshot; kind: CandidateKind; artifacts?: MlbChallengerArtifacts }): ChallengerPrediction;
+  predict(input: { snapshot: YachtSnapshot; kind: CandidateKind; artifacts?: ChallengerArtifacts }): ChallengerPrediction;
 };
 
 const CHAMPIONS: Record<YachtSport, string> = {
@@ -28,8 +31,10 @@ const CHAMPIONS: Record<YachtSport, string> = {
   ufc: "v2-ufc",
 };
 
+const DEEP: YachtSport[] = ["mlb", "nfl"];
+
 function engineFor(sport: YachtSport): SportChallengerEngine {
-  const deep = sport === "mlb";
+  const deep = DEEP.includes(sport);
   return {
     sport,
     championVersion: CHAMPIONS[sport],
@@ -38,10 +43,17 @@ function engineFor(sport: YachtSport): SportChallengerEngine {
     candidates: ["logreg", "gbt", "market"],
     official: false,
     predict(input) {
-      if (sport !== "mlb") {
-        throw new Error(`${sport} challenger is DATA_COLLECTION only. Deep engine is MLB first.`);
+      if (sport === "mlb") return predictMlbChallenger(input);
+      if (sport === "nfl") {
+        return predictNflChallenger({
+          snapshot: input.snapshot,
+          kind: input.kind,
+          artifacts: input.artifacts?.schemaVersion
+            ? (input.artifacts as NflChallengerArtifacts)
+            : undefined,
+        });
       }
-      return predictMlbChallenger(input);
+      throw new Error(`${sport} challenger is DATA_COLLECTION only. Deep engines are MLB then NFL.`);
     },
   };
 }

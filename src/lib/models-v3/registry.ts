@@ -86,6 +86,36 @@ export const DEFAULT_REGISTRY: RegistryEntry[] = [
     features: ["proven two-way no-vig only"],
     notes: "Market baseline candidate. Close is evaluation-only.",
   },
+  {
+    modelName: "Model Yacht NFL logreg",
+    modelVersion: "model-yacht-nfl-logreg-2026.09.2",
+    sport: "nfl",
+    status: "shadow" as const,
+    role: "challenger" as const,
+    trainingPeriod: "walk-forward logreg (research)",
+    features: ["form", "rest", "positional injuries", "QB status", "weather when proven", "no-vig opener when proven"],
+    notes: "Intelligence challenger. official=false. Cannot post Discord. V2 remains champion. EPA/CPOE stay missing.",
+  },
+  {
+    modelName: "Model Yacht NFL GBT",
+    modelVersion: "model-yacht-nfl-gbt-2026.09.2",
+    sport: "nfl",
+    status: "shadow" as const,
+    role: "challenger" as const,
+    trainingPeriod: "walk-forward gradient boosted trees (research)",
+    features: ["same NFL contract as logreg; missing EPA/CPOE stay missing"],
+    notes: "Intelligence challenger. Shadow only. Never auto-promoted.",
+  },
+  {
+    modelName: "Model Yacht NFL market",
+    modelVersion: "model-yacht-nfl-market-2026.09.2",
+    sport: "nfl",
+    status: "shadow" as const,
+    role: "challenger" as const,
+    trainingPeriod: "sportsbook no-vig baseline",
+    features: ["proven two-way no-vig only"],
+    notes: "Market baseline candidate. Close is evaluation-only.",
+  },
 ];
 
 export function isYachtModel(version: string | null | undefined): boolean {

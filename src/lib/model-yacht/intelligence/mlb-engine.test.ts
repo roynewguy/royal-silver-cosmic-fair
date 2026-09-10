@@ -127,11 +127,12 @@ test("all three MLB candidates emit official=false shadow predictions", () => {
   }
 });
 
-test("NFL engine is DATA_COLLECTION and cannot predict yet", () => {
+test("NFL engine is SHADOW (detailed in nfl-engine tests); NCAAF stays DATA_COLLECTION", () => {
   const nfl = challengerEngine("nfl");
-  assert.equal(nfl?.lifecycle, "DATA_COLLECTION");
+  assert.equal(nfl?.lifecycle, "SHADOW");
   assert.equal(nfl?.championVersion, "v2-nfl");
-  assert.throws(() => nfl?.predict({ snapshot: snap(), kind: "logreg" }));
+  const ncaaf = challengerEngine("ncaaf");
+  assert.equal(ncaaf?.lifecycle, "DATA_COLLECTION");
 });
 
 test("shadow store is official=false; close/result attach later; failures isolate from V2", () => {

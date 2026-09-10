@@ -114,3 +114,25 @@ export function predictGbt(row: number[], art: GbtArtifact): number {
   for (const tree of art.trees) f += art.lr * predictTree(z, tree);
   return clampProb(sigmoid(f));
 }
+
+function walkSplits(node: GbtNode, counts: Map<number, number>): void {
+  if (node.kind !== "split") return;
+  counts.set(node.feature, (counts.get(node.feature) ?? 0) + 1);
+  walkSplits(node.left, counts);
+  walkSplits(node.right, counts);
+}
+
+/** Operator-facing group importance. Not single-game "AI reasoning". */
+export function gbtFeatureImportance(
+  art: GbtArtifact,
+  names: string[],
+): Array<{ name: string; splits: number; share: number }> {
+  const counts = new Map<number, number>();
+  for (const tree of art.trees) walkSplits(tree, counts);
+  const total = [...counts.values()].reduce((s, n) => s + n, 0);
+  return names.map((name, i) => ({
+    name,
+    splits: counts.get(i) ?? 0,
+    share: total ? (counts.get(i) ?? 0) / total : 0,
+  })).sort((a, b) => b.splits - a.splits);
+}
