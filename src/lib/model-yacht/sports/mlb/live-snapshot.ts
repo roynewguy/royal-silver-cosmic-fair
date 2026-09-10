@@ -1,5 +1,4 @@
 import { mlbShadowFeatures } from "../../../models-v3/mlb-shadow-features.ts";
-import { packModelInputs } from "../../../sports/model-inputs.ts";
 import { weightedInjuryImpact } from "../../../sports/player-impact.ts";
 import { buildMarketConsensus } from "../../../sports/market-consensus.ts";
 import type { GameCard } from "../../../sports/types.ts";
@@ -8,9 +7,7 @@ import { buildYachtSnapshot, yachtPredictionAt, type YachtSnapshot } from "../..
 import { missingFeatures } from "./data-matrix.ts";
 import { MODEL_YACHT_MLB_CONTRACT } from "./names.ts";
 
-export type YachtLiveSnapshot = YachtSnapshot & {
-  modelInputs: ReturnType<typeof packModelInputs>;
-};
+export type YachtLiveSnapshot = YachtSnapshot;
 
 /** Source timestamp only. Never fall back to predictionAt / now / a different feed. */
 function sourceTime(field: string | null | undefined): string | null {
@@ -25,7 +22,6 @@ export function buildYachtLiveSnapshot(game: GameCard, now = Date.now()): YachtL
   const shadow = mlbShadowFeatures(game);
   const inj = weightedInjuryImpact(game);
   const consensus = game.shadows?.consensus ?? buildMarketConsensus(game.shadows?.consensus?.books ?? []);
-  const inputs = packModelInputs(game);
   const oddsAt = sourceTime(game.odds.capturedAt);
   const boardAt = sourceTime(game.fetchedAt);
   const weatherAt = sourceTime(game.weatherFetchedAt);
@@ -64,7 +60,7 @@ export function buildYachtLiveSnapshot(game: GameCard, now = Date.now()): YachtL
     source: game.odds.source,
   };
 
-  const snap = buildYachtSnapshot({
+  return buildYachtSnapshot({
     gameId: game.id,
     sport: "mlb",
     league: game.league,
@@ -74,6 +70,4 @@ export function buildYachtLiveSnapshot(game: GameCard, now = Date.now()): YachtL
     features,
     market,
   });
-
-  return { ...snap, modelInputs: inputs };
 }

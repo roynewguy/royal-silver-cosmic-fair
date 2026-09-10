@@ -12,3 +12,5 @@ export { snapshotProvenanceOk, validateSnapshotProvenance, provenPregameTwoWay }
 export { buildYachtSnapshot, snapshotIdFrom } from "./core/snapshot.ts";
 export { yachtPrediction } from "./core/output.ts";
 export { allYachtProviders, allSportsMatrix } from "./adapters.ts";
+export { collectYachtWarehouse, collectYachtWarehouseSafe } from "./engine/collect.ts";
+export { yachtCollectorHealth } from "./engine/health.ts";

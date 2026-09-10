@@ -42,6 +42,7 @@ import { confirmDraftKings, pruneFreeBetaCaches, readDkCache } from "./dk-verify
 import { recordClosingResult, recordPostedPrediction, recordPregameSnapshots } from "./warehouse";
 import { recordV2Candidates } from "@/lib/sports/candidate-log";
 import { recordMlbShadow, gradeShadowPredictions } from "@/lib/models-v3/shadow-store";
+import { collectYachtWarehouseSafe } from "@/lib/model-yacht/engine/collect";
 import { attachChallengerPredictions } from "@/lib/models-v3/challenger-board";
 import { canQueueOfficial } from "@/lib/models-v3/registry";
 import { dropCorrelated, qualifyOfficial, rankByBetScore } from "@/lib/sports/policy";
@@ -123,6 +124,14 @@ export async function refreshSlate(): Promise<GameCard[]> {
   await recordPregameSnapshots(next);
   await recordV2Candidates(next);
   await recordMlbShadow(next);
+  try {
+    const yacht = await collectYachtWarehouseSafe(next);
+    if (!yacht.ok) {
+      await alertOwner("MODEL_DATA_FAILURE", "Model Yacht research collection failed; V2 shadow soak continues.");
+    }
+  } catch {
+    await alertOwner("MODEL_DATA_FAILURE", "Model Yacht research collection failed; V2 shadow soak continues.");
+  }
   const meta = await loadMeta();
   await recordPassDecisions(next, meta.minEdgePct, meta.minConfidence);
   await persistBookQuotes(next).catch(() => undefined);
