@@ -51,17 +51,26 @@ export function ModelsBoard() {
 
       {sports.map((sport) => {
         const group = cards.filter((c) => c.sport === sport);
-        const champ = group.find((c) => c.role === "champion");
+        const champ = group.find((c) => c.role === "champion") ?? group.find((c) => c.modelVersion === lab?.champions?.[sport]);
+        const previous = lab?.previousChampions?.[sport] ?? null;
         return (
           <section key={sport} className="space-y-3">
             <div className="flex items-end justify-between gap-3">
               <h2 className="font-display text-sm tracking-[0.18em] text-muted uppercase">{sport}</h2>
-              {champ ? (
-                <p className="text-xs text-subtle">
-                  Live: {champ.modelVersion}
-                  {champ.drift?.flag ? " · drift flag" : ""}
-                </p>
-              ) : null}
+              <div className="flex items-center gap-3">
+                {champ ? (
+                  <p className="text-xs text-subtle">
+                    Live: {champ.modelVersion}
+                    {champ.drift?.flag ? " · drift flag" : ""}
+                    {previous ? ` · rollback: ${previous}` : ""}
+                  </p>
+                ) : null}
+                {previous ? (
+                  <Button size="sm" variant="secondary" onClick={() => desk.rollbackChampion({ sport })}>
+                    Rollback
+                  </Button>
+                ) : null}
+              </div>
             </div>
             <div className="overflow-x-auto rounded-xl bg-surface px-4 py-3 shadow-border">
               <table className="w-full min-w-[36rem] text-left text-sm">
@@ -163,7 +172,7 @@ function ModelTile({ card }: { card: ModelCard }) {
           {card.status}
         </Badge>
       </div>
-      <p className="mt-2 text-xs text-muted">{card.livePosting ? "LIVE posting" : "Paper / shadow only"}</p>
+      <p className="mt-2 text-xs text-muted">{card.livePosting ? "LIVE posting" : card.verified ? "Verified · paper until champion" : "Paper / shadow only"}</p>
       {card.drift?.flag ? <p className="mt-1 text-xs text-loss">{card.drift.note}</p> : null}
       <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
         <div>
@@ -197,14 +206,25 @@ function ModelTile({ card }: { card: ModelCard }) {
       {card.role !== "champion" ? (
         <div className="mt-3 space-y-2">
           <p className="text-xs text-subtle">{card.eligibleReasons[0] ?? "Not eligible."}</p>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!card.eligible}
-            onClick={() => desk.promote({ version: card.modelVersion, sport: card.sport })}
-          >
-            Promote model
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!card.eligible}
+              onClick={() => desk.promote({ version: card.modelVersion, sport: card.sport })}
+            >
+              Mark candidate
+            </Button>
+            {!card.verified ? (
+              <Button size="sm" variant="secondary" onClick={() => desk.verifyModel({ version: card.modelVersion, sport: card.sport })}>
+                Verify
+              </Button>
+            ) : (
+              <Button size="sm" onClick={() => desk.promoteChampion({ version: card.modelVersion, sport: card.sport })}>
+                Set sport champion
+              </Button>
+            )}
+          </div>
         </div>
       ) : null}
     </article>

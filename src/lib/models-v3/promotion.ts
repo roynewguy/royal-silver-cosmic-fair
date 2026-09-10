@@ -67,7 +67,7 @@ export function promoteChallenger(input: {
       ok: false,
       livePosting: false,
       status: "shadow",
-      note: "Live challenger posting is locked. V2 remains the only official model.",
+      note: "Lab candidate mark cannot switch the live champion. Use CEO sport-champion promotion after verification. V2 remains the default until then.",
     };
   }
   if (!isEligible(input.stats, input.champion)) {

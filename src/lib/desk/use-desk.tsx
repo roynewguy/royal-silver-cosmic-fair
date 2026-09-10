@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, type ReactNode } from "react";
 import { toast } from "sonner";
-import { deleteDiscordPost, getDesk, lockDesk, postManualPick, postTestPreview, promoteModel, pushPick, refreshBoard, runDesk, saveDailyPicks, saveDeskSettings, saveWebhook, sendDiscordNote, unlockDesk } from "@/lib/desk/api";
+import { deleteDiscordPost, getDesk, lockDesk, postManualPick, postTestPreview, promoteModel, promoteSportChampion, pushPick, refreshBoard, rollbackSportChampion, runDesk, saveDailyPicks, saveDeskSettings, saveWebhook, sendDiscordNote, unlockDesk, verifySportModel } from "@/lib/desk/api";
 import { EMPTY_HEALTH } from "@/lib/desk/health";
 import type { DeskState, Market, Side } from "@/lib/sports/types";
 
@@ -59,6 +59,9 @@ type DeskApi = {
   saveSettings: (input: { minEdgePct: number; minConfidence: number; postLeadMinutes: number }) => void;
   setDailyPicks: (count: number) => void;
   promote: (input: { version: string; sport: string }) => void;
+  verifyModel: (input: { version: string; sport: string }) => void;
+  promoteChampion: (input: { version: string; sport: string }) => void;
+  rollbackChampion: (input: { sport: string }) => void;
   unlock: (pin: string) => void;
   lock: () => void;
   sendNote: (message: string, onSent?: () => void) => void;
@@ -221,6 +224,45 @@ function useDeskController(): DeskApi {
     onError: (err) => toast.error(err instanceof Error ? err.message : "Promote failed."),
   });
 
+  const verifyModelMut = useMutation({
+    mutationFn: (input: { version: string; sport: string }) => verifySportModel({ data: input }),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        toast.error(res.error ?? "Could not verify.");
+        return;
+      }
+      if ("state" in res && res.state) qc.setQueryData(["desk"], res.state);
+      toast.success(res.note ?? "Verified. Not live until CEO sets the sport champion.");
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Verify failed."),
+  });
+
+  const promoteChampionMut = useMutation({
+    mutationFn: (input: { version: string; sport: string }) => promoteSportChampion({ data: input }),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        toast.error(res.error ?? "Could not set champion.");
+        return;
+      }
+      if ("state" in res && res.state) qc.setQueryData(["desk"], res.state);
+      toast.success(res.note ?? "Sport champion updated.");
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Champion promotion failed."),
+  });
+
+  const rollbackChampionMut = useMutation({
+    mutationFn: (input: { sport: string }) => rollbackSportChampion({ data: input }),
+    onSuccess: (res) => {
+      if (!res.ok) {
+        toast.error(res.error ?? "Could not rollback.");
+        return;
+      }
+      if ("state" in res && res.state) qc.setQueryData(["desk"], res.state);
+      toast.success(res.note ?? "Rolled back sport champion.");
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Rollback failed."),
+  });
+
   const unlock = useMutation({
     mutationFn: (pin: string) => unlockDesk({ data: { pin } }),
     onSuccess: (res) => {
@@ -263,6 +305,9 @@ function useDeskController(): DeskApi {
     saveSettings: (input) => saveSettings.mutate(input),
     setDailyPicks: (count) => savePlays.mutate(count),
     promote: (input) => promote.mutate(input),
+    verifyModel: (input) => verifyModelMut.mutate(input),
+    promoteChampion: (input) => promoteChampionMut.mutate(input),
+    rollbackChampion: (input) => rollbackChampionMut.mutate(input),
     unlock: (pin) => unlock.mutate(pin),
     lock: () => lock.mutate(),
     sendNote: (message, onSent) => {

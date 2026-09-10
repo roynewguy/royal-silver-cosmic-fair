@@ -1,3 +1,4 @@
+import { championFor, productionRankerFor, registerProductionRanker } from "../models-v3/champions.ts";
 import { isOfficialDay } from "./day.ts";
 import { isPlayableRank, isSoftFloorEligibleRank } from "./data-quality.ts";
 import { LEAGUE_BY_ID } from "./leagues.ts";
@@ -10,27 +11,22 @@ import { rankUfc } from "./models/ufc.ts";
 import { rankWnba } from "./models/wnba.ts";
 import type { GameCard, PickTier, RankPick } from "./types.ts";
 
+registerProductionRanker("v2-nba", rankNba);
+registerProductionRanker("v2-mlb", rankMlb);
+registerProductionRanker("v2-nfl", rankNfl);
+registerProductionRanker("v2-nhl", rankNhl);
+registerProductionRanker("v2-ncaaf", rankNcaaf);
+registerProductionRanker("v2-wnba", rankWnba);
+registerProductionRanker("v2-ufc", rankUfc);
+
 export function rankGame(game: GameCard): RankPick | null {
   const league = LEAGUE_BY_ID[game.league];
   if (!league?.official) return null;
-  switch (league.id) {
-    case "nba":
-      return rankNba(game);
-    case "mlb":
-      return rankMlb(game);
-    case "nfl":
-      return rankNfl(game);
-    case "nhl":
-      return rankNhl(game);
-    case "ncaaf":
-      return rankNcaaf(game);
-    case "wnba":
-      return rankWnba(game);
-    case "ufc":
-      return rankUfc(game);
-    default:
-      return null;
-  }
+  const champ = championFor(league.id);
+  const ranker = productionRankerFor(champ);
+  // Fail closed: never silently run V2 math under a different champion version.
+  if (!ranker) return null;
+  return ranker(game);
 }
 
 export function rankGames(games: GameCard[]): GameCard[] {

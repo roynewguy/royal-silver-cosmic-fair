@@ -44,6 +44,7 @@ import { recordV2Candidates } from "@/lib/sports/candidate-log";
 import { recordMlbShadow, gradeShadowPredictions } from "@/lib/models-v3/shadow-store";
 import { attachChallengerPredictions } from "@/lib/models-v3/challenger-board";
 import { canQueueOfficial } from "@/lib/models-v3/registry";
+import { hydrateChampionsFromDb } from "@/lib/models-v3/champions-db";
 import { dropCorrelated, qualifyOfficial, rankByBetScore } from "@/lib/sports/policy";
 import { recordPassDecisions } from "@/lib/sports/pass-log";
 import { maybePostNoPlay, postShadowLabSlate } from "@/lib/sports/shadow-discord";
@@ -111,6 +112,7 @@ function asPickRow(partial: Partial<PickRow> & Pick<PickRow, "id" | "gameId" | "
 }
 
 export async function refreshSlate(): Promise<GameCard[]> {
+  await hydrateChampionsFromDb();
   beginEspnScan();
   const raw = await fetchAllSlates();
   const merged = await mergeDraftKingsOdds(raw);
@@ -1006,6 +1008,7 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
     locked = await tryWorkerLock();
     if (!locked) return { ok: true as const, skipped: true, source };
     const sql = await getSql();
+    await hydrateChampionsFromDb();
     // Stale posting: known Discord id → posted (no duplicate); else delivery_unknown (never requeue/blind-repost).
     const recoveredPosted = await sql<{id: number}>`
       update picks set status = 'posted', posting_token = null, posting_started_at = null, posting_at = null

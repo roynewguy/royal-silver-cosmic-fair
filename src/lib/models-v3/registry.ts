@@ -1,6 +1,7 @@
 import type { ModelCard, ModelRole, ModelStatus } from "../sports/types.ts";
+import { isActiveChampion } from "./champions.ts";
 
-/** Production BoatBoyz always uses V2. V3/V4 are shadow/research only until an operator promotes AND live posting is explicitly unlocked. */
+/** Production BoatBoyz defaults to V2. A verified challenger can replace a sport champion only after CEO promotion. */
 export const PRODUCTION_MODELS: Record<string, string> = {
   mlb: "v2-mlb",
   nba: "v2-nba",
@@ -73,12 +74,12 @@ export function isShadowModel(version: string | null | undefined): boolean {
 }
 
 /**
- * Hard isolation: only V2 may queue or freeze an official Discord pick.
- * Registry promotion never overrides this. A future live-unlock must change this function
- * AND the explicit isolation test together.
+ * Official Discord may queue/freeze the active sport champion only.
+ * Defaults are V2. A verified challenger becomes official only after CEO promotion.
+ * Isolation tests must stay in lockstep with this function.
  */
 export function canQueueOfficial(version: string | null | undefined): boolean {
-  return isProductionModel(version);
+  return isActiveChampion(version);
 }
 
 export function challengerVersion(sport: string, family: "v3" | "v4"): string {
@@ -106,6 +107,7 @@ export function catalogCard(entry: RegistryEntry, extra: Partial<ModelCard> = {}
     eligible: extra.eligible ?? false,
     eligibleReasons: extra.eligibleReasons ?? ["Not enough forward sample."],
     livePosting: extra.livePosting ?? canQueueOfficial(entry.modelVersion),
+    verified: extra.verified ?? entry.modelVersion.startsWith("v2-"),
     wins: extra.wins ?? null,
     losses: extra.losses ?? null,
     units: extra.units ?? null,

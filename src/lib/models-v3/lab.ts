@@ -1,5 +1,7 @@
 import { getSql } from "@/lib/db";
 import { DEFAULT_REGISTRY, canQueueOfficial, catalogCard } from "./registry.ts";
+import { allChampions, allPreviousChampions, championFor, isVerifiedModel } from "./champions.ts";
+import { hydrateChampionsFromDb } from "./champions-db.ts";
 import { eligibilityReasons, emptyStats, type ForwardStats } from "./promotion.ts";
 import { brier, accuracy, logLoss } from "./evaluate.ts";
 import { driftReport, type DriftRow } from "./drift.ts";
@@ -11,10 +13,10 @@ export async function seedModelRegistry(): Promise<void> {
     for (const e of DEFAULT_REGISTRY) {
       await sql`
         insert into model_registry (
-          model_name, model_version, sport, status, role, training_period, features_json, notes
+          model_name, model_version, sport, status, role, training_period, features_json, notes, verified
         ) values (
           ${e.modelName}, ${e.modelVersion}, ${e.sport}, ${e.status}, ${e.role}, ${e.trainingPeriod},
-          ${JSON.stringify(e.features)}, ${e.notes}
+          ${JSON.stringify(e.features)}, ${e.notes}, ${e.modelVersion.startsWith("v2-")}
         )
         on conflict (model_version, sport) do nothing
       `;
@@ -100,6 +102,7 @@ async function statsFor(versionPrefix: string, sport: string): Promise<LabStats>
 
 export async function loadModelLab(): Promise<ModelLabState> {
   await seedModelRegistry();
+  await hydrateChampionsFromDb();
   const cards: ModelCard[] = [];
   try {
     const sql = await getSql();
@@ -111,24 +114,28 @@ export async function loadModelLab(): Promise<ModelLabState> {
       role: string;
       training_period: string | null;
       features_json: string;
-    }>`select model_name, model_version, sport, status, role, training_period, features_json from model_registry order by sport, role, model_version`;
+      verified: boolean | null;
+    }>`select model_name, model_version, sport, status, role, training_period, features_json, verified from model_registry order by sport, role, model_version`;
     const bySportChamp = new Map<string, ForwardStats>();
     for (const sport of new Set(rows.map((r) => r.sport))) {
-      bySportChamp.set(sport, await statsFor("v2-", sport));
+      const live = championFor(sport);
+      bySportChamp.set(sport, await statsFor(live || "v2-", sport));
     }
     for (const r of rows) {
       const prefix = r.model_version.replace(/-logreg.*$/, "").replace(/-ensemble.*$/, "");
       const st = await statsFor(prefix, r.sport);
       const champ = bySportChamp.get(r.sport) ?? emptyStats();
-      const reasons = r.role === "champion" ? ["Live champion."] : eligibilityReasons(st, champ);
+      const isChamp = r.model_version === championFor(r.sport);
+      const role: ModelRole = isChamp ? "champion" : r.role === "champion" ? "challenger" : (r.role as ModelRole);
+      const reasons = isChamp ? ["Live champion."] : eligibilityReasons(st, champ);
       cards.push(
         catalogCard(
           {
             modelName: r.model_name,
             modelVersion: r.model_version,
             sport: r.sport,
-            status: r.status as ModelStatus,
-            role: r.role as ModelRole,
+            status: (isChamp ? "production" : r.status) as ModelStatus,
+            role,
             trainingPeriod: r.training_period,
             features: (() => {
               try {
@@ -149,9 +156,10 @@ export async function loadModelLab(): Promise<ModelLabState> {
             averageEdge: st.avgEdge,
             betCount: st.n,
             lastPredictionAt: st.lastAt,
-            eligible: r.role !== "champion" && reasons.length === 0,
+            eligible: !isChamp && reasons.length === 0,
             eligibleReasons: reasons,
             livePosting: canQueueOfficial(r.model_version),
+            verified: r.verified === true || isVerifiedModel(r.model_version, r.sport),
             wins: st.wins,
             losses: st.losses,
             units: st.units,
@@ -177,11 +185,18 @@ export async function loadModelLab(): Promise<ModelLabState> {
   } catch {
     passReasons = [];
   }
+  const champions = allChampions();
+  const previousChampions = allPreviousChampions();
+  const stillAllV2 = Object.values(champions).every((v) => v.startsWith("v2-"));
   return {
-    champion: "v2",
-    note: "V2 is the live champion. V3 is a shadow logreg. V4 is a Shadow Ensemble (hardcoded 35/35/30 mix, not a supermodel). Promotion never auto-posts to Discord. Zero official picks is a valid day.",
+    champion: stillAllV2 ? "v2" : "per-sport",
+    champions,
+    previousChampions,
+    note: stillAllV2
+      ? "Each sport has its own champion. V2 is the default until the CEO verifies and promotes a challenger. Candidate marks never auto-post to Discord. Zero official picks is a valid day."
+      : "Live Discord uses the active champion per sport. V2 remains the rollback default unless a previous challenger is stored. Promotion is CEO-only.",
     cards,
-    livePostingLockedToV2: true,
+    livePostingLockedToV2: stillAllV2,
     passReasons,
   };
 }

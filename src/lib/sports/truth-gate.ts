@@ -1,3 +1,5 @@
+import { championFor } from "../models-v3/champions.ts";
+import { canQueueOfficial } from "../models-v3/registry.ts";
 import { isFreshTimestamp } from "../desk/production-policy.ts";
 import { LEAGUE_BY_ID } from "./leagues.ts";
 import { twoWayMarket } from "./odds.ts";
@@ -155,12 +157,13 @@ export function prePostTruthCheck(input: {
   }
   if (rank.passReason === "PASS_MISSING_STARTER") return { ok: false, reason: "PASS_MISSING_STARTER", detail: rank.passReason };
   if (!finiteProb(rank.probability)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Model probability not in (0,1)." };
-  if (!rank.model || !/^v2-/.test(rank.model)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Unknown model version." };
+  // Identity follows the active sport champion. DK freshness, both-sides, freeze, and edge gates below are unchanged.
+  if (!rank.model || !canQueueOfficial(rank.model)) return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Unknown model version." };
   if (!isPlayableRank(rank, input.minEdge, input.minConf)) {
     if (rank.confidence < input.minConf) return { ok: false, reason: "PASS_LOW_CONFIDENCE", detail: `Confidence ${rank.confidence}.` };
     return { ok: false, reason: "PASS_EDGE_DIED", detail: `Fresh DK edge ${rank.edgePct.toFixed(1)}% below ${input.minEdge}.` };
   }
-  if (rank.market !== queued.market || rank.model !== `v2-${live.league}`) return { ok: false, reason: "PASS_DATA_CONFLICT", detail: "Market/model changed; requeue and reverify" };
+  if (rank.market !== queued.market || rank.model !== championFor(live.league)) return { ok: false, reason: "PASS_DATA_CONFLICT", detail: "Market/model changed; requeue and reverify" };
   const lockedOdds = priceFor(live.odds, rank.market, rank.side);
   if (lockedOdds == null) return { ok: false, reason: "PASS_DK_UNAVAILABLE", detail: "Selected market missing on fresh DK." };
   const lockedLine = lineFor(live.odds, rank.market, rank.side);

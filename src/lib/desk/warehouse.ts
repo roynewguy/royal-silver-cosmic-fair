@@ -1,4 +1,5 @@
 import { getSql } from "@/lib/db";
+import { canQueueOfficial } from "@/lib/models-v3/registry";
 import { clvFromPrices } from "@/lib/sports/clv";
 import { expectedValuePct, uncertaintyFromQuality } from "@/lib/sports/value";
 import { dataQualityFor, marketAgeMs } from "@/lib/sports/data-quality";
@@ -55,7 +56,7 @@ export async function recordPregameSnapshots(games: GameCard[]): Promise<void> {
           ${game.id}, ${rank.model}, 'pregame', now(), ${game.sport}, ${game.league},
           ${rank.market}, ${rank.selection}, ${rank.side}, ${rank.probability}, ${marketImplied(rank)}, ${rank.edgePct}, ${Math.round(rank.confidence)},
           ${rank.price}, ${rank.line}, ${game.odds.book}, ${game.odds.source}, ${JSON.stringify(feats)},
-          ${ev}, ${uncertainty}, ${quality.score}, ${!rank.passReason && rank.edgePct >= 3}, false, ${rank.passReason ?? null}, ${rank.model.startsWith("v2-")}, ${rank.model.startsWith("v2-") ? "official" : "paper"}
+          ${ev}, ${uncertainty}, ${quality.score}, ${!rank.passReason && rank.edgePct >= 3}, false, ${rank.passReason ?? null}, ${canQueueOfficial(rank.model)}, ${canQueueOfficial(rank.model) ? "official" : "paper"}
         )
         on conflict (game_id, model_version, stage) do update set
           captured_at = excluded.captured_at,
