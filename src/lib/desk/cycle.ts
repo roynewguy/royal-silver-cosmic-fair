@@ -126,7 +126,7 @@ export async function refreshSlate(): Promise<GameCard[]> {
   const meta = await loadMeta();
   await recordPassDecisions(next, meta.minEdgePct, meta.minConfidence);
   await persistBookQuotes(next).catch(() => undefined);
-  await postShadowLabSlate(next).catch(() => 0);
+  if (!isShadowSoak()) await postShadowLabSlate(next).catch(() => 0);
   await pruneFreeBetaCaches();
   const stats = espnScanStats();
   if (stats.espn_error_count) {
