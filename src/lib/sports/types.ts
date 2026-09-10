@@ -428,6 +428,7 @@ export type ModelCard = {
   eligible: boolean;
   eligibleReasons: string[];
   livePosting: boolean;
+  verified?: boolean;
   wins: number | null;
   losses: number | null;
   units: number | null;
@@ -436,8 +437,10 @@ export type ModelCard = {
 
 export type ModelLabState = {
   champion: string;
+  champions: Record<string, string>;
+  previousChampions: Record<string, string | null>;
   note: string;
   cards: ModelCard[];
-  livePostingLockedToV2: true;
+  livePostingLockedToV2: boolean;
   passReasons: Array<{ reason: string; n: number }>;
 };

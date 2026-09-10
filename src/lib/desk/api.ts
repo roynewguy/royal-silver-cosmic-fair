@@ -544,3 +544,107 @@ export const promoteModel = createServerFn({ method: "POST" })
     return { ok: true as const, livePosting: false as const, note: result.note, state: await deskForClient() };
   });
 
+export const verifySportModel = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const data = input as { version?: string; sport?: string; reason?: string };
+    return {
+      version: String(data.version ?? ""),
+      sport: String(data.sport ?? ""),
+      reason: String(data.reason ?? "CEO verified challenger"),
+    };
+  })
+  .handler(async ({ data }) => {
+    const gate = await requireOperator();
+    if (!gate.ok) return { ok: false as const, error: gate.error };
+    const { verifyChallenger } = await import("@/lib/models-v3/champions");
+    const { persistVerification } = await import("@/lib/models-v3/champions-db");
+    const result = verifyChallenger({
+      version: data.version,
+      sport: data.sport,
+      ceoApproved: true,
+      operatorId: "operator",
+      reason: data.reason,
+    });
+    if (!result.ok) return { ok: false as const, error: result.note };
+    if (result.sport) {
+      await persistVerification({
+        sport: result.sport,
+        version: data.version,
+        operatorId: "operator",
+        reason: data.reason,
+      });
+    }
+    await addLog("desk", result.note);
+    return { ok: true as const, note: result.note, state: await deskForClient() };
+  });
+
+export const promoteSportChampion = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const data = input as { version?: string; sport?: string; reason?: string };
+    return {
+      version: String(data.version ?? ""),
+      sport: String(data.sport ?? ""),
+      reason: String(data.reason ?? "CEO promoted sport champion"),
+    };
+  })
+  .handler(async ({ data }) => {
+    const gate = await requireOperator();
+    if (!gate.ok) return { ok: false as const, error: gate.error };
+    const { promoteSportChampion: promote } = await import("@/lib/models-v3/champions");
+    const { persistChampionChange } = await import("@/lib/models-v3/champions-db");
+    const result = promote({
+      version: data.version,
+      sport: data.sport,
+      ceoApproved: true,
+      operatorId: "operator",
+      reason: data.reason,
+    });
+    if (!result.ok) return { ok: false as const, error: result.note };
+    if (result.sport && result.champion) {
+      await persistChampionChange({
+        sport: result.sport,
+        action: "promote",
+        fromVersion: result.previous ?? null,
+        toVersion: result.champion,
+        operatorId: "operator",
+        reason: data.reason,
+      });
+    }
+    await addLog("desk", result.note);
+    return { ok: true as const, note: result.note, champion: result.champion, state: await deskForClient() };
+  });
+
+export const rollbackSportChampion = createServerFn({ method: "POST" })
+  .validator((input: unknown) => {
+    const data = input as { sport?: string; reason?: string };
+    return {
+      sport: String(data.sport ?? ""),
+      reason: String(data.reason ?? "CEO rolled back sport champion"),
+    };
+  })
+  .handler(async ({ data }) => {
+    const gate = await requireOperator();
+    if (!gate.ok) return { ok: false as const, error: gate.error };
+    const { rollbackSportChampion: rollback } = await import("@/lib/models-v3/champions");
+    const { persistChampionChange } = await import("@/lib/models-v3/champions-db");
+    const result = rollback({
+      sport: data.sport,
+      ceoApproved: true,
+      operatorId: "operator",
+      reason: data.reason,
+    });
+    if (!result.ok) return { ok: false as const, error: result.note };
+    if (result.sport && result.champion) {
+      await persistChampionChange({
+        sport: result.sport,
+        action: "rollback",
+        fromVersion: result.previous ?? null,
+        toVersion: result.champion,
+        operatorId: "operator",
+        reason: data.reason,
+      });
+    }
+    await addLog("desk", result.note);
+    return { ok: true as const, note: result.note, champion: result.champion, state: await deskForClient() };
+  });
+

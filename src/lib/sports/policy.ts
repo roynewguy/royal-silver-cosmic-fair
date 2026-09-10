@@ -76,7 +76,7 @@ export function officialDecision(game: GameCard, minEdge: number, minConf: numbe
       uncertainty: 1,
       dataQuality: 0,
       reason: "PASS_NO_EDGE",
-      detail: "No V2 rank.",
+      detail: "No live champion rank.",
     };
   }
   if (!canQueueOfficial(rank.model)) {
