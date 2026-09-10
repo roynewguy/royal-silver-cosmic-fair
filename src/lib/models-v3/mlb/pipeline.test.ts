@@ -148,7 +148,25 @@ test("doubleheaders keep separate odds by game id", () => {
   });
   assert.equal(a?.gameId, "mlb:espn:1");
   assert.equal(b?.gameId, "mlb:espn:2");
-  assert.notEqual(a?.homeClose ?? a?.homeOpen, b?.homeClose ?? b?.homeOpen);
+  // Undifferentiated moneyLine is not a proven opener or closer.
+  assert.equal(a?.homeOpen, null);
+  assert.equal(b?.homeOpen, null);
+  assert.equal(a?.homeClose, null);
+  assert.equal(b?.homeClose, null);
+});
+
+test("nested ESPN open/close stay on their own fields", () => {
+  const o = parseCoreOdds("mlb:espn:9", {
+    items: [{
+      provider: { id: "58", name: "ESPN BET" },
+      homeTeamOdds: { open: { moneyLine: 140 }, close: { moneyLine: -110 } },
+      awayTeamOdds: { open: { moneyLine: -160 }, close: { moneyLine: -110 } },
+    }],
+  });
+  assert.equal(o?.homeOpen, 140);
+  assert.equal(o?.awayOpen, -160);
+  assert.equal(o?.homeClose, -110);
+  assert.equal(o?.awayClose, -110);
 });
 
 test("probabilities stay in (0,1) and missing history drops safely", () => {

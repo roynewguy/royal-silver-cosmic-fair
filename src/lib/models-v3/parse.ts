@@ -138,10 +138,12 @@ export function parseCoreOdds(gameId: string, payload: {
     gameId,
     sportsbook: pref.provider?.name ?? "ESPN BET",
     market: "moneyline",
-    homeOpen: americanFrom(h?.open?.moneyLine) ?? americanFrom(h?.moneyLine),
-    awayOpen: americanFrom(a?.open?.moneyLine) ?? americanFrom(a?.moneyLine),
-    homeClose: americanFrom(h?.close?.moneyLine) ?? americanFrom(h?.moneyLine),
-    awayClose: americanFrom(a?.close?.moneyLine) ?? americanFrom(a?.moneyLine),
+    homeOpen: americanFrom(h?.open?.moneyLine),
+    awayOpen: americanFrom(a?.open?.moneyLine),
+    homeClose: americanFrom(h?.close?.moneyLine),
+    awayClose: americanFrom(a?.close?.moneyLine),
+    openCapturedAt: null,
+    closeCapturedAt: null,
   };
 }
 

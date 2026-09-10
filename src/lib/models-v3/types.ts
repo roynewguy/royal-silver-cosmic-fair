@@ -24,6 +24,9 @@ export type HistoricalOdds = {
   awayOpen: number | null;
   homeClose: number | null;
   awayClose: number | null;
+  /** Real quote timestamp. Null = unproven. Do not stamp predictionAt. */
+  openCapturedAt?: string | null;
+  closeCapturedAt?: string | null;
 };
 
 export type StarterFeat = {
@@ -56,7 +59,7 @@ export type TrainingRow = {
   homeWin: boolean;
   features: {
     capturedAt: string;
-    knownBeforeStart: true;
+    knownBeforeStart: boolean;
     home: TeamFeat;
     away: TeamFeat;
     homeStarter: StarterFeat;
@@ -70,6 +73,9 @@ export type TrainingRow = {
     homeClose: number | null;
     awayClose: number | null;
     impliedHomeClose: number | null;
+    homeCurrent?: number | null;
+    awayCurrent?: number | null;
+    capturedAt?: string | null;
   };
 };
 

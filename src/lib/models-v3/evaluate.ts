@@ -1,4 +1,4 @@
-import { devig, impliedFromAmerican } from "../sports/odds.ts";
+import { impliedFromAmerican, twoWayMarket } from "../sports/odds.ts";
 import { clampProb } from "./logreg.ts";
 
 export type EvalRow = {
@@ -53,31 +53,19 @@ function profit(american: number, won: boolean): number {
   return american / 100;
 }
 
-export function backtest(rows: EvalRow[], minEdge: number): { n: number; units: number; roi: number | null; avgClv: number | null } {
-  let n = 0;
-  let units = 0;
-  const clvs: number[] = [];
-  for (const r of rows) {
-    if (r.stakePrice == null) continue;
-    const market = impliedFromAmerican(r.stakePrice);
-    const sideHome = r.p >= market;
-    const edge = sideHome ? r.p - market : 1 - r.p - (1 - market);
-    if (edge < minEdge) continue;
-    const price = sideHome ? r.stakePrice : r.stakePrice; // home price if betting home; need away price
-    n += 1;
-    const won = sideHome ? r.y === 1 : r.y === 0;
-    units += profit(price, won);
-    if (r.closePrice != null) {
-      const closeImp = impliedFromAmerican(r.closePrice);
-      clvs.push(sideHome ? closeImp - market : (1 - closeImp) - (1 - market));
-    }
-  }
-  return {
-    n,
-    units,
-    roi: n ? units / n : null,
-    avgClv: clvs.length ? clvs.reduce((a, b) => a + b, 0) / clvs.length : null,
-  };
+/**
+ * Stake price for a historical bet. Closing is ignored on purpose.
+ * Missing pre-prediction price → drop (null). Never invent, never fall back to close.
+ */
+export function pregameStakePrice(open: number | null | undefined, _close?: number | null | undefined): number | null {
+  if (open == null || !Number.isFinite(open) || open === 0) return null;
+  return open;
+}
+
+/** CLV on the selected side only. Missing close stays null — never 0. */
+export function clvSelectedSide(stakePrice: number, closePrice: number | null | undefined): number | null {
+  if (closePrice == null || !Number.isFinite(closePrice) || closePrice === 0) return null;
+  return impliedFromAmerican(closePrice) - impliedFromAmerican(stakePrice);
 }
 
 export type SideEval = EvalRow & {
@@ -89,28 +77,64 @@ export type SideEval = EvalRow & {
   awayOpen?: number | null;
 };
 
+export type MarketSides = {
+  homeOpen: number | null;
+  awayOpen: number | null;
+  homeClose: number | null;
+  awayClose: number | null;
+};
+
+/** Map a row onto eval fields. Close is never copied into stake/homePrice/awayPrice. */
+export function sideEvalFromMarket(p: number, y: 0 | 1, market: MarketSides): SideEval {
+  const home = pregameStakePrice(market.homeOpen, market.homeClose);
+  const away = pregameStakePrice(market.awayOpen, market.awayClose);
+  return {
+    p,
+    y,
+    stakePrice: home,
+    closePrice: market.homeClose,
+    homePrice: home,
+    awayPrice: away,
+    closeHome: market.homeClose,
+    closeAway: market.awayClose,
+    homeOpen: market.homeOpen,
+    awayOpen: market.awayOpen,
+  };
+}
+
+function stakePair(r: SideEval): { home: number; away: number } | null {
+  const home = pregameStakePrice(r.homeOpen ?? r.homePrice, r.closeHome);
+  const away = pregameStakePrice(r.awayOpen ?? r.awayPrice, r.closeAway);
+  if (home == null || away == null) return null;
+  return { home, away };
+}
+
+/**
+ * Two-sided ROI using each side's actual pregame price.
+ * Does not de-vig (legacy V3 metric). Honest/Yacht ROI de-vigs.
+ * Home bets stake home; away bets stake away. Missing either side → drop.
+ */
 export function backtestSides(rows: SideEval[], minEdge: number): { n: number; units: number; roi: number | null; avgClv: number | null } {
   let n = 0;
   let units = 0;
   const clvs: number[] = [];
   for (const r of rows) {
-    if (r.homePrice == null || r.awayPrice == null) continue;
-    const mHome = impliedFromAmerican(r.homePrice);
-    const mAway = impliedFromAmerican(r.awayPrice);
+    const pair = stakePair(r);
+    if (!pair) continue;
+    const mHome = impliedFromAmerican(pair.home);
+    const mAway = impliedFromAmerican(pair.away);
     const edgeHome = r.p - mHome;
     const edgeAway = 1 - r.p - mAway;
     const betHome = edgeHome >= edgeAway;
     const edge = betHome ? edgeHome : edgeAway;
     if (edge < minEdge) continue;
-    const price = betHome ? r.homePrice : r.awayPrice;
+    const price = betHome ? pair.home : pair.away;
     const won = betHome ? r.y === 1 : r.y === 0;
     n += 1;
     units += profit(price, won);
     const close = betHome ? r.closeHome : r.closeAway;
-    if (close != null) {
-      const openImp = impliedFromAmerican(price);
-      clvs.push(impliedFromAmerican(close) - openImp);
-    }
+    const clv = clvSelectedSide(price, close);
+    if (clv != null) clvs.push(clv);
   }
   return { n, units, roi: n ? units / n : null, avgClv: clvs.length ? clvs.reduce((a, b) => a + b, 0) / clvs.length : null };
 }
@@ -124,9 +148,9 @@ export function honestBacktest(rows: SideEval[], minEdge: number): { n: number; 
     const homeOpen = r.homeOpen ?? null;
     const awayOpen = r.awayOpen ?? null;
     if (homeOpen == null || awayOpen == null) continue;
-    const [fairHome] = devig(homeOpen, awayOpen);
-    const edgeHome = r.p - fairHome;
-    const edgeAway = 1 - r.p - (1 - fairHome);
+    const mkt = twoWayMarket(homeOpen, awayOpen);
+    const edgeHome = r.p - mkt.noVigA;
+    const edgeAway = 1 - r.p - mkt.noVigB;
     const betHome = edgeHome >= edgeAway;
     const edge = betHome ? edgeHome : edgeAway;
     if (edge < minEdge) continue;
@@ -135,8 +159,8 @@ export function honestBacktest(rows: SideEval[], minEdge: number): { n: number; 
     n += 1;
     units += profit(price, won);
     const close = betHome ? r.closeHome : r.closeAway;
-    if (close != null) clvs.push(impliedFromAmerican(close) - impliedFromAmerican(price));
+    const clv = clvSelectedSide(price, close);
+    if (clv != null) clvs.push(clv);
   }
   return { n, units, roi: n ? units / n : null, avgClv: clvs.length ? clvs.reduce((a, b) => a + b, 0) / clvs.length : null };
 }
-
