@@ -92,8 +92,8 @@ export function buildRows(
       continue;
     }
     const book = oddsBy.get(game.gameId);
-    const closeHome = book?.homeClose ?? book?.homeOpen ?? null;
-    const closeAway = book?.awayClose ?? book?.awayOpen ?? null;
+    const closeHome = book?.homeClose ?? null;
+    const closeAway = book?.awayClose ?? null;
     rows.push({
       gameId: game.gameId,
       league: game.league,

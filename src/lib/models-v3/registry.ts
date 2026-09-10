@@ -58,12 +58,18 @@ export const DEFAULT_REGISTRY: RegistryEntry[] = [
   })),
 ];
 
+export function isYachtModel(version: string | null | undefined): boolean {
+  if (!version) return false;
+  const v = version.trim().toLowerCase();
+  return v === "model-yacht" || v.startsWith("model-yacht-");
+}
+
 export function isProductionModel(version: string | null | undefined): boolean {
   return Boolean(version && version.startsWith("v2-"));
 }
 
 export function isShadowModel(version: string | null | undefined): boolean {
-  return Boolean(version && (version.startsWith("v3-") || version.startsWith("v4-")));
+  return Boolean(version && (version.startsWith("v3-") || version.startsWith("v4-") || isYachtModel(version)));
 }
 
 /**

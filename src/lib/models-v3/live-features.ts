@@ -53,6 +53,17 @@ export function buildLiveTrainingRow(
   if (away && away.restDays == null) missing.push("away_rest");
   if (missing.length) return { ok: false, missing, vector: null, row: null };
 
+  const capturedAt =
+    game.odds.capturedAt ??
+    game.fetchedAt ??
+    game.startersFetchedAt ??
+    game.injuriesFetchedAt ??
+    new Date(now).toISOString();
+  const startMs = Date.parse(game.startAt);
+  const capMs = Date.parse(capturedAt);
+  const knownBeforeStart =
+    Number.isFinite(startMs) && Number.isFinite(capMs) && capMs < startMs && now < startMs;
+
   const row: TrainingRow = {
     gameId: game.id,
     league: game.league,
@@ -62,8 +73,8 @@ export function buildLiveTrainingRow(
     awayAbbr: game.away.abbr,
     homeWin: false,
     features: {
-      capturedAt: new Date(now).toISOString(),
-      knownBeforeStart: true,
+      capturedAt,
+      knownBeforeStart,
       home: home!,
       away: away!,
       homeStarter: {
@@ -82,11 +93,14 @@ export function buildLiveTrainingRow(
     },
     market: {
       sportsbook: game.odds.book,
-      homeOpen: game.odds.openHomeMl,
-      awayOpen: null,
+      homeOpen: game.odds.openHomeMl ?? null,
+      awayOpen: game.odds.openAwayMl ?? null,
       homeClose: null,
       awayClose: null,
       impliedHomeClose: null,
+      homeCurrent: game.odds.homeMl ?? null,
+      awayCurrent: game.odds.awayMl ?? null,
+      capturedAt: game.odds.capturedAt ?? null,
     },
   };
   return { ok: true, vector: featureVector(row), row, missing: [] };

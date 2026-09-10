@@ -56,7 +56,7 @@ export type TrainingRow = {
   homeWin: boolean;
   features: {
     capturedAt: string;
-    knownBeforeStart: true;
+    knownBeforeStart: boolean;
     home: TeamFeat;
     away: TeamFeat;
     homeStarter: StarterFeat;
@@ -70,6 +70,9 @@ export type TrainingRow = {
     homeClose: number | null;
     awayClose: number | null;
     impliedHomeClose: number | null;
+    homeCurrent?: number | null;
+    awayCurrent?: number | null;
+    capturedAt?: string | null;
   };
 };
 

@@ -1,23 +1,22 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { accuracy, backtestSides, brier, calibrationBuckets, logLoss, type SideEval } from "../evaluate.ts";
+import { accuracy, backtestSides, brier, calibrationBuckets, honestBacktest, logLoss, sideEvalFromMarket, type SideEval } from "../evaluate.ts";
 import { applyStandard, clampProb, fitLogReg, predictLogReg, standardize } from "../logreg.ts";
 import { assertChronological, chronologicalSplit } from "../splits.ts";
 import type { LogRegArtifact, MlbRow } from "../types.ts";
 import { MLB_FEATURE_NAMES, featureVector } from "./features.ts";
 import type { DatasetFile } from "./dataset.ts";
+import { BACKTEST_AUDIT } from "../integrity.ts";
 
 function toEval(rows: MlbRow[], p: number[]): SideEval[] {
-  return rows.map((row, i) => ({
-    p: clampProb(p[i] ?? 0.5),
-    y: row.homeWin ? 1 : 0,
-    stakePrice: row.market.homeOpen ?? row.market.homeClose,
-    closePrice: row.market.homeClose,
-    homePrice: row.market.homeOpen ?? row.market.homeClose,
-    awayPrice: row.market.awayOpen ?? row.market.awayClose,
-    closeHome: row.market.homeClose,
-    closeAway: row.market.awayClose,
-  }));
+  return rows.map((row, i) =>
+    sideEvalFromMarket(clampProb(p[i] ?? 0.5), row.homeWin ? 1 : 0, {
+      homeOpen: row.market.homeOpen,
+      awayOpen: row.market.awayOpen,
+      homeClose: row.market.homeClose,
+      awayClose: row.market.awayClose,
+    }),
+  );
 }
 
 function predictAll(rows: MlbRow[], means: number[], stds: number[], weights: number[]): number[] {
@@ -37,6 +36,7 @@ function summarize(name: string, rows: MlbRow[], probs: number[]) {
       edge2: backtestSides(ev, 0.02),
       edge3: backtestSides(ev, 0.03),
       edge5: backtestSides(ev, 0.05),
+      honestEdge3: honestBacktest(ev, 0.03),
     },
   };
 }
@@ -86,6 +86,8 @@ export async function trainMlb(opts: {
     notes: [
       "Production remains v2-mlb. This artifact is shadow/research only.",
       "Do not promote automatically.",
+      BACKTEST_AUDIT.priceUsedForStake,
+      BACKTEST_AUDIT.honestRule,
       ...data.notes,
     ],
   };

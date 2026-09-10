@@ -2,14 +2,16 @@
 
 export const BACKTEST_AUDIT = {
   sportsbook: "ESPN BET via ESPN core odds (unofficial). Not verified DraftKings.",
-  priceUsedForStake: "Published +22% ROI used homeOpen ?? homeClose. If opener was missing, the closer was used as the bet price. That is not a live betting timestamp.",
+  priceUsedForStake:
+    "FIXED: stake is opener only. The published +22% ROI used homeOpen ?? homeClose, so missing openers were bet at the closer. That path is gone — missing pregame price drops the bet from ROI. Close is CLV-only.",
   closerSemantics: "ESPN close is the last listed ESPN BET number, not a guaranteed last-tick-before-first-pitch DK close.",
-  vig: "Published ROI compared model probability to raw American implied probability (no de-vig). That inflates edge and can mint fake ROI.",
-  missingOdds: "Games without a two-way moneyline were skipped in the side backtest, but stake fallback to close still leaked.",
+  vig: "Legacy edge2/3/5 still compare model probability to raw American implied (no de-vig) and can mint fake ROI. honestBacktest / Model Yacht de-vig both sides.",
+  missingOdds: "Games without a two-way pregame moneyline are dropped from ROI. Undifferentiated ESPN moneyLine is not treated as an opener.",
   starterEra: "Historical ERA is ESPN probable-pitcher season ERA on the scoreboard dump. Historical pulls are usually the final-day payload, so ERA is NOT proven point-in-time pregame. Flagged leak risk. Live shadow uses the current probable ERA instead.",
   last5Last10RdiffRest: "These are rebuilt from prior finals only and are leak-safe when priors exist.",
   calibration: "The 70%+ bucket was badly overconfident on the original test set. Do not promote from ROI alone.",
   honestRule: "Honest backtest requires both opening moneylines, uses de-vigged implied probability, and never bets the closer.",
+  oneSidedHelper: "Removed unused backtest() — it staked the away side at the home price.",
 } as const;
 
 export const CANONICAL_LEAD_MS = 180 * 60_000;

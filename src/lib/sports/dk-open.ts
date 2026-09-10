@@ -6,6 +6,7 @@ export function applyDraftKingsSnapshot(prev: OddsSnapshot, snap: OddsSnapshot):
     ...snap,
     openHomeSpread: keepOpen && prev.openHomeSpread != null ? prev.openHomeSpread : snap.homeSpread,
     openHomeMl: keepOpen && prev.openHomeMl != null ? prev.openHomeMl : snap.homeMl,
+    openAwayMl: keepOpen && prev.openAwayMl != null ? prev.openAwayMl : snap.awayMl,
     openTotal: keepOpen && prev.openTotal != null ? prev.openTotal : snap.total,
   };
 }

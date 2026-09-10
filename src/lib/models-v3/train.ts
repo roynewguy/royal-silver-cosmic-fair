@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { accuracy, backtestSides, brier, calibrationBuckets, honestBacktest, logLoss, type SideEval } from "./evaluate.ts";
+import { accuracy, backtestSides, brier, calibrationBuckets, honestBacktest, logLoss, sideEvalFromMarket, type SideEval } from "./evaluate.ts";
 import { FEATURE_NAMES, featureVector } from "./features.ts";
 import { applyStandard, clampProb, fitLogReg, predictLogReg, standardize } from "./logreg.ts";
 import { assertChronological, chronologicalSplit } from "./splits.ts";
@@ -10,18 +10,14 @@ import type { DatasetFile } from "./dataset.ts";
 import { BACKTEST_AUDIT } from "./integrity.ts";
 
 function toEval(rows: TrainingRow[], p: number[]): SideEval[] {
-  return rows.map((row, i) => ({
-    p: clampProb(p[i] ?? 0.5),
-    y: row.homeWin ? 1 : 0,
-    stakePrice: row.market.homeOpen ?? row.market.homeClose,
-    closePrice: row.market.homeClose,
-    homePrice: row.market.homeOpen ?? row.market.homeClose,
-    awayPrice: row.market.awayOpen ?? row.market.awayClose,
-    closeHome: row.market.homeClose,
-    closeAway: row.market.awayClose,
-    homeOpen: row.market.homeOpen,
-    awayOpen: row.market.awayOpen,
-  }));
+  return rows.map((row, i) =>
+    sideEvalFromMarket(clampProb(p[i] ?? 0.5), row.homeWin ? 1 : 0, {
+      homeOpen: row.market.homeOpen,
+      awayOpen: row.market.awayOpen,
+      homeClose: row.market.homeClose,
+      awayClose: row.market.awayClose,
+    }),
+  );
 }
 
 function predictAll(rows: TrainingRow[], means: number[], stds: number[], weights: number[]): number[] {
@@ -81,6 +77,7 @@ export async function trainSport(spec: ResearchSport, opts: { datasetFile: strin
       BACKTEST_AUDIT.priceUsedForStake,
       BACKTEST_AUDIT.vig,
       BACKTEST_AUDIT.starterEra,
+      BACKTEST_AUDIT.honestRule,
       ...data.notes,
     ],
   };
