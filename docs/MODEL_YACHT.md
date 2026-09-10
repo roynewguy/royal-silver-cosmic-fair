@@ -15,6 +15,13 @@ src/lib/model-yacht/core/          sport-neutral primitives
   versioning.ts                    yachtVersion(sport)
   output.ts                        yachtPrediction() — never official, 0–1 checks
 
+src/lib/model-yacht/engine/        point-in-time research warehouse
+  clocks.ts                        sourceClock only — never now / predictionAt / sibling feed
+  extract.ts                       per-source observations + quote-level books
+  opener.ts                        true opener = earliest proven quote
+  persist.ts                       INSERT ON CONFLICT DO NOTHING
+  collect.ts                       isolated from V2 (Safe never rethrows)
+
 src/lib/model-yacht/sports/mlb/    first deep specialization
 src/lib/model-yacht/adapters.ts    NFL / NCAAF / NBA / WNBA / NHL / NCAAB / UFC contracts
 ```
@@ -34,6 +41,16 @@ Live features use only their source clock (`fetchedAt`, `weatherFetchedAt`, `inj
 `yacht_feature_snapshots` are frozen by trigger. Persist snapshot first, then rows/predictions (FK).
 
 `yacht_shadow_predictions`: probability/uncertainty/quality in 0–1, `official` must be false, version like `model-yacht-%`.
+
+## Data Engine
+
+Point-in-time warehouse for all eight sports. Observations and quotes are immutable.
+
+- Source clocks only: board `fetchedAt`, weather `weatherFetchedAt`, injuries `injuriesFetchedAt`, starters `startersFetchedAt`, market `odds.capturedAt`.
+- Missing / future / unparseable timestamps → unproven. No `predictionAt` / now / cross-feed fallback. Yacht does not use `packModelInputs().capturedAt`.
+- True opener = first proven quote. Claimed ESPN open without a timestamp is audit-only.
+- Close / scores / results / CLV live in `yacht_eval_facts` (or `role=close` evaluation-only quotes) and are never prediction features.
+- Collection is isolated from V2: failure alerts `MODEL_DATA_FAILURE` and skips; soak/truth/freeze continue.
 
 ## Next
 

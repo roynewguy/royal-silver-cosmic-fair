@@ -92,4 +92,5 @@ test("synthetic: cycle soak uses final post gate; postponed is not auto-VOID", a
   assert.doesNotMatch(cycle, /recordSoakWouldHavePosted/);
   assert.match(cycle, /POSTPONED pending settlement/);
   assert.doesNotMatch(cycle, /cancelled \|\| game.status === ["']postponed["']/);
+  assert.match(cycle, /collectYachtWarehouseSafe/);
 });
