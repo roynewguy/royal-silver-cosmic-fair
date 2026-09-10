@@ -11,5 +11,7 @@ export { soccerLifecycle, threeWayNoVig, poissonThreeWay, twoWayFromSoccer, socc
 export { allFeatureContracts, featureContract, MLB_FEATURE_CONTRACT } from "./features/index.ts";
 export { predictMlbChallenger, MLB_CHAMPION } from "./sports/mlb/engine.ts";
 export { mlbFeatureVector } from "./sports/mlb/vector.ts";
+export { predictNflChallenger, NFL_CHAMPION, nflYachtVersion } from "./sports/nfl/engine.ts";
+export { nflFeatureVector } from "./sports/nfl/vector.ts";
 export { fitGbt, predictGbt } from "./models/gbt.ts";
 export { fitIntelLogReg, predictIntelLogReg } from "./models/logreg.ts";

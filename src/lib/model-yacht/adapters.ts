@@ -1,5 +1,7 @@
 import { mlbShadowFeatures } from "../models-v3/mlb-shadow-features.ts";
 import { YACHT_MLB_DATA_MATRIX, type YachtDataSourceRow } from "./data-matrix.ts";
+import { YACHT_NFL_DATA_MATRIX } from "./sports/nfl/data-matrix.ts";
+import { nflHistoricalFeatures, nflLiveFeatures } from "./intelligence/sports/nfl/live-features.ts";
 import { makeFeature, type YachtFeature } from "./provenance.ts";
 import { registerYachtProvider, type SportFeatureProvider, type YachtHistContext, type YachtLiveContext } from "./provider.ts";
 import { missingPlaceholders, sharedHistoricalForm, sharedLiveCardFeatures, SHARED_MARKET_MATRIX, SHARED_TEAM_MATRIX, unavailable } from "./shared.ts";
@@ -75,14 +77,9 @@ const mlb: SportFeatureProvider = teamProvider({
   },
 });
 
-const nflExtra: YachtDataSourceRow[] = [
-  unavailable("EPA/play", "nflfastR / NFL tracking with as-of week. Not ESPN scoreboard."),
-  unavailable("QB efficiency", "nflfastR EPA + CPOE. Point-in-time weekly dump."),
-  unavailable("O-line / D-line", "PFF or similar — not licensed. Leave missing rather than invent."),
-  unavailable("pace", "Plays per game from play-by-play, as-of week."),
-  unavailable("explosive-play rates", "Play-by-play explosive run/pass rates."),
-  { feature: "football weather", currentlyAvailable: "partial", currentSource: "ESPN weather string; NFL parser exists in V2 weather.ts", reliability: "low", timestampAvailable: "partial", historicalDataAvailable: "partial", liveDataAvailable: "partial", missing: false, recommendedFutureSource: "Structured wind/temp for outdoor sites only." },
-];
+const nflExtra: YachtDataSourceRow[] = YACHT_NFL_DATA_MATRIX.filter(
+  (r) => !SHARED_MARKET_MATRIX.some((s) => s.feature === r.feature) && !SHARED_TEAM_MATRIX.some((s) => s.feature === r.feature),
+);
 
 const nbaExtra: YachtDataSourceRow[] = [
   unavailable("ORtg / DRtg", "NBA stats team ratings as-of date. Not ESPN record string."),
@@ -154,9 +151,23 @@ const ufc: SportFeatureProvider = {
   liveFeatures: ufcLive,
 };
 
+const nfl: SportFeatureProvider = teamProvider({
+  sport: "nfl",
+  displayName: "NFL",
+  minPrior: 4,
+  priorCompleteMs: 4 * HOUR,
+  extra: nflExtra,
+  notes: [
+    "Football adapter. EPA/QB EPA/CPOE/line/pace are typed gaps, not invented.",
+    "Deep challenger is shadow-only: model-yacht-nfl-*-2026.09.2. V2 remains champion.",
+  ],
+  historical: (ctx) => [...nflHistoricalFeatures(ctx), ...missingPlaceholders(YACHT_NFL_DATA_MATRIX, ctx.predictionAt)],
+  live: (ctx) => [...nflLiveFeatures(ctx), ...missingPlaceholders(YACHT_NFL_DATA_MATRIX, ctx.predictionAt)],
+});
+
 const providers: SportFeatureProvider[] = [
   mlb,
-  teamProvider({ sport: "nfl", displayName: "NFL", minPrior: 4, priorCompleteMs: 4 * HOUR, extra: nflExtra, notes: ["Football adapter. EPA/QB/line/pace are typed gaps, not invented."] }),
+  nfl,
   teamProvider({ sport: "ncaaf", displayName: "NCAAF", minPrior: 4, priorCompleteMs: 4 * HOUR, extra: nflExtra, notes: ["College football shares the football gap list. No NFL-only stats invented for NCAA."] }),
   teamProvider({ sport: "nba", displayName: "NBA", minPrior: 10, priorCompleteMs: 2.5 * HOUR, extra: nbaExtra, notes: ["Hoops adapter. Ratings/lineups/minutes restrictions are missing."] }),
   teamProvider({ sport: "wnba", displayName: "WNBA", minPrior: 8, priorCompleteMs: 2.5 * HOUR, extra: nbaExtra, notes: ["WNBA uses the hoops gap list. Independent model version from NBA."] }),
