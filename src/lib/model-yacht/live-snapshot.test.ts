@@ -43,6 +43,7 @@ function card(over: Partial<GameCard> = {}): GameCard {
     fetchedAt: "2026-09-09T17:00:00.000Z",
     startersFetchedAt: "2026-09-09T17:00:00.000Z",
     weatherFetchedAt: "2026-09-09T17:00:00.000Z",
+    injuriesFetchedAt: "2026-09-09T17:00:00.000Z",
     ...over,
   };
 }
@@ -108,4 +109,26 @@ test("weather does not inherit board fetchedAt", () => {
   const weather = snap!.features.find((f) => f.key === "weather_string");
   assert.equal(weather?.knownAt, null);
   assert.equal(weather?.usable, false);
+});
+
+test("each live feature class uses only its source clock", () => {
+  const at = Date.parse("2026-09-09T17:05:00.000Z");
+  const venue = buildYachtLiveSnapshot(card({ fetchedAt: undefined }), at);
+  assert.equal(venue!.features.find((f) => f.key === "venue")?.usable, false);
+  assert.equal(venue!.features.find((f) => f.key === "home_win_pct")?.usable, false);
+
+  const weather = buildYachtLiveSnapshot(card({ weatherFetchedAt: undefined }), at);
+  assert.equal(weather!.features.find((f) => f.key === "weather_string")?.usable, false);
+
+  const inj = buildYachtLiveSnapshot(card({ injuriesFetchedAt: undefined }), at);
+  assert.equal(inj!.features.find((f) => f.key === "injury_away_minus_home")?.usable, false);
+
+  const starter = buildYachtLiveSnapshot(card({ startersFetchedAt: undefined }), at);
+  assert.equal(starter!.features.find((f) => f.key === "home_era")?.usable, false);
+  assert.equal(starter!.features.find((f) => f.key === "home_whip")?.usable, false);
+
+  const mkt = buildYachtLiveSnapshot(card({ odds: { ...odds, capturedAt: null } }), at);
+  assert.equal(mkt!.features.find((f) => f.key === "consensus_home")?.usable, false);
+  assert.equal(mkt!.market.capturedAt, null);
+  assert.equal(mkt!.provenanceOk, false);
 });

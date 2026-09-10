@@ -4,6 +4,7 @@ export {
   makeFeature,
   assertNoFutureFeature,
   snapshotProvenanceOk,
+  validateSnapshotProvenance,
   provenPregameTwoWay,
   twoWayPregame,
   featureJsonLeaksCloseOrResult,

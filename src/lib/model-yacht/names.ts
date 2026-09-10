@@ -3,8 +3,10 @@ export {
   MODEL_YACHT_STATUS,
   MODEL_YACHT_ROLE,
   YACHT_CONTRACT_STAMP,
+  YACHT_SPORTS,
   yachtVersion,
   isYachtVersion,
+  isYachtSport,
   sportFromYachtVersion,
 } from "./core/versioning.ts";
 

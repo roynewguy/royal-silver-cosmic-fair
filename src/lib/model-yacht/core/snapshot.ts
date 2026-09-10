@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { CANONICAL_LEAD_MS } from "../../models-v3/integrity.ts";
-import { snapshotProvenanceOk, type YachtFeature, type YachtMarketSnapshot } from "./provenance.ts";
+import { validateSnapshotProvenance, type YachtFeature, type YachtMarketSnapshot } from "./provenance.ts";
 
 export type YachtSnapshot = {
   snapshotId: string;
@@ -17,20 +17,38 @@ export type YachtSnapshot = {
   provenanceOk: boolean;
 };
 
+export type SnapshotIdInput = {
+  sport: string;
+  modelVersion: string;
+  gameId: string;
+  predictionAt: string;
+  marketFingerprint?: string | number | null;
+};
+
 function iso(ms: number): string {
   return new Date(ms).toISOString();
 }
 
-/** Sport-neutral snapshot id. Caller supplies modelVersion — never a hardcoded MLB contract. */
-export function snapshotIdFrom(modelVersion: string, parts: Array<string | number | null | undefined>): string {
+/**
+ * Sport-neutral snapshot id. The caller supplies sport + modelVersion.
+ * This file must never import an MLB contract.
+ */
+export function snapshotIdFrom(input: SnapshotIdInput): string {
   const h = createHash("sha256");
-  h.update(modelVersion);
+  h.update(input.sport);
   h.update("\n");
-  for (const p of parts) {
-    h.update(String(p ?? ""));
-    h.update("\0");
-  }
+  h.update(input.modelVersion);
+  h.update("\n");
+  h.update(input.gameId);
+  h.update("\n");
+  h.update(input.predictionAt);
+  h.update("\n");
+  h.update(String(input.marketFingerprint ?? ""));
   return `yacht_${h.digest("hex").slice(0, 24)}`;
+}
+
+export function marketFingerprint(market: Pick<YachtMarketSnapshot, "openCapturedAt" | "capturedAt" | "homeOpen" | "awayOpen" | "homeCurrent" | "awayCurrent">): string {
+  return [market.openCapturedAt, market.capturedAt, market.homeOpen, market.awayOpen, market.homeCurrent, market.awayCurrent].join("|");
 }
 
 export function yachtPredictionAt(startAt: string, now = Date.now(), _leadMs = CANONICAL_LEAD_MS): string | null {
@@ -50,7 +68,7 @@ export function historicalPredictionAt(startAt: string, leadMs = CANONICAL_LEAD_
 /**
  * Persistence order when writing to Postgres:
  *  1. INSERT yacht_feature_snapshots (row is frozen by trigger; no UPDATE/DELETE)
- *  2. INSERT yacht_dataset_rows with snapshot_id FK
+ *  2. INSERT yacht_dataset_rows / yacht_shadow_predictions with snapshot_id FK
  * In-memory dataset generation does not require DB and may exist without a snapshot row.
  */
 export function buildYachtSnapshot(input: {
@@ -64,18 +82,14 @@ export function buildYachtSnapshot(input: {
   market: YachtMarketSnapshot;
 }): YachtSnapshot {
   const usable = input.features.filter((f) => f.usable).length;
-  const provenanceOk = snapshotProvenanceOk(input);
-  const snapshotId = snapshotIdFrom(input.modelVersion, [
-    input.sport,
-    input.gameId,
-    input.predictionAt,
-    input.market.openCapturedAt,
-    input.market.capturedAt,
-    input.market.homeOpen,
-    input.market.awayOpen,
-    input.market.homeCurrent,
-    input.market.awayCurrent,
-  ]);
+  const provenanceOk = validateSnapshotProvenance(input);
+  const snapshotId = snapshotIdFrom({
+    sport: input.sport,
+    modelVersion: input.modelVersion,
+    gameId: input.gameId,
+    predictionAt: input.predictionAt,
+    marketFingerprint: marketFingerprint(input.market),
+  });
   return {
     snapshotId,
     gameId: input.gameId,

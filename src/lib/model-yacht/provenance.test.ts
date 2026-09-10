@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertNoFutureFeature, featureUsable, knownAtOrBefore, makeFeature, provenPregameTwoWay, snapshotProvenanceOk, twoWayPregame, type YachtMarketSnapshot } from "./provenance.ts";
+import { readFileSync } from "node:fs";
+import { assertNoFutureFeature, featureUsable, knownAtOrBefore, makeFeature, provenPregameTwoWay, snapshotProvenanceOk, validateSnapshotProvenance, twoWayPregame, type YachtMarketSnapshot } from "./provenance.ts";
 import { snapshotIdFrom } from "./core/snapshot.ts";
 import { yachtVersion } from "./core/versioning.ts";
 
@@ -76,13 +77,15 @@ test("snapshotProvenanceOk is not two-way-plus-before-start alone", () => {
     makeFeature({ key: "home_last5", value: 0.6, source: "priors", knownAt: "2026-05-31T20:00:00Z", capturedAt: "2026-05-31T20:00:00Z", predictionAt, quality: 1 }),
   ];
   assert.equal(snapshotProvenanceOk({ predictionAt, startAt, market: mkt({ openCapturedAt: null, capturedAt: null }), features }), false);
-  assert.equal(snapshotProvenanceOk({ predictionAt, startAt, market: mkt(), features }), true);
+  assert.equal(validateSnapshotProvenance({ predictionAt, startAt, market: mkt(), features }), true);
 });
 
 test("snapshot hashes are sport-neutral — MLB contract is not baked into core", () => {
-  const mlb = snapshotIdFrom(yachtVersion("mlb"), ["g1", "t"]);
-  const nfl = snapshotIdFrom(yachtVersion("nfl"), ["g1", "t"]);
+  const base = { gameId: "g1", predictionAt: "t", marketFingerprint: "m" };
+  const mlb = snapshotIdFrom({ sport: "mlb", modelVersion: yachtVersion("mlb"), ...base });
+  const nfl = snapshotIdFrom({ sport: "nfl", modelVersion: yachtVersion("nfl"), ...base });
   assert.notEqual(mlb, nfl);
-  assert.equal(snapshotIdFrom("model-yacht-mlb-2026.09.1", ["g1", "t"]), mlb);
+  const src = readFileSync(new URL("./core/snapshot.ts", import.meta.url), "utf8");
+  assert.equal(/MODEL_YACHT_MLB|mlb-2026/i.test(src), false);
 });
 

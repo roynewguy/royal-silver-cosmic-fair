@@ -159,3 +159,13 @@ export function snapshotProvenanceOk(input: {
   }
   return true;
 }
+
+/** Identical provenance contract for every sport. */
+export function validateSnapshotProvenance(snapshot: {
+  predictionAt: string;
+  startAt: string;
+  market: YachtMarketSnapshot;
+  features: YachtFeature[];
+}): boolean {
+  return snapshotProvenanceOk(snapshot);
+}

@@ -1,7 +1,7 @@
 import { impliedFromAmerican } from "../../../sports/odds.ts";
 import { teamFeatures } from "../../../models-v3/features.ts";
 import type { HistoricalGame, HistoricalOdds, StarterFeat } from "../../../models-v3/types.ts";
-import { makeFeature, provenPregameTwoWay, snapshotProvenanceOk, twoWayPregame, type YachtFeature, type YachtMarketSnapshot } from "../../core/provenance.ts";
+import { makeFeature, provenPregameTwoWay, twoWayPregame, validateSnapshotProvenance, type YachtFeature, type YachtMarketSnapshot } from "../../core/provenance.ts";
 import { historicalPredictionAt, snapshotIdFrom } from "../../core/snapshot.ts";
 import { assertChronologicalRows, assertFeatureSetClean, assertPredictionBeforeStart, priorKnownAt, yachtPriorGames } from "../../core/leakage.ts";
 import { missingFeatures } from "./data-matrix.ts";
@@ -209,10 +209,21 @@ export function buildYachtMlbDataset(input: {
       continue;
     }
 
-    const provenanceOk = snapshotProvenanceOk({ predictionAt, startAt: game.startAt, market: pregame, features });
+    const provenanceOk = validateSnapshotProvenance({ predictionAt, startAt: game.startAt, market: pregame, features });
     const usable = features.filter((f) => f.usable).length;
-    const snapshotId = snapshotIdFrom(MODEL_YACHT_MLB_CONTRACT, [game.gameId, predictionAt, pregame.openCapturedAt, pregame.homeOpen, pregame.awayOpen]);
-    const rowId = snapshotIdFrom(MODEL_YACHT_MLB_CONTRACT, ["row", game.gameId, predictionAt]);
+    const snapshotId = snapshotIdFrom({
+      sport: "mlb",
+      modelVersion: MODEL_YACHT_MLB_CONTRACT,
+      gameId: game.gameId,
+      predictionAt,
+      marketFingerprint: `${pregame.openCapturedAt ?? ""}|${pregame.homeOpen}|${pregame.awayOpen}`,
+    });
+    const rowId = snapshotIdFrom({
+      sport: "mlb",
+      modelVersion: MODEL_YACHT_MLB_CONTRACT,
+      gameId: `row:${game.gameId}`,
+      predictionAt,
+    });
     rows.push({
       rowId,
       snapshotId,
