@@ -142,6 +142,8 @@ export function parseCoreOdds(gameId: string, payload: {
     awayOpen: americanFrom(a?.open?.moneyLine),
     homeClose: americanFrom(h?.close?.moneyLine),
     awayClose: americanFrom(a?.close?.moneyLine),
+    openCapturedAt: null,
+    closeCapturedAt: null,
   };
 }
 

@@ -61,6 +61,7 @@ test("live Yacht snapshot keeps both opening and current sides", () => {
   assert.equal(pair?.away, -160);
   assert.equal(snap!.features.some((f) => f.key === "FIP" && f.missing), true);
   assert.ok(Date.parse(snap!.predictionAt) < Date.parse(snap!.startAt));
+  assert.equal(snap!.provenanceOk, true);
 });
 
 test("knownBeforeStart is not assumed — started games produce no snapshot", () => {
@@ -74,6 +75,37 @@ test("usable features must have known_at <= prediction_at", () => {
   for (const f of snap!.features) {
     if (!f.usable) continue;
     assert.ok(f.knownAt);
-    assert.ok(Date.parse(f.knownAt!) <= Date.parse(f.predictionAt));
+    assert.ok(Date.parse(f.knownAt!) <= Date.parse(snap!.predictionAt));
   }
+});
+
+test("all-null source timestamps stay unproven — predictionAt is not a substitute", () => {
+  const blank = card({
+    fetchedAt: undefined,
+    startersFetchedAt: undefined,
+    weatherFetchedAt: undefined,
+    injuriesFetchedAt: undefined,
+    weather: "82 F",
+    odds: { ...odds, capturedAt: null },
+  });
+  const snap = buildYachtLiveSnapshot(blank, Date.parse("2026-09-09T17:05:00.000Z"));
+  assert.ok(snap);
+  assert.equal(snap!.market.capturedAt, null);
+  assert.equal(snap!.market.openCapturedAt, null);
+  assert.equal(snap!.provenanceOk, false);
+  for (const f of snap!.features) {
+    assert.equal(f.usable, false);
+    assert.equal(f.knownAt, null);
+  }
+});
+
+test("weather does not inherit board fetchedAt", () => {
+  const snap = buildYachtLiveSnapshot(
+    card({ weatherFetchedAt: undefined, weather: "82 F", fetchedAt: "2026-09-09T17:00:00.000Z" }),
+    Date.parse("2026-09-09T17:05:00.000Z"),
+  );
+  assert.ok(snap);
+  const weather = snap!.features.find((f) => f.key === "weather_string");
+  assert.equal(weather?.knownAt, null);
+  assert.equal(weather?.usable, false);
 });

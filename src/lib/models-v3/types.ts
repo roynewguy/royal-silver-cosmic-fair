@@ -24,6 +24,9 @@ export type HistoricalOdds = {
   awayOpen: number | null;
   homeClose: number | null;
   awayClose: number | null;
+  /** Real quote timestamp. Null = unproven. Do not stamp predictionAt. */
+  openCapturedAt?: string | null;
+  closeCapturedAt?: string | null;
 };
 
 export type StarterFeat = {

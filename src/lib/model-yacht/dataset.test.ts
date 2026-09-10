@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { HistoricalGame, HistoricalOdds } from "../models-v3/types.ts";
 import { buildYachtMlbDataset } from "./dataset.ts";
+import { yachtRoi } from "./evaluate.ts";
 import { assertFeatureSetClean, yachtPriorGames } from "./leakage.ts";
 import { knownAtOrBefore } from "./provenance.ts";
 import { MODEL_YACHT_MLB_CONTRACT } from "./names.ts";
@@ -26,7 +27,7 @@ function hist(id: string, start: string, home: string, away: string, hs: number,
   };
 }
 
-function slate(): { games: HistoricalGame[]; odds: HistoricalOdds[] } {
+function slate(opts: { stampOpen?: boolean } = {}): { games: HistoricalGame[]; odds: HistoricalOdds[] } {
   const games: HistoricalGame[] = [];
   const start = Date.parse("2026-05-01T20:00:00Z");
   const teams = ["LAD", "SF", "NYY", "BOS"];
@@ -39,20 +40,25 @@ function slate(): { games: HistoricalGame[]; odds: HistoricalOdds[] } {
       n += 1;
     }
   }
-  const odds: HistoricalOdds[] = games.map((g, i) => ({
-    gameId: g.gameId,
-    sportsbook: "ESPN BET",
-    market: "moneyline",
-    homeOpen: i % 2 ? -120 : 105,
-    awayOpen: i % 2 ? 100 : -125,
-    homeClose: i % 2 ? -140 : 120,
-    awayClose: i % 2 ? 120 : -140,
-  }));
+  const odds: HistoricalOdds[] = games.map((g, i) => {
+    const predictionMs = Date.parse(g.startAt) - 3 * 3600_000;
+    return {
+      gameId: g.gameId,
+      sportsbook: "ESPN BET",
+      market: "moneyline",
+      homeOpen: i % 2 ? -120 : 105,
+      awayOpen: i % 2 ? 100 : -125,
+      homeClose: i % 2 ? -140 : 120,
+      awayClose: i % 2 ? 120 : -140,
+      openCapturedAt: opts.stampOpen ? new Date(predictionMs - 60_000).toISOString() : null,
+      closeCapturedAt: opts.stampOpen ? g.startAt : null,
+    };
+  });
   return { games, odds };
 }
 
 test("Yacht dataset is chronological, pregame-only, and drops incomplete markets", () => {
-  const { games, odds } = slate();
+  const { games, odds } = slate({ stampOpen: true });
   const ds = buildYachtMlbDataset({ games, odds, now: "2026-09-01T00:00:00Z" });
   assert.equal(ds.version, MODEL_YACHT_MLB_CONTRACT);
   assert.equal(ds.name, "Model Yacht MLB Dataset v1");
@@ -68,6 +74,7 @@ test("Yacht dataset is chronological, pregame-only, and drops incomplete markets
     assert.equal(row.pregameMarket.awayClose, null);
     assert.ok(row.pregameMarket.homeOpen != null && row.pregameMarket.awayOpen != null);
     assert.ok(row.closingMarket.homeClose != null);
+    assert.equal(row.provenanceOk, true);
     assert.equal(row.target.homeWin != null, true);
     assertFeatureSetClean(row.features, row.predictionAt);
     for (const f of row.features) {
@@ -102,7 +109,7 @@ test("same-day unfinished priors cannot leak into Yacht form", () => {
 });
 
 test("unproven starter ERA is missing, not invented from the dump", () => {
-  const { games, odds } = slate();
+  const { games, odds } = slate({ stampOpen: true });
   const ds = buildYachtMlbDataset({
     games,
     odds,
@@ -114,4 +121,47 @@ test("unproven starter ERA is missing, not invented from the dump", () => {
   assert.equal(era?.missing, true);
   assert.equal(era?.value, null);
   assert.equal(era?.usable, false);
+});
+
+test("historical open with no timestamp is not a usable feature or ROI stake", () => {
+  const { games, odds } = slate({ stampOpen: false });
+  const ds = buildYachtMlbDataset({ games, odds, now: "2026-09-01T00:00:00Z" });
+  assert.ok(ds.rows.length > 0);
+  const row = ds.rows[0]!;
+  assert.equal(row.pregameMarket.homeOpen != null, true);
+  assert.equal(row.pregameMarket.openCapturedAt, null);
+  assert.equal(row.provenanceOk, false);
+  const open = row.features.find((f) => f.key === "home_open_ml");
+  assert.equal(open?.usable, false);
+  const roi = yachtRoi([{ p: 0.7, y: 1, predictionAt: row.predictionAt, market: row.pregameMarket }], 0);
+  assert.equal(roi.n, 0);
+  assert.equal(roi.dropped, 1);
+});
+
+test("historical open timestamp after predictionAt is unusable", () => {
+  const { games, odds } = slate({ stampOpen: false });
+  const late = odds.map((o, i) => ({
+    ...o,
+    openCapturedAt: games[i]!.startAt,
+  }));
+  const ds = buildYachtMlbDataset({ games, odds: late, now: "2026-09-01T00:00:00Z" });
+  const row = ds.rows[0]!;
+  assert.ok(Date.parse(row.pregameMarket.openCapturedAt!) > Date.parse(row.predictionAt));
+  assert.equal(row.provenanceOk, false);
+  assert.equal(row.features.find((f) => f.key === "home_open_ml")?.usable, false);
+});
+
+test("historical open timestamp at or before predictionAt is usable", () => {
+  const { games, odds } = slate({ stampOpen: true });
+  const ds = buildYachtMlbDataset({ games, odds, now: "2026-09-01T00:00:00Z" });
+  const row = ds.rows[0]!;
+  assert.ok(row.pregameMarket.openCapturedAt);
+  assert.ok(Date.parse(row.pregameMarket.openCapturedAt!) <= Date.parse(row.predictionAt));
+  assert.equal(row.provenanceOk, true);
+  assert.equal(row.features.find((f) => f.key === "home_open_ml")?.usable, true);
+  const roi = yachtRoi(
+    ds.rows.slice(0, 5).map((r) => ({ p: 0.62, y: r.target.homeWin ? 1 : 0 as 0 | 1, predictionAt: r.predictionAt, market: r.pregameMarket })),
+    0,
+  );
+  assert.ok(roi.n > 0);
 });

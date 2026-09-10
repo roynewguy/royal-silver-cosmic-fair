@@ -10,6 +10,8 @@ function mkt(over: Partial<YachtMarketSnapshot> = {}): YachtMarketSnapshot {
   return {
     sportsbook: "DraftKings",
     capturedAt: "2026-06-01T16:00:00Z",
+    openCapturedAt: "2026-06-01T12:00:00Z",
+    closeCapturedAt: "2026-06-01T19:55:00Z",
     homeOpen: -150,
     awayOpen: 130,
     homeCurrent: -155,
@@ -22,27 +24,38 @@ function mkt(over: Partial<YachtMarketSnapshot> = {}): YachtMarketSnapshot {
 }
 
 test("Yacht ROI home bet stakes home open not close", () => {
-  const r = yachtRoi([{ p: 0.7, y: 1, market: mkt() }], 0.01);
+  const r = yachtRoi([{ p: 0.7, y: 1, predictionAt: "2026-06-01T17:00:00Z", market: mkt() }], 0.01);
   assert.equal(r.n, 1);
   assert.ok(Math.abs(r.units - 100 / 150) < 1e-9);
 });
 
 test("Yacht ROI away bet stakes away open not home price", () => {
-  const r = yachtRoi([{ p: 0.35, y: 0, market: mkt() }], 0.01);
+  const r = yachtRoi([{ p: 0.35, y: 0, predictionAt: "2026-06-01T17:00:00Z", market: mkt() }], 0.01);
   assert.equal(r.n, 1);
   assert.ok(Math.abs(r.units - 1.3) < 1e-9);
 });
 
 test("Yacht ROI drops missing away pregame price", () => {
-  const r = yachtRoi([{ p: 0.4, y: 0, market: mkt({ awayOpen: null, awayCurrent: null, awayClose: 200 }) }], 0);
+  const r = yachtRoi([{ p: 0.4, y: 0, predictionAt: "2026-06-01T17:00:00Z", market: mkt({ awayOpen: null, awayCurrent: null, awayClose: 200 }) }], 0);
   assert.equal(r.n, 0);
   assert.equal(r.dropped, 1);
 });
 
 test("Yacht ROI never stakes the closer", () => {
-  const r = yachtRoi([{ p: 0.8, y: 1, market: mkt({ homeOpen: null, awayOpen: null, homeCurrent: null, awayCurrent: null }) }], 0);
+  const r = yachtRoi([{ p: 0.8, y: 1, predictionAt: "2026-06-01T17:00:00Z", market: mkt({ homeOpen: null, awayOpen: null, homeCurrent: null, awayCurrent: null }) }], 0);
   assert.equal(r.n, 0);
   assert.equal(pregameStakePrice(null, -400), null);
+});
+
+test("Yacht ROI drops numeric open with no timestamp", () => {
+  const r = yachtRoi([{
+    p: 0.7,
+    y: 1,
+    predictionAt: "2026-06-01T17:00:00Z",
+    market: mkt({ openCapturedAt: null, capturedAt: null }),
+  }], 0);
+  assert.equal(r.n, 0);
+  assert.equal(r.dropped, 1);
 });
 
 test("closing odds do not leak into V3 feature vectors", () => {
