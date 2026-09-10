@@ -52,10 +52,88 @@ export function publicModelLabel(version: string | null | undefined): string {
   return "V2";
 }
 
-export function postedClockPt(iso: string | null | undefined, fallbackIso = new Date().toISOString()): string {
-  const stamp = iso && !Number.isNaN(Date.parse(iso)) ? iso : fallbackIso;
+function parseIso(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  return Number.isNaN(Date.parse(raw)) ? null : raw;
+}
+
+export type FrozenOfficialCard = {
+  selection: string;
+  market: string;
+  side: string;
+  lockedOdds: number;
+  lockedLine: number | null;
+  sportsbook: string;
+  postedAt: string | null;
+};
+
+/**
+ * Official Discord cards may only show the freeze (or the immutable pick row).
+ * Later GameCard / market quotes are never a source.
+ */
+export function frozenOfficialCard(pick: PickRow): FrozenOfficialCard {
+  let freeze: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(pick.freezeJson ?? "{}") as Record<string, unknown>;
+    if (parsed && typeof parsed === "object") freeze = parsed;
+  } catch {
+    /* pick-row fields are the fallback freeze */
+  }
+  const freezeOdds = freeze.odds && typeof freeze.odds === "object"
+    ? freeze.odds as { book?: unknown }
+    : null;
+  const selection =
+    (typeof freeze.selection === "string" && freeze.selection.trim())
+    || (pick.selection ?? "").trim()
+    || "PICK";
+  const market =
+    (typeof freeze.market === "string" && freeze.market.trim())
+    || pick.market
+    || "moneyline";
+  const side =
+    (typeof freeze.side === "string" && freeze.side.trim())
+    || pick.side
+    || "home";
+  const lockedOdds = typeof freeze.lockedOdds === "number" && Number.isFinite(freeze.lockedOdds)
+    ? freeze.lockedOdds
+    : pick.lockedOdds;
+  const lockedLine = freeze.lockedLine === null
+    ? null
+    : typeof freeze.lockedLine === "number" && Number.isFinite(freeze.lockedLine)
+      ? freeze.lockedLine
+      : pick.lockedLine;
+  const sportsbook =
+    (typeof freeze.sportsbook === "string" && freeze.sportsbook.trim())
+    || (typeof freezeOdds?.book === "string" && freezeOdds.book.trim())
+    || (pick.lockedOddsJson?.book || "").trim()
+    || "DraftKings";
+  const postedAt =
+    parseIso(freeze.postedTimestamp)
+    ?? parseIso(freeze.frozenAt)
+    ?? parseIso(pick.postedAt);
+  return { selection, market, side, lockedOdds, lockedLine, sportsbook, postedAt };
+}
+
+function pickFromFreeze(pick: PickRow): PickRow {
+  const frozen = frozenOfficialCard(pick);
+  return {
+    ...pick,
+    selection: frozen.selection,
+    market: frozen.market as PickRow["market"],
+    side: frozen.side as PickRow["side"],
+    lockedOdds: frozen.lockedOdds,
+    lockedLine: frozen.lockedLine,
+    postedAt: frozen.postedAt,
+    lockedOddsJson: { ...pick.lockedOddsJson, book: frozen.sportsbook },
+  };
+}
+
+/** Proven freeze/posted clock only. Never invent Date.now(). */
+export function postedClockPt(iso: string | null | undefined): string {
+  const stamp = parseIso(iso);
+  if (!stamp) return "—";
   const clock = formatClock(stamp, "America/Los_Angeles");
-  return clock ? `${clock} PT` : "PT";
+  return clock ? `${clock} PT` : "—";
 }
 
 export function marketLabel(market: string | null | undefined): string {
@@ -67,14 +145,16 @@ export function marketLabel(market: string | null | undefined): string {
 }
 
 export function lineLabel(pick: PickRow): string {
-  if (pick.market === "moneyline" || pick.lockedLine == null || !Number.isFinite(pick.lockedLine)) return "—";
-  return formatLine(pick.lockedLine);
+  const card = frozenOfficialCard(pick);
+  if (card.market === "moneyline" || card.lockedLine == null || !Number.isFinite(card.lockedLine)) return "—";
+  return formatLine(card.lockedLine);
 }
 
-/** The actual BET, e.g. "Dodgers ML -125". */
+/** The actual BET, e.g. "Dodgers ML -125". Frozen selection + frozen odds only. */
 export function customerPickLine(pick: PickRow): string {
-  const odds = formatAmerican(pick.lockedOdds);
-  const sel = (pick.selection ?? "").trim() || "PICK";
+  const card = frozenOfficialCard(pick);
+  const odds = formatAmerican(card.lockedOdds);
+  const sel = card.selection;
   if (odds !== "—" && sel.includes(odds)) return sel;
   return odds === "—" ? sel : `${sel} ${odds}`;
 }
@@ -95,16 +175,18 @@ export function matchupVsChip(pick: PickRow, game?: GameCard | null): string {
 }
 
 export function pickedSideTitle(pick: PickRow, game?: GameCard | null): string {
-  if (pick.side === "home") return game?.home.name ?? pick.selection;
-  if (pick.side === "away") return game?.away.name ?? pick.selection;
-  if (pick.side === "over") return "Over";
-  if (pick.side === "under") return "Under";
-  return pick.selection;
+  const card = frozenOfficialCard(pick);
+  if (card.side === "home") return game?.home.name ?? card.selection;
+  if (card.side === "away") return game?.away.name ?? card.selection;
+  if (card.side === "over") return "Over";
+  if (card.side === "under") return "Under";
+  return card.selection;
 }
 
 /** Bold bet line for embed description, e.g. **Lakers -3.5** @ **-110**. */
 export function boldBetLine(pick: PickRow): string {
-  return `**${pick.selection}** @ **${formatAmerican(pick.lockedOdds)}**`;
+  const card = frozenOfficialCard(pick);
+  return `**${card.selection}** @ **${formatAmerican(card.lockedOdds)}**`;
 }
 
 export function resolvePickTier(pick: PickRow): "lock" | "soft_floor" {
@@ -145,8 +227,7 @@ export function unitsFieldLabel(pick: PickRow): string {
 }
 
 export function sportsbookName(pick: PickRow): string {
-  const book = (pick.lockedOddsJson?.book || "DraftKings").trim();
-  return book || "DraftKings";
+  return frozenOfficialCard(pick).sportsbook;
 }
 
 /** Real DraftKings deep-link only — never invent from Odds API event ids. */
@@ -174,17 +255,20 @@ function field(name: string, value: string, inline = true): DiscordEmbedField {
 /**
  * Customer official pick card.
  * The BET is the hero. Internal PASS/no-vig/confidence stays off this card.
+ * Odds/line/book/posted clock come from the freeze — never a later quote.
  */
 export function buildOfficialPickEmbed(pick: PickRow, game?: GameCard | null): DiscordEmbed {
-  const matchup = matchupVsChip(pick, game);
-  const bet = customerPickLine(pick);
-  const posted = postedClockPt(pick.postedAt);
-  const kick = formatKick(pick.startAt, "America/Los_Angeles");
-  const id = ticketId(pick);
-  const book = sportsbookName(pick);
+  const frozenPick = pickFromFreeze(pick);
+  const card = frozenOfficialCard(pick);
+  const matchup = matchupVsChip(frozenPick, game);
+  const bet = customerPickLine(frozenPick);
+  const posted = postedClockPt(card.postedAt);
+  const kick = formatKick(frozenPick.startAt, "America/Los_Angeles");
+  const id = ticketId(frozenPick);
+  const book = card.sportsbook;
   const placeUrl = verifiedPlaceBetUrl(pick);
   const description = [
-    pick.sport,
+    frozenPick.sport,
     matchup,
     "",
     "**PICK**",
@@ -200,9 +284,9 @@ export function buildOfficialPickEmbed(pick: PickRow, game?: GameCard | null): D
     description: description.slice(0, 4096),
     color: OFFICIAL_EMBED_COLOR,
     fields: [
-      field("Market", marketLabel(pick.market)),
-      field("Line", lineLabel(pick)),
-      field("Odds", formatAmerican(pick.lockedOdds)),
+      field("Market", marketLabel(card.market)),
+      field("Line", lineLabel(frozenPick)),
+      field("Odds", formatAmerican(card.lockedOdds)),
       field("Units", stakeLabel(pick.units)),
       field("Model", publicModelLabel(pick.modelVersion)),
       field("Kick", `${kick} PT`),
@@ -249,15 +333,17 @@ export function buildOfficialResultEmbed(
   profit: number,
   record: DeskRecord,
 ): DiscordEmbed {
-  const kick = formatKick(pick.startAt, "America/Los_Angeles");
+  const frozenPick = pickFromFreeze(pick);
+  const card = frozenOfficialCard(pick);
+  const kick = formatKick(frozenPick.startAt, "America/Los_Angeles");
   const manual = pick.pickSource && pick.pickSource !== "auto" ? " · MANUAL" : "";
   const badge = resultBadgePlain(result);
-  const bet = customerPickLine(pick);
-  const id = ticketId(pick);
-  const frozenOdds = formatAmerican(pick.lockedOdds);
+  const bet = customerPickLine(frozenPick);
+  const id = ticketId(frozenPick);
+  const frozenOdds = formatAmerican(card.lockedOdds);
   const description = [
-    pick.sport,
-    matchupVsChip(pick, game),
+    frozenPick.sport,
+    matchupVsChip(frozenPick, game),
     "",
     "**PICK**",
     `**${bet}**`,

@@ -9,6 +9,7 @@ import {
   parseQueuedContextJson,
   postAttemptBlockReason,
   stalePostingRecoveryStatus,
+  shouldQueueOfficialResultPost,
 } from "./lifecycle.ts";
 
 test("isSoftFloorQueuedContext detects softFloor flag and pickTier", () => {
@@ -82,4 +83,14 @@ test("soft expire / discord auth skip reasons are stable operator strings", () =
   assert.match(SOFT_FLOOR_EXPIRED_REASON, /SOFT_FLOOR_EXPIRED/);
   assert.match(SOFT_FLOOR_EXPIRED_REASON, /never Discord/);
   assert.match(DISCORD_AUTH_SKIP_REASON, /401\/403/);
+});
+
+test("POSTPONED never queues a customer result post; VOID/WIN/LOSS/PUSH do for official ledger", () => {
+  assert.equal(shouldQueueOfficialResultPost({ ledger: "official", result: "VOID", gameStatus: "cancelled" }), true);
+  assert.equal(shouldQueueOfficialResultPost({ ledger: "official", result: "WIN", gameStatus: "final" }), true);
+  assert.equal(shouldQueueOfficialResultPost({ ledger: "official", result: "LOSS", gameStatus: "final" }), true);
+  assert.equal(shouldQueueOfficialResultPost({ ledger: "official", result: "PUSH", gameStatus: "final" }), true);
+  assert.equal(shouldQueueOfficialResultPost({ ledger: "official", result: "VOID", gameStatus: "postponed" }), false);
+  assert.equal(shouldQueueOfficialResultPost({ ledger: "official", result: null, gameStatus: "postponed" }), false);
+  assert.equal(shouldQueueOfficialResultPost({ ledger: "paper", result: "WIN", gameStatus: "final" }), false);
 });

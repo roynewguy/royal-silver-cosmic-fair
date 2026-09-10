@@ -95,6 +95,11 @@ export function discordAlertCode(result: { authFailure?: boolean; uncertain?: bo
   return "DISCORD_FAIL";
 }
 
+/** Uncertain official result delivery → never blindly resend. */
+export function resultDeliveryAlertCode(input: { uncertain?: boolean }): AlertCode {
+  return input.uncertain ? "DISCORD_DELIVERY_UNKNOWN" : "DISCORD_FAIL";
+}
+
 export async function alertOwner(code: AlertCode, detail: string): Promise<void> {
   const persisted = await loadAlertMap();
   for (const [k, v] of Object.entries(persisted)) {

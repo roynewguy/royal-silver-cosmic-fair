@@ -38,7 +38,8 @@ export function channelWebhook(role: DiscordRole, stored = "", env: NodeJS.Proce
   if (role === "alerts" && [picks, results, test, manual, record, free, lab].some(u => webhookIdentity(u) === id)) return "";
   if (role !== "alerts" && webhookIdentity(alerts) === id) return "";
   if (role === "results" && webhookIdentity(picks) === id) return "";
-  if (["test", "manual"].includes(role) && webhookIdentity(picks) === id) return "";
+  if (role === "results" && [test, manual].some(u => webhookIdentity(u) === id)) return "";
+  if (["test", "manual"].includes(role) && [picks, results].some(u => webhookIdentity(u) === id)) return "";
   return selected;
 }
 

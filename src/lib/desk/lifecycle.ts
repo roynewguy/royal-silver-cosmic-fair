@@ -83,3 +83,14 @@ export function stalePostingRecoveryStatus(input: {
   if (input.status !== "posting") return null;
   return input.discordMessageId ? "posted" : "delivery_unknown";
 }
+
+/** Official WIN/LOSS/PUSH/VOID recaps. POSTPONED never becomes a customer result post. */
+export function shouldQueueOfficialResultPost(input: {
+  ledger?: string | null;
+  result: string | null;
+  gameStatus: string;
+}): boolean {
+  if (input.gameStatus === "postponed") return false;
+  if (input.ledger === "paper") return false;
+  return input.result === "WIN" || input.result === "LOSS" || input.result === "PUSH" || input.result === "VOID";
+}

@@ -15,7 +15,7 @@ import {
   finalScoreLine,
 } from "./discord-embeds.ts";
 
-export type { DiscordEmbed, DiscordEmbedField, DiscordWebhookPayload, LaunchPreviewKind } from "./discord-embeds.ts";
+export type { DiscordEmbed, DiscordEmbedField, DiscordWebhookPayload, LaunchPreviewKind, FrozenOfficialCard } from "./discord-embeds.ts";
 export {
   ALERT_EMBED_COLOR,
   NO_PLAY_EMBED_COLOR,
@@ -33,6 +33,7 @@ export {
   buildOwnerAlertPayload,
   customerPickLine,
   finalScoreLine,
+  frozenOfficialCard,
   launchPreviewLabel,
   lineLabel,
   marketLabel,

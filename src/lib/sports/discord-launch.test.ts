@@ -8,6 +8,8 @@ import {
   buildOfficialResultEmbed,
   buildOwnerAlertPayload,
   customerPickLine,
+  frozenOfficialCard,
+  postedClockPt,
   postWebhook,
   resultBadgePlain,
   ticketId,
@@ -22,6 +24,8 @@ import { selectFreePickOfDay } from "./free-pick.ts";
 import { noPlayEnabled } from "./shadow-discord.ts";
 import { sportsbookSettlement } from "./grade.ts";
 import { evaluatePreflightVerdict } from "../desk/preflight-verdict.ts";
+import { resultDeliveryAlertCode } from "../desk/alerts.ts";
+import { shouldQueueOfficialResultPost } from "../desk/lifecycle.ts";
 import type { DeskRecord, GameCard, PickRow } from "./types.ts";
 
 const hook = (id: string) => `https://discord.com/api/webhooks/${id}/token`;
@@ -282,4 +286,98 @@ test("postWebhook 429 retries once then fails closed, not uncertain", async () =
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test("frozen Discord card ignores later market quotes and mutated pick-row odds", () => {
+  const posted = "2026-09-09T23:32:00.000Z";
+  const pick = lockPick({
+    selection: "Padres ML",
+    lockedOdds: -200,
+    lockedLine: 1.5,
+    postedAt: null,
+    lockedOddsJson: { book: "FanDuel", source: "odds-api" } as PickRow["lockedOddsJson"],
+    freezeJson: JSON.stringify({
+      pickTier: "lock",
+      selection: "Dodgers ML",
+      market: "moneyline",
+      side: "home",
+      lockedOdds: -125,
+      lockedLine: null,
+      sportsbook: "DraftKings",
+      postedTimestamp: posted,
+      frozenAt: posted,
+    }),
+  });
+  const later = {
+    ...game(),
+    odds: { book: "FanDuel", source: "live", homeMl: -200, awayMl: 170, capturedAt: new Date().toISOString() },
+  } as unknown as GameCard;
+  const card = frozenOfficialCard(pick);
+  assert.equal(card.selection, "Dodgers ML");
+  assert.equal(card.lockedOdds, -125);
+  assert.equal(card.lockedLine, null);
+  assert.equal(card.sportsbook, "DraftKings");
+  assert.equal(card.postedAt, posted);
+  const embed = buildOfficialPickEmbed(pick, later);
+  const blob = JSON.stringify(embed);
+  assert.match(blob, /Dodgers ML -125/);
+  assert.match(blob, /Sportsbook: DraftKings/);
+  assert.doesNotMatch(blob, /FanDuel/);
+  assert.doesNotMatch(blob, /-200/);
+  assert.doesNotMatch(blob, /Padres ML/);
+  const result = buildOfficialResultEmbed(pick, {
+    ...later,
+    status: "final",
+    home: { name: "Dodgers", abbr: "LAD", score: 4 },
+    away: { name: "Padres", abbr: "SD", score: 1 },
+  } as GameCard, "WIN", 0.8, { wins: 1, losses: 0, pushes: 0, units: 0.8, riskedUnits: 1, pending: 0 });
+  assert.equal(result.fields?.find((f) => f.name === "Frozen odds")?.value, "-125");
+  assert.doesNotMatch(JSON.stringify(result), /-200/);
+});
+
+test("missing posted timestamp is not invented from now", () => {
+  assert.equal(postedClockPt(null), "—");
+  assert.equal(postedClockPt(undefined), "—");
+  assert.equal(postedClockPt("not-a-date"), "—");
+  const pick = lockPick({
+    postedAt: null,
+    freezeJson: JSON.stringify({ pickTier: "lock", selection: "Dodgers ML", lockedOdds: -125 }),
+  });
+  const embed = buildOfficialPickEmbed(pick, game());
+  assert.match(embed.description ?? "", /Posted: —/);
+  assert.doesNotMatch(embed.description ?? "", /Posted: \d/);
+});
+
+test("webhook collision fail-closes official, results, alerts, free, and test", () => {
+  const env = {
+    DISCORD_PICKS_WEBHOOK: hook("picks"),
+    DISCORD_RESULTS_WEBHOOK: hook("results"),
+    DISCORD_ALERT_WEBHOOK: hook("alerts"),
+    DISCORD_FREE_PICKS_WEBHOOK: hook("free"),
+    DISCORD_TEST_WEBHOOK: hook("test"),
+  };
+  assert.equal(channelWebhook("picks", "", env), hook("picks"));
+  assert.equal(channelWebhook("results", "", env), hook("results"));
+  assert.equal(channelWebhook("alerts", "", env), hook("alerts"));
+  assert.equal(channelWebhook("free", "", env), hook("free"));
+  assert.equal(channelWebhook("test", "", env), hook("test"));
+  assert.equal(channelWebhook("test", "", { ...env, DISCORD_TEST_WEBHOOK: hook("results") }), "");
+  assert.equal(channelWebhook("results", "", { ...env, DISCORD_TEST_WEBHOOK: hook("results") }), "");
+  assert.equal(channelWebhook("free", "", { ...env, DISCORD_FREE_PICKS_WEBHOOK: hook("picks") }), "");
+  assert.equal(channelWebhook("picks", "", { ...env, DISCORD_FREE_PICKS_WEBHOOK: hook("picks") }), "");
+  assert.equal(webhooksIsolated(env), true);
+});
+
+test("uncertain result delivery alerts DISCORD_DELIVERY_UNKNOWN and does not retry", () => {
+  assert.equal(resultDeliveryAlertCode({ uncertain: true }), "DISCORD_DELIVERY_UNKNOWN");
+  assert.equal(resultDeliveryAlertCode({ uncertain: false }), "DISCORD_FAIL");
+  assert.equal(resultDeliveryAlertCode({}), "DISCORD_FAIL");
+});
+
+test("POSTPONED does not become a public result post; cancelled VOID does", () => {
+  assert.equal(shouldQueueOfficialResultPost({ ledger: "official", result: null, gameStatus: "postponed" }), false);
+  assert.equal(shouldQueueOfficialResultPost({ ledger: "official", result: "VOID", gameStatus: "cancelled" }), true);
+  const postponed = sportsbookSettlement("postponed");
+  assert.equal(postponed.publicRecord, false);
+  assert.equal(postponed.ledgerResult, null);
 });
