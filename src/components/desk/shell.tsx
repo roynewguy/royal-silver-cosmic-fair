@@ -1,22 +1,24 @@
 "use client";
 
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { Anchor, BookOpen, Brain, Home, LayoutGrid, Activity, SlidersHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
+import { OperatorUnlock } from "@/components/desk/operator-gate";
 import { DeskProvider, useDesk } from "@/lib/desk/use-desk";
 import { cn, formatUnits } from "@/lib/utils";
 import { StatusDot } from "@/components/desk/status-dot";
+import { Button } from "@/components/ui/button";
 
 const nav = [
-  { to: "/", label: "Home", icon: Home },
-  { to: "/slate", label: "Slate", icon: LayoutGrid },
-  { to: "/record", label: "Record", icon: BookOpen },
-  { to: "/models", label: "Models", icon: Brain },
-  { to: "/health", label: "Health", icon: Activity },
-  { to: "/advanced", label: "Advanced", icon: SlidersHorizontal },
+  { to: "/desk" as const, label: "Home", icon: Home },
+  { to: "/desk/slate" as const, label: "Slate", icon: LayoutGrid },
+  { to: "/desk/record" as const, label: "Record", icon: BookOpen },
+  { to: "/desk/models" as const, label: "Models", icon: Brain },
+  { to: "/desk/health" as const, label: "Health", icon: Activity },
+  { to: "/desk/advanced" as const, label: "Advanced", icon: SlidersHorizontal },
 ] as const;
 
-export function DeskShell({ children }: { children: ReactNode }) {
+export function DeskShell({ children }: { children?: ReactNode }) {
   return (
     <DeskProvider>
       <DeskShellInner>{children}</DeskShellInner>
@@ -24,17 +26,30 @@ export function DeskShell({ children }: { children: ReactNode }) {
   );
 }
 
-function DeskShellInner({ children }: { children: ReactNode }) {
-  const { data } = useDesk();
+function DeskShellInner({ children }: { children?: ReactNode }) {
+  const { data, loading, lock } = useDesk();
   const record = data.record;
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const recordLine = `${record.wins}-${record.losses}-${record.pushes}`;
+
+  if (loading && !data.operator) {
+    return (
+      <div className="min-h-dvh bg-bg px-4 py-12">
+        <div className="mx-auto max-w-md space-y-4">
+          <div className="h-10 w-40 animate-pulse rounded-md bg-surface" />
+          <div className="h-48 animate-pulse rounded-xl bg-surface" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!data.operator) return <OperatorUnlock />;
 
   return (
     <div className="harbor-grid min-h-dvh overflow-x-hidden bg-bg text-fg">
       <header className="sticky top-0 z-30 border-b border-border bg-bg/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-7xl min-w-0 items-center gap-3 px-4 py-3 sm:px-6">
-          <Link to="/" className="flex min-w-0 flex-1 items-center gap-2.5 sm:flex-none">
+          <Link to="/desk" className="flex min-w-0 flex-1 items-center gap-2.5 sm:flex-none">
             <span className="flex size-10 items-center justify-center rounded-md bg-accent text-accent-fg">
               <Anchor className="size-5" strokeWidth={2.2} />
             </span>
@@ -42,7 +57,13 @@ function DeskShellInner({ children }: { children: ReactNode }) {
               <span className="block truncate font-display text-lg leading-tight tracking-wide text-fg">BOATBOYZ</span>
               <span className="flex items-center gap-1.5 text-xs tracking-[0.18em] text-muted uppercase">
                 <StatusDot level={data.health.automation} />
-                {data.health.automation === "online" ? "Online" : data.health.automation === "delayed" ? "Delayed" : data.health.automation === "offline" ? "Offline" : "Not armed"}
+                {data.health.automation === "online"
+                  ? "Online"
+                  : data.health.automation === "delayed"
+                    ? "Delayed"
+                    : data.health.automation === "offline"
+                      ? "Offline"
+                      : "Not armed"}
               </span>
             </span>
           </Link>
@@ -76,10 +97,13 @@ function DeskShellInner({ children }: { children: ReactNode }) {
                 {formatUnits(record.units)}
               </p>
             </div>
+            <Button variant="ghost" size="sm" className="hidden min-h-11 sm:inline-flex" onClick={() => lock()}>
+              Lock
+            </Button>
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-7xl px-4 py-5 pb-24 sm:px-6 sm:py-8 sm:pb-8">{children}</main>
+      <main className="mx-auto w-full max-w-7xl px-4 py-5 pb-24 sm:px-6 sm:py-8 sm:pb-8">{children ?? <Outlet />}</main>
       <nav className="fixed right-0 bottom-0 left-0 z-30 border-t border-border bg-bg/95 backdrop-blur-sm sm:hidden">
         <div className="grid grid-cols-6">
           {nav.map((item) => {

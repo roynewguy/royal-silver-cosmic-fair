@@ -2,6 +2,6 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/ledger")({
   beforeLoad: () => {
-    throw redirect({ to: "/record" });
+    throw redirect({ to: "/desk/record" });
   },
 });

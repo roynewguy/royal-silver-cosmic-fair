@@ -1,13 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { DeskShell } from "@/components/desk/shell";
-import { SlateBoard } from "@/components/desk/slate-board";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/slate")({ component: SlatePage });
-
-function SlatePage() {
-  return (
-    <DeskShell>
-      <SlateBoard />
-    </DeskShell>
-  );
-}
+export const Route = createFileRoute("/slate")({
+  beforeLoad: () => {
+    throw redirect({ to: "/desk/slate" });
+  },
+});

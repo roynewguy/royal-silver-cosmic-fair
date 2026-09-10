@@ -11,11 +11,29 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdvancedRouteImport } from './routes/advanced'
-import { Route as LedgerRouteImport } from './routes/ledger'
-import { Route as ModelsRouteImport } from './routes/models'
+import { Route as AppRouteRouteImport } from './routes/app/route'
+import { Route as DeskRouteRouteImport } from './routes/desk/route'
 import { Route as HealthRouteImport } from './routes/health'
+import { Route as LedgerRouteImport } from './routes/ledger'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as ModelsRouteImport } from './routes/models'
+import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as RecordRouteImport } from './routes/record'
+import { Route as ResponsiblePlayRouteImport } from './routes/responsible-play'
 import { Route as SlateRouteImport } from './routes/slate'
+import { Route as TermsRouteImport } from './routes/terms'
+import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppAccountRouteImport } from './routes/app/account'
+import { Route as AppHistoryRouteImport } from './routes/app/history'
+import { Route as AppPicksRouteImport } from './routes/app/picks'
+import { Route as DeskIndexRouteImport } from './routes/desk/index'
+import { Route as DeskAdvancedRouteImport } from './routes/desk/advanced'
+import { Route as DeskHealthRouteImport } from './routes/desk/health'
+import { Route as DeskModelsRouteImport } from './routes/desk/models'
+import { Route as DeskRecordRouteImport } from './routes/desk/record'
+import { Route as DeskSlateRouteImport } from './routes/desk/slate'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronTickRouteImport } from './routes/api/cron/tick'
 
 const IndexRoute = IndexRouteImport.update({
@@ -28,14 +46,14 @@ const AdvancedRoute = AdvancedRouteImport.update({
   path: '/advanced',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LedgerRoute = LedgerRouteImport.update({
-  id: '/ledger',
-  path: '/ledger',
+const AppRouteRoute = AppRouteRouteImport.update({
+  id: '/app',
+  path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ModelsRoute = ModelsRouteImport.update({
-  id: '/models',
-  path: '/models',
+const DeskRouteRoute = DeskRouteRouteImport.update({
+  id: '/desk',
+  path: '/desk',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HealthRoute = HealthRouteImport.update({
@@ -43,14 +61,104 @@ const HealthRoute = HealthRouteImport.update({
   path: '/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LedgerRoute = LedgerRouteImport.update({
+  id: '/ledger',
+  path: '/ledger',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ModelsRoute = ModelsRouteImport.update({
+  id: '/models',
+  path: '/models',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RecordRoute = RecordRouteImport.update({
   id: '/record',
   path: '/record',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResponsiblePlayRoute = ResponsiblePlayRouteImport.update({
+  id: '/responsible-play',
+  path: '/responsible-play',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SlateRoute = SlateRouteImport.update({
   id: '/slate',
   path: '/slate',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppAccountRoute = AppAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppHistoryRoute = AppHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppPicksRoute = AppPicksRouteImport.update({
+  id: '/picks',
+  path: '/picks',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const DeskIndexRoute = DeskIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DeskRouteRoute,
+} as any)
+const DeskAdvancedRoute = DeskAdvancedRouteImport.update({
+  id: '/advanced',
+  path: '/advanced',
+  getParentRoute: () => DeskRouteRoute,
+} as any)
+const DeskHealthRoute = DeskHealthRouteImport.update({
+  id: '/health',
+  path: '/health',
+  getParentRoute: () => DeskRouteRoute,
+} as any)
+const DeskModelsRoute = DeskModelsRouteImport.update({
+  id: '/models',
+  path: '/models',
+  getParentRoute: () => DeskRouteRoute,
+} as any)
+const DeskRecordRoute = DeskRecordRouteImport.update({
+  id: '/record',
+  path: '/record',
+  getParentRoute: () => DeskRouteRoute,
+} as any)
+const DeskSlateRoute = DeskSlateRouteImport.update({
+  id: '/slate',
+  path: '/slate',
+  getParentRoute: () => DeskRouteRoute,
+} as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCronTickRoute = ApiCronTickRouteImport.update({
@@ -61,61 +169,188 @@ const ApiCronTickRoute = ApiCronTickRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/app': typeof AppRouteRouteWithChildren
+  '/desk': typeof DeskRouteRouteWithChildren
   '/advanced': typeof AdvancedRoute
-  '/ledger': typeof LedgerRoute
-  '/models': typeof ModelsRoute
   '/health': typeof HealthRoute
+  '/ledger': typeof LedgerRoute
+  '/login': typeof LoginRoute
+  '/models': typeof ModelsRoute
+  '/pricing': typeof PricingRoute
+  '/privacy': typeof PrivacyRoute
   '/record': typeof RecordRoute
+  '/responsible-play': typeof ResponsiblePlayRoute
   '/slate': typeof SlateRoute
+  '/terms': typeof TermsRoute
+  '/app/account': typeof AppAccountRoute
+  '/app/history': typeof AppHistoryRoute
+  '/app/picks': typeof AppPicksRoute
+  '/desk/advanced': typeof DeskAdvancedRoute
+  '/desk/health': typeof DeskHealthRoute
+  '/desk/models': typeof DeskModelsRoute
+  '/desk/record': typeof DeskRecordRoute
+  '/desk/slate': typeof DeskSlateRoute
+  '/app/': typeof AppIndexRoute
+  '/desk/': typeof DeskIndexRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/tick': typeof ApiCronTickRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/advanced': typeof AdvancedRoute
-  '/ledger': typeof LedgerRoute
-  '/models': typeof ModelsRoute
   '/health': typeof HealthRoute
+  '/ledger': typeof LedgerRoute
+  '/login': typeof LoginRoute
+  '/models': typeof ModelsRoute
+  '/pricing': typeof PricingRoute
+  '/privacy': typeof PrivacyRoute
   '/record': typeof RecordRoute
+  '/responsible-play': typeof ResponsiblePlayRoute
   '/slate': typeof SlateRoute
+  '/terms': typeof TermsRoute
+  '/app/account': typeof AppAccountRoute
+  '/app/history': typeof AppHistoryRoute
+  '/app/picks': typeof AppPicksRoute
+  '/desk/advanced': typeof DeskAdvancedRoute
+  '/desk/health': typeof DeskHealthRoute
+  '/desk/models': typeof DeskModelsRoute
+  '/desk/record': typeof DeskRecordRoute
+  '/desk/slate': typeof DeskSlateRoute
+  '/app': typeof AppIndexRoute
+  '/desk': typeof DeskIndexRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/tick': typeof ApiCronTickRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/app': typeof AppRouteRouteWithChildren
+  '/desk': typeof DeskRouteRouteWithChildren
   '/advanced': typeof AdvancedRoute
-  '/ledger': typeof LedgerRoute
-  '/models': typeof ModelsRoute
   '/health': typeof HealthRoute
+  '/ledger': typeof LedgerRoute
+  '/login': typeof LoginRoute
+  '/models': typeof ModelsRoute
+  '/pricing': typeof PricingRoute
+  '/privacy': typeof PrivacyRoute
   '/record': typeof RecordRoute
+  '/responsible-play': typeof ResponsiblePlayRoute
   '/slate': typeof SlateRoute
+  '/terms': typeof TermsRoute
+  '/app/account': typeof AppAccountRoute
+  '/app/history': typeof AppHistoryRoute
+  '/app/picks': typeof AppPicksRoute
+  '/desk/advanced': typeof DeskAdvancedRoute
+  '/desk/health': typeof DeskHealthRoute
+  '/desk/models': typeof DeskModelsRoute
+  '/desk/record': typeof DeskRecordRoute
+  '/desk/slate': typeof DeskSlateRoute
+  '/app/': typeof AppIndexRoute
+  '/desk/': typeof DeskIndexRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/tick': typeof ApiCronTickRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/advanced' | '/ledger' | '/models' | '/health' | '/record' | '/slate' | '/api/cron/tick'
+    | '/'
+    | '/app'
+    | '/desk'
+    | '/advanced'
+    | '/health'
+    | '/ledger'
+    | '/login'
+    | '/models'
+    | '/pricing'
+    | '/privacy'
+    | '/record'
+    | '/responsible-play'
+    | '/slate'
+    | '/terms'
+    | '/app/account'
+    | '/app/history'
+    | '/app/picks'
+    | '/desk/advanced'
+    | '/desk/health'
+    | '/desk/models'
+    | '/desk/record'
+    | '/desk/slate'
+    | '/app/'
+    | '/desk/'
+    | '/api/auth/$'
+    | '/api/cron/tick'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/advanced' | '/ledger' | '/models' | '/health' | '/record' | '/slate' | '/api/cron/tick'
+  to:
+    | '/'
+    | '/advanced'
+    | '/health'
+    | '/ledger'
+    | '/login'
+    | '/models'
+    | '/pricing'
+    | '/privacy'
+    | '/record'
+    | '/responsible-play'
+    | '/slate'
+    | '/terms'
+    | '/app/account'
+    | '/app/history'
+    | '/app/picks'
+    | '/desk/advanced'
+    | '/desk/health'
+    | '/desk/models'
+    | '/desk/record'
+    | '/desk/slate'
+    | '/app'
+    | '/desk'
+    | '/api/auth/$'
+    | '/api/cron/tick'
   id:
     | '__root__'
     | '/'
+    | '/app'
+    | '/desk'
     | '/advanced'
-    | '/ledger'
-    | '/models'
     | '/health'
+    | '/ledger'
+    | '/login'
+    | '/models'
+    | '/pricing'
+    | '/privacy'
     | '/record'
+    | '/responsible-play'
     | '/slate'
+    | '/terms'
+    | '/app/account'
+    | '/app/history'
+    | '/app/picks'
+    | '/desk/advanced'
+    | '/desk/health'
+    | '/desk/models'
+    | '/desk/record'
+    | '/desk/slate'
+    | '/app/'
+    | '/desk/'
+    | '/api/auth/$'
     | '/api/cron/tick'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRouteRoute: typeof AppRouteRouteWithChildren
+  DeskRouteRoute: typeof DeskRouteRouteWithChildren
   AdvancedRoute: typeof AdvancedRoute
-  LedgerRoute: typeof LedgerRoute
-  ModelsRoute: typeof ModelsRoute
   HealthRoute: typeof HealthRoute
+  LedgerRoute: typeof LedgerRoute
+  LoginRoute: typeof LoginRoute
+  ModelsRoute: typeof ModelsRoute
+  PricingRoute: typeof PricingRoute
+  PrivacyRoute: typeof PrivacyRoute
   RecordRoute: typeof RecordRoute
+  ResponsiblePlayRoute: typeof ResponsiblePlayRoute
   SlateRoute: typeof SlateRoute
+  TermsRoute: typeof TermsRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronTickRoute: typeof ApiCronTickRoute
 }
 
@@ -135,18 +370,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdvancedRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/ledger': {
-      id: '/ledger'
-      path: '/ledger'
-      fullPath: '/ledger'
-      preLoaderRoute: typeof LedgerRouteImport
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/models': {
-      id: '/models'
-      path: '/models'
-      fullPath: '/models'
-      preLoaderRoute: typeof ModelsRouteImport
+    '/desk': {
+      id: '/desk'
+      path: '/desk'
+      fullPath: '/desk'
+      preLoaderRoute: typeof DeskRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/health': {
@@ -156,6 +391,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ledger': {
+      id: '/ledger'
+      path: '/ledger'
+      fullPath: '/ledger'
+      preLoaderRoute: typeof LedgerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/models': {
+      id: '/models'
+      path: '/models'
+      fullPath: '/models'
+      preLoaderRoute: typeof ModelsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/record': {
       id: '/record'
       path: '/record'
@@ -163,11 +433,102 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RecordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/responsible-play': {
+      id: '/responsible-play'
+      path: '/responsible-play'
+      fullPath: '/responsible-play'
+      preLoaderRoute: typeof ResponsiblePlayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/slate': {
       id: '/slate'
       path: '/slate'
       fullPath: '/slate'
       preLoaderRoute: typeof SlateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app/': {
+      id: '/app/'
+      path: '/'
+      fullPath: '/app/'
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/account': {
+      id: '/app/account'
+      path: '/account'
+      fullPath: '/app/account'
+      preLoaderRoute: typeof AppAccountRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/history': {
+      id: '/app/history'
+      path: '/history'
+      fullPath: '/app/history'
+      preLoaderRoute: typeof AppHistoryRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/picks': {
+      id: '/app/picks'
+      path: '/picks'
+      fullPath: '/app/picks'
+      preLoaderRoute: typeof AppPicksRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/desk/': {
+      id: '/desk/'
+      path: '/'
+      fullPath: '/desk/'
+      preLoaderRoute: typeof DeskIndexRouteImport
+      parentRoute: typeof DeskRouteRoute
+    }
+    '/desk/advanced': {
+      id: '/desk/advanced'
+      path: '/advanced'
+      fullPath: '/desk/advanced'
+      preLoaderRoute: typeof DeskAdvancedRouteImport
+      parentRoute: typeof DeskRouteRoute
+    }
+    '/desk/health': {
+      id: '/desk/health'
+      path: '/health'
+      fullPath: '/desk/health'
+      preLoaderRoute: typeof DeskHealthRouteImport
+      parentRoute: typeof DeskRouteRoute
+    }
+    '/desk/models': {
+      id: '/desk/models'
+      path: '/models'
+      fullPath: '/desk/models'
+      preLoaderRoute: typeof DeskModelsRouteImport
+      parentRoute: typeof DeskRouteRoute
+    }
+    '/desk/record': {
+      id: '/desk/record'
+      path: '/record'
+      fullPath: '/desk/record'
+      preLoaderRoute: typeof DeskRecordRouteImport
+      parentRoute: typeof DeskRouteRoute
+    }
+    '/desk/slate': {
+      id: '/desk/slate'
+      path: '/slate'
+      fullPath: '/desk/slate'
+      preLoaderRoute: typeof DeskSlateRouteImport
+      parentRoute: typeof DeskRouteRoute
+    }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/cron/tick': {
@@ -180,14 +541,62 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppRouteRouteChildren {
+  AppAccountRoute: typeof AppAccountRoute
+  AppHistoryRoute: typeof AppHistoryRoute
+  AppPicksRoute: typeof AppPicksRoute
+  AppIndexRoute: typeof AppIndexRoute
+}
+
+const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppAccountRoute: AppAccountRoute,
+  AppHistoryRoute: AppHistoryRoute,
+  AppPicksRoute: AppPicksRoute,
+  AppIndexRoute: AppIndexRoute,
+}
+
+const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
+  AppRouteRouteChildren,
+)
+
+interface DeskRouteRouteChildren {
+  DeskAdvancedRoute: typeof DeskAdvancedRoute
+  DeskHealthRoute: typeof DeskHealthRoute
+  DeskModelsRoute: typeof DeskModelsRoute
+  DeskRecordRoute: typeof DeskRecordRoute
+  DeskSlateRoute: typeof DeskSlateRoute
+  DeskIndexRoute: typeof DeskIndexRoute
+}
+
+const DeskRouteRouteChildren: DeskRouteRouteChildren = {
+  DeskAdvancedRoute: DeskAdvancedRoute,
+  DeskHealthRoute: DeskHealthRoute,
+  DeskModelsRoute: DeskModelsRoute,
+  DeskRecordRoute: DeskRecordRoute,
+  DeskSlateRoute: DeskSlateRoute,
+  DeskIndexRoute: DeskIndexRoute,
+}
+
+const DeskRouteRouteWithChildren = DeskRouteRoute._addFileChildren(
+  DeskRouteRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRouteRoute: AppRouteRouteWithChildren,
+  DeskRouteRoute: DeskRouteRouteWithChildren,
   AdvancedRoute: AdvancedRoute,
-  LedgerRoute: LedgerRoute,
-  ModelsRoute: ModelsRoute,
   HealthRoute: HealthRoute,
+  LedgerRoute: LedgerRoute,
+  LoginRoute: LoginRoute,
+  ModelsRoute: ModelsRoute,
+  PricingRoute: PricingRoute,
+  PrivacyRoute: PrivacyRoute,
   RecordRoute: RecordRoute,
+  ResponsiblePlayRoute: ResponsiblePlayRoute,
   SlateRoute: SlateRoute,
+  TermsRoute: TermsRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronTickRoute: ApiCronTickRoute,
 }
 export const routeTree = rootRouteImport

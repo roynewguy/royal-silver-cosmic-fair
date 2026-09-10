@@ -1,10 +1,8 @@
 "use client";
 
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { TicketCard } from "@/components/desk/ticket-card";
 import { DiscordComposer } from "@/components/desk/discord-composer";
 import { StatusDot } from "@/components/desk/status-dot";
@@ -35,7 +33,6 @@ function Service({ label, level, note }: { label: string; level: ServiceLevel; n
 
 export function HomeBoard() {
   const desk = useDesk();
-  const [pin, setPin] = useState("");
   const health = desk.data.health;
   const auto = AUTO_COPY[health.automation];
   const card = todayOfficialCard(desk.data.picks);
@@ -65,28 +62,7 @@ export function HomeBoard() {
             {desk.running ? <Loader2 className="size-4 animate-spin" /> : null}
             Run now
           </Button>
-        ) : (
-          <form
-            className="flex w-full max-w-sm gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              desk.unlock(pin);
-            }}
-          >
-            <Input
-              type="password"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              placeholder="Operator secret"
-              className="min-h-12"
-              autoComplete="off"
-              minLength={8}
-            />
-            <Button type="submit" className="min-h-12 shrink-0">
-              Unlock
-            </Button>
-          </form>
-        )}
+        ) : null}
       </div>
 
       <div className="grid gap-2 text-sm text-muted sm:grid-cols-3">
@@ -108,7 +84,7 @@ export function HomeBoard() {
         </div>
         <p className="mt-2 text-xs text-subtle">
           Pending grades {health.pendingGrades} · delivery_unknown {health.deliveryUnknown} ·{" "}
-          <Link to="/health" className="text-accent underline-offset-2 hover:underline">Full health board</Link>
+          <Link to="/desk/health" className="text-accent underline-offset-2 hover:underline">Full health board</Link>
         </p>
       </section>
 

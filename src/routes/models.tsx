@@ -1,13 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { DeskShell } from "@/components/desk/shell";
-import { ModelsBoard } from "@/components/desk/models-board";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/models")({ component: ModelsPage });
-
-function ModelsPage() {
-  return (
-    <DeskShell>
-      <ModelsBoard />
-    </DeskShell>
-  );
-}
+export const Route = createFileRoute("/models")({
+  beforeLoad: () => {
+    throw redirect({ to: "/desk/models" });
+  },
+});

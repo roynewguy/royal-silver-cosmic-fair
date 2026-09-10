@@ -29,6 +29,24 @@
   --radius-xl: 24px;
 
   --shadow-border: 0 0 0 1px rgb(241 238 228 / 0.08);
+
+  --text-xs: clamp(0.75rem, 0.7rem + 0.2vw, 0.8125rem);
+  --text-sm: clamp(0.875rem, 0.82rem + 0.25vw, 0.9375rem);
+  --text-base: clamp(1rem, 0.95rem + 0.25vw, 1.0625rem);
+  --text-lg: clamp(1.125rem, 1rem + 0.5vw, 1.25rem);
+  --text-xl: clamp(1.5rem, 1.2rem + 1vw, 2rem);
+  --text-2xl: clamp(2rem, 1.4rem + 2vw, 3rem);
+  --text-3xl: clamp(2.6rem, 1.6rem + 3.2vw, 4.25rem);
+
+  --leading-tight: 1.1;
+  --leading-snug: 1.25;
+  --leading-normal: 1.5;
+
+  --tracking-display: -0.02em;
+
+  --motion-quick: 150ms;
+  --motion-fast: 250ms;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 @layer base {
@@ -117,4 +135,8 @@
 .channel-scroll::-webkit-scrollbar-thumb {
   background: rgb(241 238 228 / 0.12);
   border-radius: 999px;
+}
+
+.site-wash {
+  background-image: linear-gradient(180deg, rgb(20 22 18 / 0.92), rgb(12 13 11 / 1));
 }

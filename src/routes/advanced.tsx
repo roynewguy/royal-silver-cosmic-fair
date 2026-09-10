@@ -1,13 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { DeskShell } from "@/components/desk/shell";
-import { AdvancedBoard } from "@/components/desk/advanced-board";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/advanced")({ component: AdvancedPage });
-
-function AdvancedPage() {
-  return (
-    <DeskShell>
-      <AdvancedBoard />
-    </DeskShell>
-  );
-}
+export const Route = createFileRoute("/advanced")({
+  beforeLoad: () => {
+    throw redirect({ to: "/desk/advanced" });
+  },
+});

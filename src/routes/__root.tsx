@@ -1,11 +1,19 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "Picks Boat Boyz";
+const APP_NAME = "BoatBoyz";
+
+const fetchSessionUser = createServerFn({ method: "GET" }).handler(async () => {
+  const { getSessionUser } = await import("@/lib/auth/verify.server");
+  const u = await getSessionUser();
+  return u ? { id: u.id, email: u.email } : null;
+});
 
 export const Route = createRootRoute({
+  beforeLoad: async () => ({ sessionUser: await fetchSessionUser() }),
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -13,7 +21,8 @@ export const Route = createRootRoute({
       { title: APP_NAME },
       {
         name: "description",
-        content: "Picks Boat Boyz — #1 picks desk. Scan the slate, lock one play per sport, post before kick, grade the book.",
+        content:
+          "BoatBoyz — official sports locks and a verified public record. Production tickets only. $9.99/month.",
       },
       { name: "theme-color", content: "#0c0d0b" },
     ],
