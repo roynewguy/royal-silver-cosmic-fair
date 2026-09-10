@@ -1,0 +1,15 @@
+export { MODEL_LIFECYCLE, proposeLifecycle, approveProduction, canEnterVerified, type ModelLifecycle } from "./lifecycle.ts";
+export { challengerPrediction, yachtCandidateVersion, type ChallengerPrediction, type CandidateKind } from "./prediction.ts";
+export { trainingManifest, FEATURE_SCHEMA_VERSION, type TrainingManifest } from "./manifest.ts";
+export { expandingWalkForward, randomTrainTestSplit } from "./walk-forward.ts";
+export { calibrationReport, fitCalibrator, applyCalibrator, brierScore, logLossScore, expectedCalibrationError } from "./calibration.ts";
+export { marketBaseline, modelVsMarket } from "./market.ts";
+export { challengerEngine, allChallengerEngines, challengerMayPostOfficial } from "./challenger.ts";
+export { persistShadow, attachEvaluation, runChallengerSafe, compareOnIdenticalOpportunities } from "./shadow.ts";
+export { requestPromotion, autoPromoteIsForbidden } from "./promotion.ts";
+export { soccerLifecycle, threeWayNoVig, poissonThreeWay, twoWayFromSoccer, soccerMayPostOfficial } from "./soccer.ts";
+export { allFeatureContracts, featureContract, MLB_FEATURE_CONTRACT } from "./features/index.ts";
+export { predictMlbChallenger, MLB_CHAMPION } from "./sports/mlb/engine.ts";
+export { mlbFeatureVector } from "./sports/mlb/vector.ts";
+export { fitGbt, predictGbt } from "./models/gbt.ts";
+export { fitIntelLogReg, predictIntelLogReg } from "./models/logreg.ts";

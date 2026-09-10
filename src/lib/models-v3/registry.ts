@@ -56,6 +56,36 @@ export const DEFAULT_REGISTRY: RegistryEntry[] = [
     features: ["v2 probability", "v3 probability", "no-vig market", "whip/goalie/injuries", "line move", "data quality"],
     notes: "Shadow ensemble prototype. Weights are not learned. Paper only. Never auto-promoted.",
   })),
+  {
+    modelName: "Model Yacht MLB logreg",
+    modelVersion: "model-yacht-mlb-logreg-2026.09.1",
+    sport: "mlb",
+    status: "shadow" as const,
+    role: "challenger" as const,
+    trainingPeriod: "walk-forward logreg (research)",
+    features: ["form", "rest", "starter ERA when proven", "no-vig opener when proven"],
+    notes: "Intelligence challenger. official=false. Cannot post Discord. V2 remains champion.",
+  },
+  {
+    modelName: "Model Yacht MLB GBT",
+    modelVersion: "model-yacht-mlb-gbt-2026.09.1",
+    sport: "mlb",
+    status: "shadow" as const,
+    role: "challenger" as const,
+    trainingPeriod: "walk-forward gradient boosted trees (research)",
+    features: ["same MLB contract as logreg; missing FIP/xFIP stay missing"],
+    notes: "Intelligence challenger. Shadow only. Never auto-promoted.",
+  },
+  {
+    modelName: "Model Yacht MLB market",
+    modelVersion: "model-yacht-mlb-market-2026.09.1",
+    sport: "mlb",
+    status: "shadow" as const,
+    role: "challenger" as const,
+    trainingPeriod: "sportsbook no-vig baseline",
+    features: ["proven two-way no-vig only"],
+    notes: "Market baseline candidate. Close is evaluation-only.",
+  },
 ];
 
 export function isYachtModel(version: string | null | undefined): boolean {
