@@ -17,6 +17,8 @@ export const TTL_MS = {
   injury: 180 * 60_000,
   weather: 180 * 60_000,
   team: 24 * 3600_000,
+  venue: 24 * 3600_000,
+  completed: 30 * 60_000,
 } as const;
 
 export function stamp(source: string, capturedAt: string | null | undefined, maxAgeMs: number, now = Date.now()): FieldFreshness {

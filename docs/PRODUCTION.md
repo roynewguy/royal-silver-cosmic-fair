@@ -63,9 +63,21 @@ Alerts, free, weekly, test, and model-lab webhooks fail closed if they share the
 - Outcomes: WIN / LOSS / PUSH / VOID. CANCELLED → ledger VOID when the sportsbook rule is clear. POSTPONED stays pending settlement (not a public W-L-P) until reschedule or an explicit book void — ESPN postpone is not proof the wager is void. UNRESOLVED stays ungraded.
 - After `graded`, result, profit, CLV, closing odds, and grade snapshot are immutable.
 
+## Odds API budget (24/7)
+
+Scan polling is sport-aware and cadence-based. Empty / completed / out-of-window slates are not queried. Official V2 LOCK still requires a fresh DraftKings quote (20-minute max age, both sides, no-vig, truth gate). Quota:
+
+| Level | Remaining | Behavior |
+|---|---|---|
+| warning | ≤ 150 | `ODDS_QUOTA_WARNING`; scan continues |
+| critical | < 50 | `ODDS_QUOTA_LOW`; one-shot / final-check only |
+| exhausted | 0 | `ODDS_QUOTA_EXHAUSTED`; official LOCK fail-closed. Stale cache cannot freeze. |
+
+Operator Health shows remaining, tick spend, and estimated daily/monthly burn.
+
 ## Alerting (private channel only)
 
-`DISCORD_401`, `DISCORD_403`, `DISCORD_DELIVERY_UNKNOWN`, `DATABASE_ERROR`, `ESPN_FAIL`, `ODDS_API_ERROR`, `ODDS_QUOTA_LOW`, `ODDS_QUOTA_EXHAUSTED`, `MARKET_FEED_STALE`, `INJURY_FEED_STALE`, `GRADING_BACKLOG`, `MIGRATION_ERROR`, `MODEL_DATA_FAILURE`, plus legacy codes. 30-minute cooldown.
+`DISCORD_401`, `DISCORD_403`, `DISCORD_DELIVERY_UNKNOWN`, `DATABASE_ERROR`, `ESPN_FAIL`, `ODDS_API_ERROR`, `ODDS_QUOTA_WARNING`, `ODDS_QUOTA_LOW`, `ODDS_QUOTA_EXHAUSTED`, `MARKET_FEED_STALE`, `INJURY_FEED_STALE`, `GRADING_BACKLOG`, `MIGRATION_ERROR`, `MODEL_DATA_FAILURE`, plus legacy codes. 30-minute cooldown.
 
 ## Health board
 

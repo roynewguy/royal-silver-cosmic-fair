@@ -1,5 +1,6 @@
 import type { AutomationStatus, DeskHealth, ServiceLevel } from "../sports/types.ts";
 import { isShadowSoak } from "./production-policy.ts";
+import { formatOddsSummary, quotaLevel, type OddsTelemetry } from "../sports/odds-poll.ts";
 
 export type { AutomationStatus, DeskHealth, ServiceLevel };
 
@@ -31,10 +32,20 @@ export function nextScanIso(
 }
 
 export function oddsService(remaining: number | null | undefined): ServiceLevel {
+  const level = quotaLevel(remaining ?? null);
   if (remaining == null) return "warn";
-  if (remaining <= 0) return "bad";
-  if (remaining < 50) return "warn";
+  if (level === "exhausted" || level === "critical") return "bad";
+  if (level === "warning") return "warn";
   return "ok";
+}
+
+export function oddsQuotaLabel(remaining: number | null | undefined, summary?: string): string {
+  const level = quotaLevel(remaining ?? null);
+  if (remaining == null) return "No Odds API reading yet";
+  if (level === "exhausted") return "EXHAUSTED: 0 credits. Official LOCK fail-closed. Stale cache cannot freeze.";
+  if (level === "critical") return `CRITICAL: ${remaining} credits remaining. Final-check only.`;
+  if (level === "warning") return `WARNING: ${remaining} credits remaining.`;
+  return summary ? `OK: ${summary}` : `${remaining} credits remaining`;
 }
 
 export function espnService(lastScanAt: string | null | undefined, errorCount: number, now = Date.now()): ServiceLevel {
@@ -67,10 +78,14 @@ export function buildDeskHealth(input: {
   shadowSoak?: boolean;
   soakRecorderFailed?: boolean;
   soakWouldHavePosted?: number | null;
+  oddsTelemetry?: OddsTelemetry | null;
 }): DeskHealth {
   const now = input.now ?? Date.now();
   const auto = automationStatus(input.lastTickAt, now);
   const dbOk = input.dbSource === "neon" || input.dbSource === "pglite";
+  const telemetry = input.oddsTelemetry ?? null;
+  const remaining = telemetry?.remaining ?? input.oddsRemaining;
+  const summary = telemetry ? formatOddsSummary(telemetry) : "";
   return {
     automation: auto,
     lastTickAt: input.lastTickAt,
@@ -81,15 +96,15 @@ export function buildDeskHealth(input: {
     espn: espnService(input.lastScanAt, input.espnErrors, now),
     discord: input.hasWebhook ? "warn" : "bad",
     discordLabel: input.hasWebhook ? "Configured; see Preflight for delivery proof" : "Webhook missing",
-    odds: oddsService(input.oddsRemaining),
-    oddsLabel:
-      input.oddsRemaining == null
-        ? "No Odds API reading yet"
-        : input.oddsRemaining <= 0
-          ? "API credits exhausted. Fresh cached DK only."
-          : `${input.oddsRemaining} credits remaining`,
-    oddsRemaining: input.oddsRemaining,
-    oddsUsed: input.oddsUsed,
+    odds: oddsService(remaining),
+    oddsLabel: oddsQuotaLabel(remaining, summary),
+    oddsRemaining: remaining,
+    oddsUsed: telemetry?.used ?? input.oddsUsed,
+    oddsQuotaLevel: quotaLevel(remaining),
+    oddsTickUsed: telemetry?.tickUsed ?? null,
+    oddsEstimatedDaily: telemetry?.estimatedDailyBurn ?? null,
+    oddsEstimatedMonthly: telemetry?.estimatedMonthlyBurn ?? null,
+    oddsSummary: summary,
     freeBeta: input.freeBeta,
     lastSportsbookAt: input.lastSportsbookAt ?? null,
     lastOfficialPostAt: input.lastOfficialPostAt ?? null,

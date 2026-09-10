@@ -34,11 +34,11 @@ import { alertOwner, discordAlertCode } from "./alerts";
 import { automationStatus } from "./health";
 import { isFreeBetaMode } from "@/lib/sports/free-beta";
 import { isPaperLedger, paperLockMessage, paperSimulateSend, activeLedger } from "@/lib/sports/paper-mode";
-import { isDraftKingsLine, mergeDraftKingsOdds } from "@/lib/sports/odds-api";
+import { isDraftKingsLine, mergeDraftKingsOdds, beginOddsTick, oddsTickStats } from "@/lib/sports/odds-api";
 import { bestOnSlate, dailyPickTarget, planDailyCard, rankGame, rankGames, ROTATE_SKIP_REASON, selectSlatePicks, unitsForTier } from "@/lib/sports/rank";
 import { formatPassFunnelLog, summarizeSlatePass } from "@/lib/sports/pass-funnel";
 import { formatWhy } from "@/lib/sports/why";
-import { confirmDraftKings, pruneFreeBetaCaches, readDkCache } from "./dk-verify";
+import { confirmDraftKings, pruneFreeBetaCaches, persistOddsTickTelemetry, readDkCache } from "./dk-verify";
 import { recordClosingResult, recordPostedPrediction, recordPregameSnapshots } from "./warehouse";
 import { recordV2Candidates } from "@/lib/sports/candidate-log";
 import { recordMlbShadow, gradeShadowPredictions } from "@/lib/models-v3/shadow-store";
@@ -112,6 +112,7 @@ function asPickRow(partial: Partial<PickRow> & Pick<PickRow, "id" | "gameId" | "
 
 export async function refreshSlate(): Promise<GameCard[]> {
   beginEspnScan();
+  beginOddsTick();
   const raw = await fetchAllSlates();
   const merged = await mergeDraftKingsOdds(raw);
   const windowed = merged.filter((g) => inLookahead(g));
@@ -126,7 +127,7 @@ export async function refreshSlate(): Promise<GameCard[]> {
   const meta = await loadMeta();
   await recordPassDecisions(next, meta.minEdgePct, meta.minConfidence);
   await persistBookQuotes(next).catch(() => undefined);
-  if (!isShadowSoak()) await postShadowLabSlate(next).catch(() => 0);
+  await postShadowLabSlate(next).catch(() => 0);
   await pruneFreeBetaCaches();
   const stats = espnScanStats();
   if (stats.espn_error_count) {
@@ -1043,8 +1044,9 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
     if (automationStatus(meta.lastTickAt) === "offline") {
       await alertOwner("CRON_STALE", "No successful cron tick for more than 25 minutes.");
     }
-    if ((meta.oddsRemaining ?? 1) <= 0) await alertOwner("ODDS_QUOTA_EXHAUSTED", "Odds API credits exhausted.");
-    else if ((meta.oddsRemaining ?? 999) < 50) await alertOwner("ODDS_QUOTA_LOW", `${meta.oddsRemaining} Odds API credits remaining.`);
+    if ((meta.oddsRemaining ?? 1) <= 0) await alertOwner("ODDS_QUOTA_EXHAUSTED", "Odds API credits exhausted. Official LOCK fail-closed; stale cache cannot freeze.");
+    else if ((meta.oddsRemaining ?? 999) < 50) await alertOwner("ODDS_QUOTA_LOW", `${meta.oddsRemaining} Odds API credits remaining (critical).`);
+    else if ((meta.oddsRemaining ?? 999) <= 150) await alertOwner("ODDS_QUOTA_WARNING", `${meta.oddsRemaining} Odds API credits remaining (warning).`);
     const voided = 0;
     await captureClosingQuotes(games);
     const graded = await gradeOpenPicks(games);
@@ -1068,6 +1070,8 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
     try { await sendWeeklyRecap(); } catch { await alertOwner("DISCORD_FAIL", "Weekly recap failed; inspect delivery state before resending."); }
     if (source === "cron") { await touchCronTick(source); await recordEvent("cron_success"); }
     const espn = espnScanStats();
+    const odds = oddsTickStats();
+    try { await persistOddsTickTelemetry(); } catch { /* health still shows last persisted quota */ }
     const espnErrors = espn.espn_error_count
       ? ` · errors ${espn.espn_error_count}${espn.espn_last_error ? ` (${espn.espn_last_error})` : ""}`
       : "";
@@ -1075,7 +1079,7 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
     const passFunnelLine = formatPassFunnelLog(passFunnel, dailyPickTarget(meta.maxDailyPicks));
     await addLog(
       "scan",
-      `Tick ${source}: ${games.length} games · espn ${espn.espn_request_count} req · ${espn.scan_duration_ms}ms${espnErrors} · queued ${queued} · posted ${posted} · free ${freePosted ? 1 : 0} · graded ${graded} · ${passFunnel.primary}`,
+      `Tick ${source}: ${games.length} games · espn ${espn.espn_request_count} req · odds ${odds.httpCalls} req ${odds.tickUsed} cr · ${espn.scan_duration_ms}ms${espnErrors} · queued ${queued} · posted ${posted} · free ${freePosted ? 1 : 0} · graded ${graded} · ${passFunnel.primary}`,
     );
     return {
       ok: true as const,

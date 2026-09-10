@@ -85,6 +85,15 @@ export function HealthBoard() {
         </div>
       </section>
 
+      {desk.data.operator ? (
+        <section>
+          <h2 className="mb-2 font-display text-sm tracking-[0.18em] text-muted uppercase">Odds API burn</h2>
+          <p className="rounded-xl bg-surface px-4 py-3 text-sm text-fg">
+            {health.oddsSummary || "No Odds API telemetry yet."}
+          </p>
+        </section>
+      ) : null}
+
       <section>
         <h2 className="mb-2 font-display text-sm tracking-[0.18em] text-muted uppercase">Backlog</h2>
         <div className="grid gap-2 sm:grid-cols-3">
