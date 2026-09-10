@@ -165,6 +165,7 @@ export function AdvancedBoard() {
         }}>{checkingOdds ? "Checking odds…" : "Check odds connection"}</Button>
         {oddsCheck ? <p role="status" className="text-sm">{oddsCheck}</p> : null}
         <p className="text-xs text-subtle">Used {health.oddsUsed ?? "—"} · Free beta {health.freeBeta ? "ON" : "off"}</p>
+        {health.oddsSummary ? <p className="text-xs text-subtle">{health.oddsSummary}</p> : null}
       </section>
 
       <section className="space-y-2">

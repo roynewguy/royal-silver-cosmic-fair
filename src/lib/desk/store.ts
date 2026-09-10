@@ -7,6 +7,7 @@ import { getSql, dbSource } from "@/lib/db";
 import { buildCalibration } from "@/lib/sports/calibration";
 import { applyModelInputs, packModelInputs } from "@/lib/sports/model-inputs";
 import { isFreeBetaMode } from "@/lib/sports/free-beta";
+import { parseOddsTelemetry } from "@/lib/sports/odds-poll";
 import { activeLedger, isPaperMode } from "@/lib/sports/paper-mode";
 import { buildDeskHealth } from "./health.ts";
 import { loadResearchSummary } from "@/lib/models-v3/summary";
@@ -462,6 +463,7 @@ export async function loadMeta(): Promise<{
   autoRun: boolean;
   oddsRemaining: number | null;
   oddsUsed: number | null;
+  oddsTelemetryJson: string | null;
 }> {
   const sql = await getSql();
   const rows = await sql<{
@@ -477,7 +479,8 @@ export async function loadMeta(): Promise<{
     auto_run: unknown;
     odds_remaining: unknown;
     odds_used: unknown;
-  }>`select last_scan_at, last_desk_at, last_tick_at, min_edge_pct, min_confidence, post_lead_minutes, max_daily_picks, daily_picks_source, discord_webhook, auto_run, odds_remaining, odds_used from desk_meta where id = 1`;
+    odds_telemetry_json: string | null;
+  }>`select last_scan_at, last_desk_at, last_tick_at, min_edge_pct, min_confidence, post_lead_minutes, max_daily_picks, daily_picks_source, discord_webhook, auto_run, odds_remaining, odds_used, odds_telemetry_json from desk_meta where id = 1`;
   const r = rows[0];
   const rawCap = Math.round(num(r?.max_daily_picks) || 3);
   return {
@@ -495,6 +498,7 @@ export async function loadMeta(): Promise<{
     autoRun: r?.auto_run !== false,
     oddsRemaining: numOrNull(r?.odds_remaining),
     oddsUsed: numOrNull(r?.odds_used),
+    oddsTelemetryJson: r?.odds_telemetry_json ? String(r.odds_telemetry_json) : null,
   };
 }
 
@@ -606,6 +610,7 @@ export async function readDesk(opts: { operator?: boolean } = {}): Promise<DeskS
       espnErrors,
       oddsRemaining: meta.oddsRemaining,
       oddsUsed: meta.oddsUsed,
+      oddsTelemetry: parseOddsTelemetry(meta.oddsTelemetryJson),
       freeBeta: isFreeBetaMode(),
       lastSportsbookAt: games
         .map((g) => g.odds.capturedAt)

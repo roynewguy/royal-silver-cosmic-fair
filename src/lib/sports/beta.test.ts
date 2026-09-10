@@ -50,7 +50,7 @@ test("Odds API skips leagues with no scheduled games", () => {
   assert.equal(shouldFetchLeagueOdds({ scheduledCount: 3, hoursToKick: 2, lastFetchAgeMs: 9 * 60_000 }), true);
   assert.equal(shouldFetchLeagueOdds({ scheduledCount: 3, hoursToKick: 2, lastFetchAgeMs: 2 * 60_000 }), false);
   assert.equal(shouldFetchLeagueOdds({ scheduledCount: 3, hoursToKick: 30, lastFetchAgeMs: 10 * 60_000 }), false);
-  assert.equal(shouldFetchLeagueOdds({ scheduledCount: 3, hoursToKick: 30, lastFetchAgeMs: 50 * 60_000 }), true);
+  assert.equal(shouldFetchLeagueOdds({ scheduledCount: 3, hoursToKick: 30, lastFetchAgeMs: 121 * 60_000 }), true);
 });
 
 test("NFL wind under 10 mph is ignored; 20+ is stronger", () => {

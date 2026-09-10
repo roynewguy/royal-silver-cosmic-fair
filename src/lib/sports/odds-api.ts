@@ -1,8 +1,23 @@
-import { applyDraftKingsSnapshot, nearestKickHours, shouldFetchLeagueOdds } from "./dk-open.ts";
+import { applyDraftKingsSnapshot } from "./dk-open.ts";
 import { isFreeBetaMode } from "./free-beta.ts";
 import { LEAGUES } from "./leagues.ts";
 import { parseAmerican, parseLine } from "./odds.ts";
 import { buildMarketConsensus, quotesFromEvent } from "./market-consensus.ts";
+import {
+  OFFICIAL_BOOKS,
+  RESEARCH_BOOKS,
+  beginTickTelemetry,
+  booksCover,
+  emptyTelemetry,
+  foldUsage,
+  isEligibleOddsGame,
+  marketsCover,
+  nearestKickHours,
+  quotaLevel,
+  scanMarketsForLeague,
+  shouldFetchLeagueOdds,
+  type OddsTelemetry,
+} from "./odds-poll.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
 import { oddsApiGameOk, oddsApiListOk } from "./schema-guard.ts";
 
@@ -24,8 +39,25 @@ const cache: { byLeague: Map<string, { at: number; rows: OddsApiGame[] }> } = {
   byLeague: new Map(),
 };
 
+type RecentOdds = {
+  at: number;
+  rows: OddsApiGame[];
+  usage: OddsUsage;
+  markets: string;
+  books: string;
+  sportKey: string;
+};
+
+const inflight = new Map<string, Promise<{ rows: OddsApiGame[]; usage: OddsUsage }>>();
+const recent = new Map<string, RecentOdds>();
+
+let httpCalls = 0;
+let tickTelemetry: OddsTelemetry | null = null;
+
 export const SCAN_START_DELTA_MS = 4 * 60 * 60 * 1000;
 export const OFFICIAL_START_DELTA_MS = 15 * 60 * 1000;
+/** Same-tick reuse only. Official freeze never treats this as a 20-minute truth-gate cache. */
+export const COALESCE_MAX_AGE_MS = 60_000;
 
 function norm(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -175,29 +207,152 @@ export function parseUsageHeaders(headers: { get: (name: string) => string | nul
   };
 }
 
-export function oddsApiUrl(sportKey: string, apiKey: string, markets: string): string {
+export function oddsApiUrl(
+  sportKey: string,
+  apiKey: string,
+  markets: string,
+  books: string = OFFICIAL_BOOKS,
+): string {
   const url = new URL(`https://api.the-odds-api.com/v4/sports/${sportKey}/odds`);
   url.searchParams.set("apiKey", apiKey);
   url.searchParams.set("regions", "us");
   url.searchParams.set("markets", markets);
   url.searchParams.set("oddsFormat", "american");
-  url.searchParams.set("bookmakers", "draftkings,fanduel,betmgm,williamhill_us");
+  url.searchParams.set("bookmakers", books);
   return url.toString();
 }
 
-export async function fetchDraftKingsMarket(
+function requestKey(sportKey: string, markets: string, books: string): string {
+  return `${sportKey}|${markets}|${books}`;
+}
+
+function findReusable(
+  sportKey: string,
+  markets: string,
+  books: string,
+  maxAgeMs: number,
+  now = Date.now(),
+): RecentOdds | null {
+  let best: RecentOdds | null = null;
+  for (const entry of recent.values()) {
+    if (entry.sportKey !== sportKey) continue;
+    if (now - entry.at > maxAgeMs) continue;
+    if (!marketsCover(entry.markets, markets)) continue;
+    if (!booksCover(entry.books, books)) continue;
+    if (!best || entry.at > best.at) best = entry;
+  }
+  return best;
+}
+
+function rememberRecent(
+  sportKey: string,
+  markets: string,
+  books: string,
+  rows: OddsApiGame[],
+  usage: OddsUsage,
+  now = Date.now(),
+): void {
+  recent.set(requestKey(sportKey, markets, books), { at: now, rows, usage, markets, books, sportKey });
+}
+
+function noteSpend(sportKey: string, usage: OddsUsage): void {
+  if (!tickTelemetry) tickTelemetry = emptyTelemetry();
+  tickTelemetry = foldUsage(tickTelemetry, {
+    remaining: usage.remaining,
+    used: usage.used,
+    last: usage.last,
+    sportKey,
+  });
+}
+
+export function beginOddsTick(): void {
+  httpCalls = 0;
+  inflight.clear();
+  tickTelemetry = beginTickTelemetry(tickTelemetry ?? emptyTelemetry());
+}
+
+export function oddsTickStats(): {
+  httpCalls: number;
+  tickUsed: number;
+  tickRequests: number;
+  bySport: Record<string, number>;
+  remaining: number | null;
+  quotaLevel: ReturnType<typeof quotaLevel>;
+} {
+  return {
+    httpCalls,
+    tickUsed: tickTelemetry?.tickUsed ?? 0,
+    tickRequests: tickTelemetry?.tickRequests ?? 0,
+    bySport: { ...(tickTelemetry?.bySport ?? {}) },
+    remaining: tickTelemetry?.remaining ?? null,
+    quotaLevel: quotaLevel(tickTelemetry?.remaining ?? null),
+  };
+}
+
+export function currentOddsTelemetry(): OddsTelemetry | null {
+  return tickTelemetry;
+}
+
+export function seedOddsTelemetry(t: OddsTelemetry | null): void {
+  tickTelemetry = t;
+}
+
+export function oddsHttpCalls(): number {
+  return httpCalls;
+}
+
+export function seedLeagueOddsCache(leagueId: string, rows: OddsApiGame[], at = Date.now()): void {
+  cache.byLeague.set(leagueId, { at, rows });
+}
+
+export function resetOddsApiCaches(): void {
+  cache.byLeague.clear();
+  inflight.clear();
+  recent.clear();
+  httpCalls = 0;
+  tickTelemetry = null;
+}
+
+async function fetchOddsHttp(
   sportKey: string,
   apiKey: string,
   markets: string,
+  books: string,
 ): Promise<{ rows: OddsApiGame[]; usage: OddsUsage }> {
-  const res = await fetch(oddsApiUrl(sportKey, apiKey, markets), { signal: AbortSignal.timeout(8000) });
+  httpCalls += 1;
+  const res = await fetch(oddsApiUrl(sportKey, apiKey, markets, books), { signal: AbortSignal.timeout(8000) });
   const usage = parseUsageHeaders(res.headers);
   if (!res.ok) throw new Error(`Odds API ${res.status}`);
   const payload = await res.json();
   const list = oddsApiListOk(payload);
   if (!list.ok) throw new Error(`Odds API schema: ${list.detail}`);
   const rows = (payload as OddsApiGame[]).filter((row) => oddsApiGameOk(row).ok);
+  noteSpend(sportKey, usage);
   return { rows, usage };
+}
+
+export async function fetchDraftKingsMarket(
+  sportKey: string,
+  apiKey: string,
+  markets: string,
+  books: string = OFFICIAL_BOOKS,
+): Promise<{ rows: OddsApiGame[]; usage: OddsUsage }> {
+  const now = Date.now();
+  const reused = findReusable(sportKey, markets, books, COALESCE_MAX_AGE_MS, now);
+  if (reused) return { rows: reused.rows, usage: { remaining: reused.usage.remaining, used: reused.usage.used, last: 0 } };
+  const key = requestKey(sportKey, markets, books);
+  const pending = inflight.get(key);
+  if (pending) return pending;
+  const work = fetchOddsHttp(sportKey, apiKey, markets, books)
+    .then((result) => {
+      rememberRecent(sportKey, markets, books, result.rows, result.usage);
+      return result;
+    })
+    .finally(() => {
+      inflight.delete(key);
+    });
+  inflight.set(key, work);
+  return work;
 }
 
 export function overlayDraftKings(game: GameCard, event: OddsApiGame): GameCard | null {
@@ -216,7 +371,7 @@ export async function mergeDraftKingsOdds(games: GameCard[]): Promise<GameCard[]
   await Promise.allSettled(
     needed.map(async (league) => {
       if (!league.oddsApiKey) return;
-      const leagueGames = games.filter((g) => g.league === league.id && g.status === "scheduled");
+      const leagueGames = games.filter((g) => g.league === league.id && isEligibleOddsGame(g, now));
       if (leagueGames.length === 0) return;
       const cached = cache.byLeague.get(league.id);
       const hours = nearestKickHours(
@@ -228,12 +383,14 @@ export async function mergeDraftKingsOdds(games: GameCard[]): Promise<GameCard[]
         scheduledCount: leagueGames.length,
         hoursToKick: hours,
         lastFetchAgeMs: lastAge,
+        inLookahead: true,
       });
       if (!needFetch && cached) {
         applyPairs(leagueGames, cached.rows, byId);
         return;
       }
-      const { rows } = await fetchDraftKingsMarket(league.oddsApiKey, apiKey, "h2h,spreads,totals");
+      const markets = scanMarketsForLeague(league.id);
+      const { rows } = await fetchDraftKingsMarket(league.oddsApiKey, apiKey, markets, RESEARCH_BOOKS);
       cache.byLeague.set(league.id, { at: now, rows });
       applyPairs(leagueGames, rows, byId);
     }),
@@ -266,3 +423,5 @@ function applyPairs(leagueGames: GameCard[], rows: OddsApiGame[], byId: Map<stri
     });
   }
 }
+
+export { OFFICIAL_BOOKS, RESEARCH_BOOKS };

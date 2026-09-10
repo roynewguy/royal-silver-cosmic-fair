@@ -69,6 +69,13 @@ type EspnEvent = {
 };
 
 export const INJURY_CACHE_MS = 60 * 60_000;
+export const ESPN_TTL_MS = {
+  completed: 30 * 60_000,
+  farSchedule: 30 * 60_000,
+  live: 0,
+  team: 24 * 3600_000,
+  empty: 30 * 60_000,
+} as const;
 
 function mapStatus(raw?: string, state?: string, completed?: boolean): GameStatus {
 
@@ -80,6 +87,76 @@ function mapStatus(raw?: string, state?: string, completed?: boolean): GameStatu
   if (completed === true || s.includes("final") || s.includes("complete") || s.includes("status_final")) return "final";
   if (s.includes("in_progress") || s.includes("in-progress") || s.includes("halftime") || s.includes("end_of") || state === "in") return "in_progress";
   return state === "pre" || /scheduled/.test(s) ? "scheduled" : "delayed";
+}
+
+export function isTerminalGameStatus(status: GameStatus): boolean {
+  return status === "final" || status === "cancelled" || status === "postponed";
+}
+
+export function scoreboardTtlMs(
+  games: { status: GameStatus; startAt: string; home: { score: number | null }; away: { score: number | null } }[],
+  now = Date.now(),
+): number {
+  if (!games.length) return ESPN_TTL_MS.empty;
+  if (games.some((g) => g.status === "in_progress" || g.status === "delayed" || g.status === "suspended")) {
+    return ESPN_TTL_MS.live;
+  }
+  const anyNear = games.some((g) => {
+    if (g.status !== "scheduled") return false;
+    const t = Date.parse(g.startAt);
+    return Number.isFinite(t) && t - now <= 3 * 3_600_000;
+  });
+  if (anyNear) return ESPN_TTL_MS.live;
+  const allTerminal = games.every((g) => {
+    if (!isTerminalGameStatus(g.status)) return false;
+    if (g.status === "final" && (g.home.score == null || g.away.score == null)) return false;
+    return true;
+  });
+  if (allTerminal) return ESPN_TTL_MS.completed;
+  return ESPN_TTL_MS.farSchedule;
+}
+
+type StaticMeta = {
+  at: number;
+  venue: string | null;
+  homeLogo: string | null;
+  awayLogo: string | null;
+  homeAbbr: string | null;
+  awayAbbr: string | null;
+};
+
+const scoreboardCache = new Map<string, { at: number; ttl: number; payload: unknown; fetchedAt: string }>();
+const staticMetaCache = new Map<string, StaticMeta>();
+
+export function resetEspnCaches(): void {
+  scoreboardCache.clear();
+  staticMetaCache.clear();
+  injuryCache.clear();
+}
+
+export function overlayStaticMeta(game: GameCard): GameCard {
+  const hit = staticMetaCache.get(game.id);
+  const freshHit = hit && Date.now() - hit.at <= ESPN_TTL_MS.team ? hit : undefined;
+  const venue = game.venue || freshHit?.venue || null;
+  const home = {
+    ...game.home,
+    logo: game.home.logo || freshHit?.homeLogo || null,
+    abbr: game.home.abbr || freshHit?.homeAbbr || game.home.abbr,
+  };
+  const away = {
+    ...game.away,
+    logo: game.away.logo || freshHit?.awayLogo || null,
+    abbr: game.away.abbr || freshHit?.awayAbbr || game.away.abbr,
+  };
+  staticMetaCache.set(game.id, {
+    at: Date.now(),
+    venue,
+    homeLogo: home.logo,
+    awayLogo: away.logo,
+    homeAbbr: home.abbr,
+    awayAbbr: away.abbr,
+  });
+  return { ...game, venue, home, away };
 }
 
 function pickEspnOdds(list?: EspnOdds[]): EspnOdds | undefined {
@@ -382,24 +459,37 @@ function absorb(payload: unknown, league: LeagueConfig, byId: Map<string, GameCa
     const eventGuard = espnEventOk(event);
     if (!eventGuard.ok) { scanStats.errors.push(`${league.id}: ${eventGuard.detail}`); continue; }
     for (const game of eventToGames(event, league, fetchedAt)) {
-      byId.set(game.id, game);
+      byId.set(game.id, overlayStaticMeta(game));
     }
   }
+}
+
+async function fetchScoreboard(url: string, league: LeagueConfig, byId: Map<string, GameCard>): Promise<void> {
+  const cached = scoreboardCache.get(url);
+  const now = Date.now();
+  if (cached && now - cached.at < cached.ttl) {
+    absorb(cached.payload, league, byId, cached.fetchedAt);
+    return;
+  }
+  const payload = await fetchJson(url);
+  const tmp = new Map<string, GameCard>();
+  const fetchedAt = new Date().toISOString();
+  absorb(payload, league, tmp, fetchedAt);
+  const ttl = scoreboardTtlMs([...tmp.values()], now);
+  if (ttl > 0) scoreboardCache.set(url, { at: now, ttl, payload, fetchedAt });
+  for (const [id, game] of tmp) byId.set(id, game);
 }
 
 export async function fetchLeagueSlate(league: LeagueConfig, now = new Date()): Promise<GameCard[]> {
   const todayKey = ymdToEspn(ptYmd(now));
   const byId = new Map<string, GameCard>();
   try {
-    absorb(await fetchJson(scoreboardUrl(league, todayKey)), league, byId, new Date().toISOString());
+    await fetchScoreboard(scoreboardUrl(league, todayKey), league, byId);
   } catch {
     /* keep going — yesterday may still grade */
   }
   const extra = extraScanDateKeys(league.daily, byId.size, now);
-  const extraResults = await poolMap(extra, 2, (k) => fetchJson(scoreboardUrl(league, k)));
-  for (const result of extraResults) {
-    if (result.status === "fulfilled") absorb(result.value, league, byId, new Date().toISOString());
-  }
+  await poolMap(extra, 2, (k) => fetchScoreboard(scoreboardUrl(league, k), league, byId));
   const games = [...byId.values()];
   const needInjuries = games.some((g) => g.status === "scheduled" && g.injuries.length === 0);
   if (!needInjuries) return games;

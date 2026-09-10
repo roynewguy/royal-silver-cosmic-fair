@@ -35,8 +35,8 @@ test("only the needed market is requested", () => {
   assert.match(url, /markets=spreads/);
   assert.doesNotMatch(url, /h2h/);
   assert.doesNotMatch(url, /totals/);
-  assert.match(url, /fanduel/);
   assert.match(url, /draftkings/);
+  assert.doesNotMatch(url, /fanduel/);
 });
 
 test("spend rules: freeze at 0, cap two checks, skip fresh cache", () => {

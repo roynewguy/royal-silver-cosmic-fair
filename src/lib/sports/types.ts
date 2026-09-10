@@ -326,6 +326,11 @@ export type DeskHealth = {
   oddsLabel: string;
   oddsRemaining: number | null;
   oddsUsed: number | null;
+  oddsQuotaLevel: "ok" | "warning" | "critical" | "exhausted";
+  oddsTickUsed: number | null;
+  oddsEstimatedDaily: number | null;
+  oddsEstimatedMonthly: number | null;
+  oddsSummary: string;
   freeBeta: boolean;
   lastSportsbookAt: string | null;
   lastOfficialPostAt: string | null;
