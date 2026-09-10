@@ -178,6 +178,7 @@ export function snapshotFromApi(game: OddsApiGame, homeName: string, awayName: s
     openHomeSpread: null,
     openTotal: null,
     openHomeMl: null,
+    openAwayMl: null,
     source: "odds-api",
     capturedAt: book.last_update ?? null,
     eventId: game.id ?? null,

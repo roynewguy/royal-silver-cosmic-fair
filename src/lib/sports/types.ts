@@ -44,6 +44,8 @@ export type OddsSnapshot = {
   openHomeSpread: number | null;
   openTotal: number | null;
   openHomeMl: number | null;
+  /** First-seen / opening away ML when the feed provides it. Optional so old snapshots stay valid. */
+  openAwayMl?: number | null;
   eventId?: string | null;
   eventStartAt?: string | null;
   sportKey?: string | null;

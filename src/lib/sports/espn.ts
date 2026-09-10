@@ -185,6 +185,7 @@ function parseOdds(raw: EspnOdds | undefined, capturedAt: string | null = null):
     openHomeSpread: null,
     openTotal: null,
     openHomeMl: null,
+    openAwayMl: null,
     source: "unknown",
     capturedAt: null,
   };
@@ -211,6 +212,7 @@ function parseOdds(raw: EspnOdds | undefined, capturedAt: string | null = null):
     openHomeSpread: parseLine(raw.pointSpread?.home?.open?.line),
     openTotal: parseLine(raw.total?.over?.open?.line),
     openHomeMl: parseAmerican(raw.moneyline?.home?.open?.odds),
+    openAwayMl: parseAmerican(raw.moneyline?.away?.open?.odds),
     source: "espn",
     capturedAt: capturedAt,
   };
