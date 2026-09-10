@@ -4,6 +4,7 @@ import { LEAGUES } from "./leagues.ts";
 import { parseAmerican, parseLine } from "./odds.ts";
 import { buildMarketConsensus, quotesFromEvent } from "./market-consensus.ts";
 import type { GameCard, OddsSnapshot } from "./types.ts";
+import { oddsApiGameOk, oddsApiListOk } from "./schema-guard.ts";
 
 type OddsApiMarket = {
   key?: string;
@@ -191,7 +192,11 @@ export async function fetchDraftKingsMarket(
   const res = await fetch(oddsApiUrl(sportKey, apiKey, markets), { signal: AbortSignal.timeout(8000) });
   const usage = parseUsageHeaders(res.headers);
   if (!res.ok) throw new Error(`Odds API ${res.status}`);
-  return { rows: (await res.json()) as OddsApiGame[], usage };
+  const payload = await res.json();
+  const list = oddsApiListOk(payload);
+  if (!list.ok) throw new Error(`Odds API schema: ${list.detail}`);
+  const rows = (payload as OddsApiGame[]).filter((row) => oddsApiGameOk(row).ok);
+  return { rows, usage };
 }
 
 export function overlayDraftKings(game: GameCard, event: OddsApiGame): GameCard | null {

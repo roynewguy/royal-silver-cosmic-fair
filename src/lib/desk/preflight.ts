@@ -44,7 +44,7 @@ export async function loadPreflight(lastTickAt: string | null, stored: string): 
     { name: "Truth gate", status: "READY", detail: "Required on every automated/paper post" },
     { name: "New automated customer picks", status: livePostingEnabled() ? "READY" : "BLOCKED", detail: livePostingEnabled() ? "Enabled" : "Kill switch OFF (scans and grading continue)" },
   ];
-  for (const role of ["picks", "results", "alerts", "test", "manual", "record", "weekly"] as DiscordRole[]) {
+  for (const role of ["picks", "results", "alerts", "test", "manual", "record", "weekly", "free"] as DiscordRole[]) {
     const configured = Boolean(channelWebhook(role, stored));
     const proven = latest[`discord_${role}_success`];
     checks.push({ name: `Discord ${role}`, status: !configured ? "BLOCKED" : proven ? "READY" : "UNVERIFIED", detail: !configured ? "Missing or conflicting channel" : proven ?? "Configured; no confirmed delivery in 24h" });

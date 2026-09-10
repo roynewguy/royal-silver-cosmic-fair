@@ -1,6 +1,7 @@
 import type { OddsSnapshot, PickTier, RankPick } from "./types.ts";
 import type { FieldFreshness } from "./freshness.ts";
 import { SOURCE_HIERARCHY } from "./source-hierarchy.ts";
+import { expectedValuePct } from "./value.ts";
 
 export type AuditField = {
   field: string;
@@ -18,6 +19,11 @@ export type FreezeSnapshot = {
   modelVersion: string;
   modelProbability: number;
   modelEdge: number;
+  expectedValuePct?: number | null;
+  noVigProbability?: number | null;
+  sportsbook?: string | null;
+  opposingPrice?: number | null;
+  postedTimestamp?: string | null;
   confidence: number;
   units: number;
   market: string;
@@ -62,9 +68,11 @@ export function buildFreezeSnapshot(input: {
   postingToken?: string | null;
   freshness?: Record<string, FieldFreshness>;
   pickTier?: PickTier;
+  opposingPrice?: number | null;
 }): FreezeSnapshot {
   const frozenAt = input.frozenAt ?? new Date().toISOString();
   const dkCapturedAt = input.odds.capturedAt;
+  const noVig = input.marketProbability ?? input.rank.noVigImplied ?? null;
   const audit: AuditField[] = [
     { field: "gameId", value: input.gameId, source: SOURCE_HIERARCHY.schedule, capturedAt: input.sourceFetchedAt ?? null },
     { field: "startAt", value: input.startAt ?? "", source: SOURCE_HIERARCHY.schedule, capturedAt: input.sourceFetchedAt ?? null },
@@ -83,6 +91,11 @@ export function buildFreezeSnapshot(input: {
     modelVersion: input.rank.model,
     modelProbability: input.rank.probability,
     modelEdge: input.rank.edgePct,
+    expectedValuePct: expectedValuePct(input.rank.probability, input.lockedOdds),
+    noVigProbability: noVig,
+    sportsbook: input.odds.book ?? null,
+    opposingPrice: input.opposingPrice ?? null,
+    postedTimestamp: frozenAt,
     confidence: input.rank.confidence,
     units: input.units,
     market: input.rank.market,
@@ -97,7 +110,7 @@ export function buildFreezeSnapshot(input: {
     startAt: input.startAt,
     league: input.league,
     dkCapturedAt,
-    marketProbability: input.marketProbability ?? input.rank.noVigImplied ?? null,
+    marketProbability: noVig,
     dataQuality: input.rank.dataQuality ?? null,
     postingToken: input.postingToken ?? null,
     llmFacts: false,

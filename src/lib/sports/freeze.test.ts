@@ -51,6 +51,9 @@ test("freeze snapshot keeps model version, probability, and edge", () => {
   assert.equal(freeze.modelEdge, 4.2);
   assert.equal(freeze.odds.book, "DraftKings");
   assert.equal(freeze.gameId, "nfl:1");
+  assert.ok(freeze.expectedValuePct != null);
+  assert.equal(freeze.sportsbook, "DraftKings");
+  assert.equal(freeze.postedTimestamp, freeze.frozenAt);
   const again = buildFreezeSnapshot({
     rank: { ...rank, probability: 0.99 },
     units: 2,

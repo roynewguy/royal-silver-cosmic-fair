@@ -1,3 +1,5 @@
+import { injuryBoardOk } from "./schema-guard.ts";
+
 export type BoardInj = { teamName: string | null; abbr: string | null; player: string; status: string; position: string | null };
 
 type InjuryPayload = {
@@ -8,7 +10,7 @@ type InjuryRow = { status?: string; athlete?: { displayName?: string; position?:
 
 /** ESPN's league board groups injuries by full team name. Unknown schemas fail closed. */
 export function parseInjuryBoard(value: unknown): BoardInj[] | null {
-  if (!value || typeof value !== "object") return null;
+  if (!injuryBoardOk(value).ok) return null;
   const payload = value as InjuryPayload;
   const groups = Array.isArray(payload.injuries)
     ? payload.injuries.map(g => ({ teamName: g.displayName, abbr: undefined, injuries: g.injuries }))

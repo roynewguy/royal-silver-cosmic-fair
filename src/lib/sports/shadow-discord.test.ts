@@ -6,6 +6,7 @@ import {
   buildShadowLabMessage,
   canPostShadowLab,
   noPlayEnabled,
+  postShadowLabSlate,
   resolveModelLabWebhook,
 } from "./shadow-discord.ts";
 import { canQueueOfficial } from "../models-v3/registry.ts";
@@ -89,4 +90,33 @@ test("shadow digest never includes official calls", () => {
   assert.doesNotMatch(digest ?? "", /v2-mlb/);
   const blocked = buildShadowLabDigest([{ ...game, shadows: { v4: official } } as GameCard]);
   assert.equal(blocked, null);
+});
+
+test("SHADOW_SOAK kills model-lab Discord (canPost + postShadowLabSlate)", async () => {
+  const prev = process.env.SHADOW_SOAK;
+  const prevLab = process.env.DISCORD_MODEL_LAB_WEBHOOK;
+  process.env.SHADOW_SOAK = "true";
+  process.env.DISCORD_MODEL_LAB_WEBHOOK = "https://discord.com/api/webhooks/9/lab";
+  const call: ModelCall = {
+    model: "v4-mlb-ensemble",
+    probability: 0.58,
+    marketProbability: 0.53,
+    edgePct: 5,
+    expectedValuePct: 9,
+    uncertainty: 0.1,
+    dataQuality: 90,
+    confidence: 70,
+    action: "BET",
+    passReason: null,
+    official: false,
+    price: -110,
+    side: "home",
+  };
+  const blocked = canPostShadowLab(call);
+  assert.equal(blocked.ok, false);
+  if (!blocked.ok) assert.match(blocked.reason, /shadow soak/i);
+  const n = await postShadowLabSlate([]);
+  assert.equal(n, 0);
+  process.env.SHADOW_SOAK = prev;
+  process.env.DISCORD_MODEL_LAB_WEBHOOK = prevLab;
 });

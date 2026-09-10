@@ -2,7 +2,12 @@ import { canQueueOfficial } from "../models-v3/registry.ts";
 import { marketAgeMs } from "./data-quality.ts";
 import { twoWayMarket } from "./odds.ts";
 import type { GameCard } from "./types.ts";
-import { evaluateBetOpportunity, uncertaintyFromQuality, type BetDecision } from "./value.ts";
+import {
+  evaluateBetOpportunity,
+  officialQuoteFields,
+  uncertaintyFromQuality,
+  type BetDecision,
+} from "./value.ts";
 
 export function betScore(decision: BetDecision, modelReliability = 1): number {
   if (decision.action !== "BET") return 0;
@@ -99,12 +104,16 @@ export function officialDecision(game: GameCard, minEdge: number, minConf: numbe
       detail: "Both sides of the no-vig market are required. No raw-implied fallback.",
     };
   }
+  const quote = officialQuoteFields(game, rank.market, rank.side);
   const v3 = game.shadows?.v3?.probability ?? null;
   const disagreement = v3 != null ? Math.abs(rank.probability - v3) : 0;
   return evaluateBetOpportunity({
     modelProbability: rank.probability,
     marketProbability,
     price: rank.price,
+    opposingPrice: quote.opposingPrice,
+    sportsbook: quote.sportsbook,
+    capturedAt: quote.capturedAt,
     line: rank.line,
     dataQuality: rank.dataQuality ?? 0,
     modelUncertainty: uncertaintyFromQuality({

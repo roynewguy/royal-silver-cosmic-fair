@@ -9,6 +9,12 @@ import {
   OFFICIAL_MIN_QUALITY,
 } from "./value.ts";
 
+const complete = {
+  opposingPrice: -110,
+  sportsbook: "DraftKings",
+  capturedAt: "2026-09-09T12:00:00.000Z",
+};
+
 test("missing no-vig market is PASS_MARKET_INCOMPLETE, not a raw-implied fallback", () => {
   const d = evaluateBetOpportunity({
     modelProbability: 0.58,
@@ -22,10 +28,33 @@ test("missing no-vig market is PASS_MARKET_INCOMPLETE, not a raw-implied fallbac
     minEdgePct: 3,
     minConfidence: 58,
     confidence: 70,
+    ...complete,
   });
   assert.equal(d.action, "PASS");
   assert.equal(d.reason, "PASS_MARKET_INCOMPLETE");
 });
+
+test("official BET requires opposing price, verified book, and timestamp", () => {
+  const base = {
+    modelProbability: 0.58,
+    marketProbability: 0.53,
+    price: -110,
+    dataQuality: 91,
+    modelUncertainty: 0.12,
+    marketAgeMs: 60_000,
+    sport: "mlb" as const,
+    marketType: "moneyline" as const,
+    minEdgePct: 3,
+    minConfidence: 58,
+    confidence: 70,
+    ...complete,
+  };
+  assert.equal(evaluateBetOpportunity(base).action, "BET");
+  assert.equal(evaluateBetOpportunity({ ...base, opposingPrice: null }).reason, "PASS_MARKET_INCOMPLETE");
+  assert.equal(evaluateBetOpportunity({ ...base, sportsbook: "Unknown Book" }).reason, "PASS_MARKET_INCOMPLETE");
+  assert.equal(evaluateBetOpportunity({ ...base, capturedAt: null }).reason, "PASS_MARKET_STALE");
+});
+
 test("American EV at -110 is profit 0.909 when winning", () => {
   assert.ok(Math.abs(americanProfit(-110) - 100 / 110) < 1e-9);
   const ev = expectedValuePct(0.55, -110);
@@ -53,6 +82,7 @@ test("quality over quantity: no edge, low quality, high uncertainty all PASS", (
     minEdgePct: 3,
     minConfidence: 58,
     confidence: 70,
+    ...complete,
   };
   assert.equal(evaluateBetOpportunity(base).action, "BET");
   assert.equal(evaluateBetOpportunity({ ...base, marketProbability: 0.58 }).reason, "PASS_NO_EDGE");
@@ -76,6 +106,7 @@ test("confidence is not the model probability", () => {
     minEdgePct: 3,
     minConfidence: 58,
     confidence: 72,
+    ...complete,
   });
   assert.equal(d.confidence, 72);
   assert.notEqual(d.confidence, Math.round(0.57 * 100));
@@ -101,6 +132,8 @@ test("line move against a thinning EV is PASS_LINE_MOVED", () => {
     minConfidence: 58,
     confidence: 70,
     openPrice: -110,
+    ...complete,
+    opposingPrice: -105,
   });
   assert.equal(d.reason, "PASS_LINE_MOVED");
   assert.equal(d.action, "PASS");

@@ -4,13 +4,26 @@ import { postWebhook } from "../sports/discord.ts";
 export type AlertCode =
   | "CRON_STALE"
   | "ESPN_FAIL"
+  | "ESPN_FAILURE"
   | "DK_UNAVAILABLE"
   | "DISCORD_FAIL"
+  | "DISCORD_401"
+  | "DISCORD_403"
+  | "DISCORD_DELIVERY_UNKNOWN"
   | "DB_UNAVAILABLE"
+  | "DATABASE_ERROR"
   | "GRADE_STUCK"
+  | "GRADING_BACKLOG"
   | "AMBIGUOUS_MATCH"
   | "ODDS_CREDITS"
-  | "DATA_CONFLICT";
+  | "ODDS_API_ERROR"
+  | "ODDS_QUOTA_LOW"
+  | "ODDS_QUOTA_EXHAUSTED"
+  | "DATA_CONFLICT"
+  | "MARKET_FEED_STALE"
+  | "INJURY_FEED_STALE"
+  | "MIGRATION_ERROR"
+  | "MODEL_DATA_FAILURE";
 
 const lastSent = new Map<string, number>();
 const COOLDOWN_MS = 30 * 60_000;
@@ -70,6 +83,16 @@ export async function saveAlertMap(map: Record<string, number>): Promise<void> {
 
 export function formatOwnerAlert(code: AlertCode, detail: string): string {
   return `CRITICAL ${code}\n${detail}\nOperator only — not a customer pick.`;
+}
+
+export function discordAlertCode(result: { authFailure?: boolean; uncertain?: boolean; error?: string }): AlertCode {
+  if (result.authFailure) {
+    if (result.error?.includes("401")) return "DISCORD_401";
+    if (result.error?.includes("403")) return "DISCORD_403";
+    return "DISCORD_FAIL";
+  }
+  if (result.uncertain) return "DISCORD_DELIVERY_UNKNOWN";
+  return "DISCORD_FAIL";
 }
 
 export async function alertOwner(code: AlertCode, detail: string): Promise<void> {

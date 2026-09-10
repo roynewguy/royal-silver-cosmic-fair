@@ -10,6 +10,7 @@ test("kill switch defaults off and only explicit true permits auto delivery",()=
   assert.equal(livePostingEnabled({}),false);
   assert.equal(livePostingEnabled({BOATBOYZ_LIVE_POSTING:"false"}),false);
   assert.equal(livePostingEnabled({BOATBOYZ_LIVE_POSTING:"true"}),true);
+  assert.equal(livePostingEnabled({BOATBOYZ_LIVE_POSTING:"true",SHADOW_SOAK:"true"}),false);
 });
 test("webhook responsibilities fail closed on collision; legacy is picks only",()=>{
   const env={DISCORD_WEBHOOK_URL:hook("picks")};

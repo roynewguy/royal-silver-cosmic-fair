@@ -1,5 +1,6 @@
 import { loadPreflight } from "./preflight";
-import { livePostingEnabled } from "./production-policy";
+import { livePostingEnabled, isShadowSoak } from "./production-policy";
+import { soakRecorderHealth } from "./shadow-soak";
 import { randomUUID } from "node:crypto";
 import { resolveWebhook } from "@/lib/sports/discord";
 import { getSql, dbSource } from "@/lib/db";
@@ -606,6 +607,34 @@ export async function readDesk(opts: { operator?: boolean } = {}): Promise<DeskS
       oddsRemaining: meta.oddsRemaining,
       oddsUsed: meta.oddsUsed,
       freeBeta: isFreeBetaMode(),
+      lastSportsbookAt: games
+        .map((g) => g.odds.capturedAt)
+        .filter((t): t is string => Boolean(t))
+        .sort()
+        .at(-1) ?? null,
+      lastOfficialPostAt: picks
+        .filter((p) => p.ledger !== "paper" && p.postedAt)
+        .map((p) => p.postedAt!)
+        .sort()
+        .at(-1) ?? null,
+      lastGradeAt: picks
+        .filter((p) => p.ledger !== "paper" && p.gradedAt)
+        .map((p) => p.gradedAt!)
+        .sort()
+        .at(-1) ?? null,
+      pendingGrades: picks.filter((p) => p.ledger !== "paper" && p.status === "posted" && p.result == null).length,
+      deliveryUnknown: picks.filter((p) => p.status === "delivery_unknown").length,
+      staleJobs: picks.filter((p) => p.status === "posting").length,
+      staleInjuryFeeds: games.some((g) => g.status === "scheduled" && !g.injuriesFetchedAt),
+      staleMarketFeeds: games.some((g) => {
+        if (g.status !== "scheduled") return false;
+        const t = g.odds.capturedAt ? Date.parse(g.odds.capturedAt) : NaN;
+        return !Number.isFinite(t) || Date.now() - t > 20 * 60_000;
+      }),
+      latestAlert: operator ? (log.find((l) => /error|fail|CRITICAL/i.test(l.message))?.message ?? null) : null,
+      shadowSoak: isShadowSoak(),
+      soakRecorderFailed: isShadowSoak() && !soakRecorderHealth().ok,
+      soakWouldHavePosted: isShadowSoak() && soakRecorderHealth().ok ? soakRecorderHealth().lastWouldHavePosted : null,
     }),
     researchModels,
     preflight: operator ? await loadPreflight(meta.lastTickAt, await readWebhook()) : null,

@@ -1,6 +1,7 @@
 import { discordWebhookOk, postWebhook } from "./discord.ts";
 import { formatAmerican } from "../utils.ts";
 import type { GameCard, ModelCall } from "./types.ts";
+import { isShadowSoak, livePostingEnabled } from "../desk/production-policy.ts";
 
 export const MODEL_LAB_USERNAME = "BoatBoyz Model Lab";
 
@@ -42,7 +43,8 @@ export function noPlayEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
-export function canPostShadowLab(call: ModelCall, officialUrl?: string | null): { ok: true; url: string } | { ok: false; reason: string } {
+export function canPostShadowLab(call: ModelCall, officialUrl?: string | null, env: NodeJS.ProcessEnv = process.env): { ok: true; url: string } | { ok: false; reason: string } {
+  if (isShadowSoak(env)) return { ok: false, reason: "shadow soak kills model-lab Discord" };
   if (call.official) return { ok: false, reason: "official flag set on shadow call" };
   if (call.action !== "BET") return { ok: false, reason: "shadow did not qualify" };
   const hook = resolveModelLabWebhook(officialUrl);
@@ -71,6 +73,8 @@ export function buildShadowLabDigest(games: GameCard[]): string | null {
 }
 
 export async function postShadowLabSlate(games: GameCard[], officialUrl?: string | null): Promise<number> {
+  // SHADOW_SOAK = zero Discord of any kind, including Model Lab digests.
+  if (isShadowSoak()) return 0;
   const hook = resolveModelLabWebhook(officialUrl);
   if (!hook.url) return 0;
   const digest = buildShadowLabDigest(games);
@@ -91,6 +95,7 @@ export async function postShadowLabSlate(games: GameCard[], officialUrl?: string
 }
 
 export async function maybePostNoPlay(officialUrl: string, ptDay: string): Promise<boolean> {
+  if (!livePostingEnabled()) return false;
   if (!noPlayEnabled()) return false;
   if (!discordWebhookOk(officialUrl)) return false;
   try {

@@ -27,6 +27,11 @@ test("loading the app does not count as a tick", () => {
   });
   assert.equal(health.automation, "unarmed");
   assert.equal(health.discord, "warn");
+  assert.equal(health.pendingGrades, 0);
+  assert.equal(health.shadowSoak, false);
+  assert.equal(health.deliveryUnknown, 0);
+  assert.equal(health.soakRecorderFailed, false);
+  assert.equal(health.soakWouldHavePosted, null);
 });
 
 test("next scan is 10 minutes after last cron", () => {

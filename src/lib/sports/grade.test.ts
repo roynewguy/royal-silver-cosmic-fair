@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { gradePick } from "./grade.ts";
+import { gradeOutcome, gradePick, ledgerResult, sportsbookSettlement, buildGradeSnapshot } from "./grade.ts";
 import type { GameCard, OddsSnapshot, PickRow } from "./types.ts";
 
 const odds: OddsSnapshot = {
@@ -125,14 +125,33 @@ test("NFL moneyline tie is a push", () => {
   assert.equal(gradePick(pick({ market: "moneyline", side: "home", lockedLine: null }), g), "PUSH");
 });
 
-test("postponed game voids the ticket", () => {
+test("postponed game stays pending settlement — not an automatic VOID", () => {
   assert.equal(gradePick(pick(), game({ status: "postponed" })), null);
+  assert.equal(gradeOutcome(pick(), game({ status: "postponed" })), "POSTPONED");
+  assert.equal(ledgerResult("POSTPONED"), null);
+  const rule = sportsbookSettlement("postponed");
+  assert.equal(rule.ledgerResult, null);
+  assert.equal(rule.reviewRequired, true);
+  assert.equal(rule.status, "PENDING_SETTLEMENT");
+  assert.equal(rule.publicRecord, false);
+  const snap = buildGradeSnapshot(pick(), game({ status: "postponed" }), "POSTPONED");
+  assert.equal(snap.settlementStatus, "PENDING_SETTLEMENT");
+  assert.equal(snap.ledgerResult, null);
+  assert.match(snap.evidence, /not sportsbook settlement/i);
 });
 
-test("cancelled game voids the ticket", () => {
+test("cancelled game voids the ticket when the sportsbook rule is clear", () => {
   assert.equal(gradePick(pick(), game({ status: "cancelled" })), null);
+  assert.equal(gradeOutcome(pick(), game({ status: "cancelled" })), "CANCELLED");
+  assert.equal(ledgerResult("CANCELLED"), "VOID");
+  const rule = sportsbookSettlement("cancelled");
+  assert.equal(rule.ledgerResult, "VOID");
+  assert.equal(rule.reviewRequired, false);
+  assert.equal(rule.publicRecord, false);
 });
 
 test("in-progress does not grade", () => {
   assert.equal(gradePick(pick(), game({ status: "in_progress" })), null);
+  assert.equal(gradeOutcome(pick(), game({ status: "in_progress" })), "UNRESOLVED");
+  assert.equal(ledgerResult("UNRESOLVED"), null);
 });

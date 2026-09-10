@@ -11,7 +11,8 @@ import {
 import { flushResultRecaps } from "./result-delivery";
 import { syncRecordScoreboard } from "./scoreboard";
 import { sendWeeklyRecap } from "./weekly-recap";
-import { livePostingEnabled } from "./production-policy";
+import { livePostingEnabled, isShadowSoak } from "./production-policy";
+import { recordSoakFromCandidates } from "./shadow-soak";
 import { recordEvent } from "./telemetry";
 import { getSql } from "@/lib/db";
 import { officialKey, ptDayKey } from "@/lib/sports/day";
@@ -26,10 +27,10 @@ import {
 } from "@/lib/sports/discord";
 import { fetchAllSlates, beginEspnScan, espnScanStats } from "@/lib/sports/espn";
 import { mergeFetchedSlate, inLookahead } from "@/lib/sports/slate-merge";
-import { gradePick, settle } from "@/lib/sports/grade";
+import { gradePick, settle, buildGradeSnapshot, gradeOutcome, sportsbookSettlement } from "@/lib/sports/grade";
 import { prePostTruthCheck, gradeTruth, type QueuedContext } from "@/lib/sports/truth-gate";
 import { isManualSource, NEEDS_MANUAL_GRADE } from "@/lib/sports/manual-post";
-import { alertOwner } from "./alerts";
+import { alertOwner, discordAlertCode } from "./alerts";
 import { automationStatus } from "./health";
 import { isFreeBetaMode } from "@/lib/sports/free-beta";
 import { isPaperLedger, paperLockMessage, paperSimulateSend, activeLedger } from "@/lib/sports/paper-mode";
@@ -125,12 +126,15 @@ export async function refreshSlate(): Promise<GameCard[]> {
   const meta = await loadMeta();
   await recordPassDecisions(next, meta.minEdgePct, meta.minConfidence);
   await persistBookQuotes(next).catch(() => undefined);
-  await postShadowLabSlate(next).catch(() => 0);
+  if (!isShadowSoak()) await postShadowLabSlate(next).catch(() => 0);
   await pruneFreeBetaCaches();
   const stats = espnScanStats();
   if (stats.espn_error_count) {
     await recordEvent("espn_failure", `${stats.espn_error_count} requests failed`);
     await alertOwner("ESPN_FAIL", "Some ESPN data unavailable. Affected games require fresh verified data.");
+    if ((stats.espn_last_error ?? "").toLowerCase().includes("schema")) {
+      await alertOwner("MODEL_DATA_FAILURE", stats.espn_last_error ?? "Unexpected ESPN schema");
+    }
   } else { await touchScan("scan"); await recordEvent("scan_success"); }
   return next;
 }
@@ -178,7 +182,7 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
     const game = byId.get(row.game_id);
     if (!game) {
       if (row.status === "posted" && Date.parse(String(row.start_at)) < Date.now() - 24 * 3600_000)
-        await alertOwner("GRADE_STUCK", `Ticket ${row.id}: final event unavailable; no grade guessed.`);
+        await alertOwner("GRADING_BACKLOG", `Ticket ${row.id}: final event unavailable; no grade guessed.`);
       continue;
     }
     const started = new Date(game.startAt).getTime() <= Date.now();
@@ -191,9 +195,161 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
       await addLog("skip", UNPOSTED_SKIP, game.sport);
       continue;
     }
-    if (row.status === "posted" && (game.status === "cancelled" || game.status === "postponed")) {
-      await sql`update picks set needs_manual_grade = true, skip_reason = 'NEEDS_MANUAL_GRADE: sportsbook postponement/cancellation rules required' where id = ${row.id} and status = 'posted'`;
-      await alertOwner("GRADE_STUCK", "Postponed/cancelled ticket requires sportsbook settlement review.");
+    if (row.status === "posted" && game.status === "postponed") {
+      const outcome = gradeOutcome(asPickRow({
+        id: row.id,
+        gameId: row.game_id,
+        sport: row.sport,
+        league: row.league,
+        matchup: row.matchup,
+        market: row.market as PickRow["market"],
+        selection: row.selection,
+        side: row.side as PickRow["side"],
+        lockedLine: row.locked_line,
+        lockedOdds: row.locked_odds,
+        lockedOddsJson: JSON.parse(row.locked_odds_json || "{}"),
+        reason: row.reason,
+        confidence: row.confidence,
+        edgePct: row.edge_pct,
+        units: Number(row.units),
+        status: "posted",
+        startAt: String(row.start_at),
+        postAt: String(row.post_at),
+        createdAt: new Date().toISOString(),
+      }), game);
+      const rule = sportsbookSettlement("postponed");
+      const snapshot = JSON.stringify(buildGradeSnapshot({
+        id: row.id,
+        gameId: row.game_id,
+        sport: row.sport,
+        league: row.league,
+        matchup: row.matchup,
+        market: row.market as PickRow["market"],
+        selection: row.selection,
+        side: row.side as PickRow["side"],
+        lockedLine: row.locked_line,
+        lockedOdds: row.locked_odds,
+        lockedOddsJson: JSON.parse(row.locked_odds_json || "{}"),
+        reason: row.reason,
+        research: null,
+        confidence: row.confidence,
+        edgePct: row.edge_pct,
+        units: Number(row.units),
+        status: "posted",
+        result: null,
+        profitUnits: null,
+        startAt: String(row.start_at),
+        postAt: String(row.post_at),
+        postedAt: null,
+        gradedAt: null,
+        discordMessage: null,
+        discordMessageId: null,
+        officialKey: null,
+        skipReason: null,
+        modelVersion: row.model_version,
+        modelProbability: null,
+        modelEdge: null,
+        freezeJson: row.freeze_json,
+        selectedOdds: null,
+        postedOdds: row.posted_odds,
+        closingOdds: null,
+        clv: null,
+        createdAt: new Date().toISOString(),
+        homeLogo: null,
+        awayLogo: null,
+        homeAbbr: null,
+        awayAbbr: null,
+        homeScore: null,
+        awayScore: null,
+        gameStatus: game.status,
+      }, game, outcome));
+      const flagged = await sql<{ id: number }>`
+        update picks
+        set grade_snapshot_json = coalesce(grade_snapshot_json, ${snapshot}),
+            settlement_evidence = coalesce(settlement_evidence, ${rule.evidence})
+        where id = ${row.id} and status = 'posted' and result is null
+          and (grade_snapshot_json is null or settlement_evidence is null)
+        returning id
+      `;
+      if (flagged.length) await addLog("grade", `${row.matchup} POSTPONED pending settlement — not a public W-L-P`, game.sport);
+      continue;
+    }
+    if (row.status === "posted" && game.status === "cancelled") {
+      const outcome = gradeOutcome(asPickRow({
+        id: row.id,
+        gameId: row.game_id,
+        sport: row.sport,
+        league: row.league,
+        matchup: row.matchup,
+        market: row.market as PickRow["market"],
+        selection: row.selection,
+        side: row.side as PickRow["side"],
+        lockedLine: row.locked_line,
+        lockedOdds: row.locked_odds,
+        lockedOddsJson: JSON.parse(row.locked_odds_json || "{}"),
+        reason: row.reason,
+        confidence: row.confidence,
+        edgePct: row.edge_pct,
+        units: Number(row.units),
+        status: "posted",
+        startAt: String(row.start_at),
+        postAt: String(row.post_at),
+        createdAt: new Date().toISOString(),
+      }), game);
+      const snapshot = JSON.stringify(buildGradeSnapshot({
+        id: row.id,
+        gameId: row.game_id,
+        sport: row.sport,
+        league: row.league,
+        matchup: row.matchup,
+        market: row.market as PickRow["market"],
+        selection: row.selection,
+        side: row.side as PickRow["side"],
+        lockedLine: row.locked_line,
+        lockedOdds: row.locked_odds,
+        lockedOddsJson: JSON.parse(row.locked_odds_json || "{}"),
+        reason: row.reason,
+        research: null,
+        confidence: row.confidence,
+        edgePct: row.edge_pct,
+        units: Number(row.units),
+        status: "posted",
+        result: null,
+        profitUnits: null,
+        startAt: String(row.start_at),
+        postAt: String(row.post_at),
+        postedAt: null,
+        gradedAt: null,
+        discordMessage: null,
+        discordMessageId: null,
+        officialKey: null,
+        skipReason: null,
+        modelVersion: row.model_version,
+        modelProbability: null,
+        modelEdge: null,
+        freezeJson: row.freeze_json,
+        selectedOdds: null,
+        postedOdds: row.posted_odds,
+        closingOdds: null,
+        clv: null,
+        createdAt: new Date().toISOString(),
+        homeLogo: null,
+        awayLogo: null,
+        homeAbbr: null,
+        awayAbbr: null,
+        homeScore: null,
+        awayScore: null,
+        gameStatus: game.status,
+      }, game, outcome));
+      await sql`
+        update picks
+        set status = 'graded', result = 'VOID', profit_units = 0, graded_at = now(),
+            grade_snapshot_json = ${snapshot}, needs_manual_grade = false,
+            skip_reason = ${outcome}
+        where id = ${row.id} and status = 'posted'
+      `;
+      await addLog("grade", `${row.matchup} ${outcome} VOID 0.00u`, game.sport);
+      graded += 1;
       continue;
     }
     if (disp !== "grade") continue;
@@ -201,7 +357,7 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
     if (disp === "grade") {
       const gt = gradeTruth({ status: "posted", gameId: row.game_id, league: row.league, freezeJson: row.freeze_json }, game);
       if (!gt.ok) {
-        await alertOwner(gt.reason === "PASS_GAME_MISMATCH" ? "DATA_CONFLICT" : "GRADE_STUCK", `Ticket ${row.id}: ${gt.detail}`);
+        await alertOwner(gt.reason === "PASS_GAME_MISMATCH" ? "DATA_CONFLICT" : "GRADING_BACKLOG", `Ticket ${row.id}: ${gt.detail}`);
         continue;
       }
     }
@@ -248,6 +404,8 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
       { postedOdds: row.posted_odds, lockedOdds: row.locked_odds },
       closing,
     );
+    const outcome = gradeOutcome(fake, game);
+    const gradeSnapshot = JSON.stringify(buildGradeSnapshot(fake, game, outcome));
     const record = await loadRecord();
     if (!isManualSource(row.pick_source) && !isPaperLedger(row.ledger)) {
       record.wins += Number(result === "WIN");
@@ -264,6 +422,7 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
       update picks
       set status = 'graded', result = ${result}, profit_units = ${profit}, graded_at = now(),
           closing_odds = ${closing}, clv = ${clv},
+          grade_snapshot_json = ${gradeSnapshot},
           result_message = ${recap}, result_delivery = ${isPaperLedger(row.ledger) ? null : "queued"}
       where id = ${row.id} and status = 'posted' returning id
     `;
@@ -552,7 +711,7 @@ export async function postPickById(
     `;
     await recordEvent("delivery_unknown");
     await addLog("post", `Discord send uncertain, not retried · ${gate.selection}`, pick.sport);
-    await alertOwner("DISCORD_FAIL", result.error ?? "timeout after send");
+    await alertOwner(discordAlertCode(result), result.error ?? "timeout after send");
     return { ok: false, posted: false, pickId, error: result.error };
   }
   if (!result.sent) {
@@ -564,14 +723,14 @@ export async function postPickById(
       await recordEvent("discord_failure", "Discord webhook 401/403");
       await addLog("post", `Discord auth failure — skipped: ${result.error ?? "401/403"}`, pick.sport);
       await alertOwner(
-        "DISCORD_FAIL",
+        discordAlertCode(result),
         `Webhook HTTP 401/403 — ticket skipped, not retried. Fix DISCORD_* webhook. (${result.error ?? "auth"})`,
       );
       return { ok: false, posted: false, pickId, error: result.error };
     }
     await recordEvent("discord_failure");
     await addLog("post", `Discord failed, still queued: ${result.error ?? "send failed"}`, pick.sport);
-    await alertOwner("DISCORD_FAIL", result.error ?? "send failed");
+    await alertOwner(discordAlertCode(result), result.error ?? "send failed");
     return { ok: false, posted: false, pickId, error: result.error };
   }
   await recordEvent(paper ? "paper_post" : "discord_picks_success");
@@ -644,6 +803,13 @@ export async function selectOfficialCard(
   );
   const wantedIdSet = new Set(plan.keepIds);
   const wanted = ranked.filter((g) => wantedIdSet.has(g.id));
+
+  if (isShadowSoak()) {
+    const soak = await recordSoakFromCandidates(wanted, minEdge, minConf);
+    if (!soak.ok) {
+      await addLog("skip", `Soak recorder failed — certification warehouse is not 0 bets (${soak.error})`);
+    }
+  }
 
   const sql = await getSql();
   for (const game of correlated) {
@@ -857,16 +1023,28 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
     }
     if (stuck.length) {
       await recordEvent("delivery_unknown", `${stuck.length} unfinished sends`);
-      await alertOwner("DISCORD_FAIL", "Unfinished delivery: inspect frozen tickets; do not resend.");
+      await alertOwner("DISCORD_DELIVERY_UNKNOWN", "Unfinished delivery: inspect frozen tickets; do not resend.");
     }
     const softExpired = await expireSoftFloorQueued();
     if (softExpired) await recordEvent("truth_pass", `${softExpired} soft_floor queued expired`);
     const meta = await loadMeta();
     const games = await prefetchDueDraftKings(await refreshSlate(), meta.minEdgePct, meta.minConfidence, meta.postLeadMinutes, meta.maxDailyPicks);
+    const nowMs = Date.now();
+    if (games.some((g) => g.status === "scheduled" && (!g.injuriesFetchedAt || nowMs - Date.parse(g.injuriesFetchedAt) > 180 * 60_000))) {
+      await alertOwner("INJURY_FEED_STALE", "Scheduled games missing a fresh injury report.");
+    }
+    if (games.some((g) => {
+      if (g.status !== "scheduled") return false;
+      const t = g.odds.capturedAt ? Date.parse(g.odds.capturedAt) : NaN;
+      return !Number.isFinite(t) || nowMs - t > 20 * 60_000;
+    })) {
+      await alertOwner("MARKET_FEED_STALE", "Scheduled games have stale or missing DraftKings quotes.");
+    }
     if (automationStatus(meta.lastTickAt) === "offline") {
       await alertOwner("CRON_STALE", "No successful cron tick for more than 25 minutes.");
     }
-    if ((meta.oddsRemaining ?? 1) <= 0) await alertOwner("ODDS_CREDITS", "Odds API credits exhausted.");
+    if ((meta.oddsRemaining ?? 1) <= 0) await alertOwner("ODDS_QUOTA_EXHAUSTED", "Odds API credits exhausted.");
+    else if ((meta.oddsRemaining ?? 999) < 50) await alertOwner("ODDS_QUOTA_LOW", `${meta.oddsRemaining} Odds API credits remaining.`);
     const voided = 0;
     await captureClosingQuotes(games);
     const graded = await gradeOpenPicks(games);
@@ -929,7 +1107,7 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
       try { await recordEvent("db_failure", "Database operation failed"); } catch { /* host logs retain outage evidence */ }
     }
     try { await recordEvent(source === "cron" ? "cron_failure" : "run_failure", "Worker failed; review private logs"); } catch { /* DB may be unavailable */ }
-    await alertOwner("DB_UNAVAILABLE", "Worker failed. Check database and private runtime logs.");
+    await alertOwner("DATABASE_ERROR", "Worker failed. Check database and private runtime logs.");
     throw error;
   } finally {
     if (locked) await clearWorkerLock(locked);

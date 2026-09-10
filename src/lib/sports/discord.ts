@@ -60,7 +60,8 @@ export async function postWebhook(
   url: string,
   body: string | DiscordWebhookPayload,
   opts?: { username?: string },
-): Promise<{ ok: boolean; id?: string; error?: string; uncertain?: boolean; authFailure?: boolean }> {  if (!discordWebhookOk(url)) return { ok: false, error: "Invalid Discord webhook." };
+): Promise<{ ok: boolean; id?: string; error?: string; uncertain?: boolean; authFailure?: boolean }> {
+  if (!discordWebhookOk(url)) return { ok: false, error: "Invalid Discord webhook." };
   const payload = normalizeWebhookPayload(body);
   const content = (payload.content ?? "").slice(0, 1900);
   const embeds = payload.embeds?.length ? payload.embeds : undefined;
