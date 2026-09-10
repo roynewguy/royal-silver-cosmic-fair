@@ -8,7 +8,8 @@ import {
 } from "../../models-v3/evaluate.ts";
 import { provenPregameTwoWay, type YachtMarketSnapshot } from "./provenance.ts";
 
-export { pregameStakePrice, clvSelectedSide, honestBacktest, sideEvalFromMarket };
+export { pregameStakePrice, clvSelectedSide, honestBacktest };
+export type { SideEval };
 
 export type YachtBetEval = {
   p: number;
@@ -67,10 +68,22 @@ export function yachtRoi(
   };
 }
 
-export function yachtSideEval(p: number, y: 0 | 1, market: YachtMarketSnapshot): SideEval {
+/**
+ * Yacht path into SideEval / honestBacktest.
+ * Unproven numeric openers are not stakeable — returns null.
+ * Do not call models-v3 sideEvalFromMarket from Yacht training.
+ */
+export function yachtSideEval(
+  p: number,
+  y: 0 | 1,
+  market: YachtMarketSnapshot,
+  predictionAt: string,
+): SideEval | null {
+  const pair = provenPregameTwoWay(market, predictionAt);
+  if (!pair) return null;
   return sideEvalFromMarket(p, y, {
-    homeOpen: market.homeOpen,
-    awayOpen: market.awayOpen,
+    homeOpen: pair.home,
+    awayOpen: pair.away,
     homeClose: market.homeClose,
     awayClose: market.awayClose,
   });

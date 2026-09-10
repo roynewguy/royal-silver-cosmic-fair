@@ -4,6 +4,6 @@ export {
   pregameStakePrice,
   clvSelectedSide,
   honestBacktest,
-  sideEvalFromMarket,
   type YachtBetEval,
+  type SideEval,
 } from "./core/evaluate.ts";

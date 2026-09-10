@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { featureVector } from "../models-v3/features.ts";
 import { sideEvalFromMarket } from "../models-v3/evaluate.ts";
-import { yachtRoi, pregameStakePrice } from "./evaluate.ts";
+import { yachtRoi, yachtSideEval, pregameStakePrice } from "./evaluate.ts";
 import type { YachtMarketSnapshot } from "./provenance.ts";
 import type { TrainingRow } from "../models-v3/types.ts";
 
@@ -56,6 +56,26 @@ test("Yacht ROI drops numeric open with no timestamp", () => {
   }], 0);
   assert.equal(r.n, 0);
   assert.equal(r.dropped, 1);
+});
+
+test("yachtSideEval refuses numeric openers without a proven timestamp", () => {
+  const predictionAt = "2026-06-01T17:00:00Z";
+  const unproven = mkt({ openCapturedAt: null, capturedAt: null, homeOpen: -150, awayOpen: 130 });
+  assert.equal(yachtSideEval(0.7, 1, unproven, predictionAt), null);
+  const late = mkt({ openCapturedAt: "2026-06-01T18:00:00Z", capturedAt: null });
+  assert.equal(yachtSideEval(0.7, 1, late, predictionAt), null);
+  const ok = yachtSideEval(0.7, 1, mkt(), predictionAt);
+  assert.ok(ok);
+  assert.equal(ok!.homePrice, -150);
+});
+
+test("Model Yacht evaluate API does not re-export sideEvalFromMarket", async () => {
+  const api = await import("./evaluate.ts");
+  assert.equal("sideEvalFromMarket" in api, false);
+  const src = await import("node:fs/promises").then((fs) =>
+    fs.readFile(new URL("./core/evaluate.ts", import.meta.url), "utf8"),
+  );
+  assert.equal(/export \{[^}]*sideEvalFromMarket/.test(src), false);
 });
 
 test("closing odds do not leak into V3 feature vectors", () => {
