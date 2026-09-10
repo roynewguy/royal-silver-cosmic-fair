@@ -65,8 +65,8 @@ test("synthetic: soak and paper never enable live; V3/V4 never official; 0 LOCK 
   assert.equal(selectFreePickOfDay([]), null);
 });
 
-test("synthetic: postponed/cancelled map to VOID; missing close is not 0 CLV", () => {
-  assert.equal(ledgerResult("POSTPONED"), "VOID");
+test("synthetic: cancelled voids; postponed waits; missing close is not 0 CLV", () => {
+  assert.equal(ledgerResult("POSTPONED"), null);
   assert.equal(ledgerResult("CANCELLED"), "VOID");
   assert.equal(ledgerResult("UNRESOLVED"), null);
   assert.equal(computeClvPoints(-110, null), null);
@@ -81,4 +81,15 @@ test("synthetic: operator APIs cannot write LIVE from the UI", async () => {
   assert.match(sql, /soak_tickets/);
   assert.match(sql, /grade_snapshot_json/);
   assert.match(sql, /Confirmed result is immutable/);
+  const sql29 = await readFile(new URL("../../../migrations/0029_soak_gate_settlement.sql", import.meta.url), "utf8");
+  assert.match(sql29, /soak_key/);
+  assert.match(sql29, /protect_soak_would_post/);
+});
+
+test("synthetic: cycle soak uses final post gate; postponed is not auto-VOID", async () => {
+  const cycle = await readFile(new URL("./cycle.ts", import.meta.url), "utf8");
+  assert.match(cycle, /recordSoakFromCandidates/);
+  assert.doesNotMatch(cycle, /recordSoakWouldHavePosted/);
+  assert.match(cycle, /POSTPONED pending settlement/);
+  assert.doesNotMatch(cycle, /cancelled \|\| game.status === ["']postponed["']/);
 });

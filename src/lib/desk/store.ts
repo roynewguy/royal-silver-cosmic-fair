@@ -1,5 +1,6 @@
 import { loadPreflight } from "./preflight";
 import { livePostingEnabled, isShadowSoak } from "./production-policy";
+import { soakRecorderHealth } from "./shadow-soak";
 import { randomUUID } from "node:crypto";
 import { resolveWebhook } from "@/lib/sports/discord";
 import { getSql, dbSource } from "@/lib/db";
@@ -632,6 +633,8 @@ export async function readDesk(opts: { operator?: boolean } = {}): Promise<DeskS
       }),
       latestAlert: operator ? (log.find((l) => /error|fail|CRITICAL/i.test(l.message))?.message ?? null) : null,
       shadowSoak: isShadowSoak(),
+      soakRecorderFailed: isShadowSoak() && !soakRecorderHealth().ok,
+      soakWouldHavePosted: isShadowSoak() && soakRecorderHealth().ok ? soakRecorderHealth().lastWouldHavePosted : null,
     }),
     researchModels,
     preflight: operator ? await loadPreflight(meta.lastTickAt, await readWebhook()) : null,

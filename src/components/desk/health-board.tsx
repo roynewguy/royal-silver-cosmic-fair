@@ -69,6 +69,19 @@ export function HealthBoard() {
             level={health.staleMarketFeeds ? "warn" : "ok"}
             note={health.staleMarketFeeds ? "Stale or missing DK" : "Fresh DraftKings quotes"}
           />
+          <Cell
+            label="Soak recorder"
+            level={!health.shadowSoak ? "ok" : health.soakRecorderFailed ? "bad" : "ok"}
+            note={
+              !health.shadowSoak
+                ? "Off"
+                : health.soakRecorderFailed
+                  ? "FAILED — not 0 hypothetical bets"
+                  : health.soakWouldHavePosted == null
+                    ? "Armed"
+                    : `${health.soakWouldHavePosted} would-have-posted`
+            }
+          />
         </div>
       </section>
 

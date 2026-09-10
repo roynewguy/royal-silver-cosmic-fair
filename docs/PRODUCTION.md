@@ -12,7 +12,7 @@ Operator-only. Do not paste secrets into Discord, tickets, or this repo.
 
 LIVE cannot be enabled from the operator UI. Only host env. Missing `BOATBOYZ_LIVE_POSTING` is OFF.
 
-`SHADOW_SOAK=true` runs the real scan → model → qualify → freeze-sim → close → grade path on the paper ledger and writes `soak_tickets` (`would_have_posted`). It never posts official / free / no-play Discord.
+`SHADOW_SOAK=true` runs the real scan → model → qualify → **final post gate** (fresh DK, truth/freeze) → close → grade path on the paper ledger and writes `soak_tickets`. `would_have_posted=true` only after the same freeze a live ticket would have used. Failures store the exact PASS reason. One soak identity per PT-day/game/market/selection/model (`soak_key`); frozen would-post prices never move. Recorder DB failures alert `DATABASE_ERROR` and mark `/health` soak recorder RED — they are not “0 hypothetical bets.” It never posts official / free / no-play Discord.
 
 ## Env inventory
 
@@ -60,7 +60,7 @@ Alerts, free, weekly, test, and model-lab webhooks fail closed if they share the
 
 - Posted line, model prob, EV, quality, no-vig, and timestamp freeze at post. Never rewrite after the result.
 - Missing close ≠ 0 CLV. Null stays null.
-- Outcomes: WIN / LOSS / PUSH / VOID. POSTPONED and CANCELLED store VOID on the ledger with an explicit `grade_snapshot_json`. UNRESOLVED stays ungraded.
+- Outcomes: WIN / LOSS / PUSH / VOID. CANCELLED → ledger VOID when the sportsbook rule is clear. POSTPONED stays pending settlement (not a public W-L-P) until reschedule or an explicit book void — ESPN postpone is not proof the wager is void. UNRESOLVED stays ungraded.
 - After `graded`, result, profit, CLV, closing odds, and grade snapshot are immutable.
 
 ## Alerting (private channel only)
@@ -69,7 +69,7 @@ Alerts, free, weekly, test, and model-lab webhooks fail closed if they share the
 
 ## Health board
 
-`/health` shows last/next tick, last ESPN, last sportsbook, odds quota, DB, Discord, last official post, last grade, pending grades, `delivery_unknown`, stale jobs, stale injury/market feeds, latest alert.
+`/health` shows last/next tick, last ESPN, last sportsbook, odds quota, DB, Discord, last official post, last grade, pending grades, `delivery_unknown`, stale jobs, stale injury/market feeds, latest alert, and soak recorder (RED on certification warehouse failure — never displayed as 0 bets).
 
 ## Backup / restore
 

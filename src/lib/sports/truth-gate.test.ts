@@ -269,7 +269,7 @@ test("doubleheader still unique when commence times are distinct", () => {
   if (g1.ok && g2.ok) assert.notEqual(g1.index, g2.index);
 });
 
-test("grade waits when final score is missing and voids postponed posted tickets via reason", () => {
+test("grade waits when final score is missing; postponed is pending settlement not a void", () => {
   const posted = { status: "posted", gameId: "mlb:mia", league: "mlb" };
   const missing = gradeTruth(posted, live({ status: "final", home: { ...live().home, score: null } }));
   assert.equal(missing.ok, false);

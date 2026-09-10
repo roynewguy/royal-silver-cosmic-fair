@@ -335,6 +335,8 @@ export type DeskHealth = {
   staleMarketFeeds: boolean;
   latestAlert: string | null;
   shadowSoak: boolean;
+  soakRecorderFailed: boolean;
+  soakWouldHavePosted: number | null;
 };
 
 export type DeskState = {

@@ -12,7 +12,7 @@ import { flushResultRecaps } from "./result-delivery";
 import { syncRecordScoreboard } from "./scoreboard";
 import { sendWeeklyRecap } from "./weekly-recap";
 import { livePostingEnabled, isShadowSoak } from "./production-policy";
-import { recordSoakWouldHavePosted } from "./shadow-soak";
+import { recordSoakFromCandidates } from "./shadow-soak";
 import { recordEvent } from "./telemetry";
 import { getSql } from "@/lib/db";
 import { officialKey, ptDayKey } from "@/lib/sports/day";
@@ -27,7 +27,7 @@ import {
 } from "@/lib/sports/discord";
 import { fetchAllSlates, beginEspnScan, espnScanStats } from "@/lib/sports/espn";
 import { mergeFetchedSlate, inLookahead } from "@/lib/sports/slate-merge";
-import { gradePick, settle, buildGradeSnapshot, gradeOutcome } from "@/lib/sports/grade";
+import { gradePick, settle, buildGradeSnapshot, gradeOutcome, sportsbookSettlement } from "@/lib/sports/grade";
 import { prePostTruthCheck, gradeTruth, type QueuedContext } from "@/lib/sports/truth-gate";
 import { isManualSource, NEEDS_MANUAL_GRADE } from "@/lib/sports/manual-post";
 import { alertOwner, discordAlertCode } from "./alerts";
@@ -195,7 +195,86 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
       await addLog("skip", UNPOSTED_SKIP, game.sport);
       continue;
     }
-    if (row.status === "posted" && (game.status === "cancelled" || game.status === "postponed")) {
+    if (row.status === "posted" && game.status === "postponed") {
+      const outcome = gradeOutcome(asPickRow({
+        id: row.id,
+        gameId: row.game_id,
+        sport: row.sport,
+        league: row.league,
+        matchup: row.matchup,
+        market: row.market as PickRow["market"],
+        selection: row.selection,
+        side: row.side as PickRow["side"],
+        lockedLine: row.locked_line,
+        lockedOdds: row.locked_odds,
+        lockedOddsJson: JSON.parse(row.locked_odds_json || "{}"),
+        reason: row.reason,
+        confidence: row.confidence,
+        edgePct: row.edge_pct,
+        units: Number(row.units),
+        status: "posted",
+        startAt: String(row.start_at),
+        postAt: String(row.post_at),
+        createdAt: new Date().toISOString(),
+      }), game);
+      const rule = sportsbookSettlement("postponed");
+      const snapshot = JSON.stringify(buildGradeSnapshot({
+        id: row.id,
+        gameId: row.game_id,
+        sport: row.sport,
+        league: row.league,
+        matchup: row.matchup,
+        market: row.market as PickRow["market"],
+        selection: row.selection,
+        side: row.side as PickRow["side"],
+        lockedLine: row.locked_line,
+        lockedOdds: row.locked_odds,
+        lockedOddsJson: JSON.parse(row.locked_odds_json || "{}"),
+        reason: row.reason,
+        research: null,
+        confidence: row.confidence,
+        edgePct: row.edge_pct,
+        units: Number(row.units),
+        status: "posted",
+        result: null,
+        profitUnits: null,
+        startAt: String(row.start_at),
+        postAt: String(row.post_at),
+        postedAt: null,
+        gradedAt: null,
+        discordMessage: null,
+        discordMessageId: null,
+        officialKey: null,
+        skipReason: null,
+        modelVersion: row.model_version,
+        modelProbability: null,
+        modelEdge: null,
+        freezeJson: row.freeze_json,
+        selectedOdds: null,
+        postedOdds: row.posted_odds,
+        closingOdds: null,
+        clv: null,
+        createdAt: new Date().toISOString(),
+        homeLogo: null,
+        awayLogo: null,
+        homeAbbr: null,
+        awayAbbr: null,
+        homeScore: null,
+        awayScore: null,
+        gameStatus: game.status,
+      }, game, outcome));
+      const flagged = await sql<{ id: number }>`
+        update picks
+        set grade_snapshot_json = coalesce(grade_snapshot_json, ${snapshot}),
+            settlement_evidence = coalesce(settlement_evidence, ${rule.evidence})
+        where id = ${row.id} and status = 'posted' and result is null
+          and (grade_snapshot_json is null or settlement_evidence is null)
+        returning id
+      `;
+      if (flagged.length) await addLog("grade", `${row.matchup} POSTPONED pending settlement — not a public W-L-P`, game.sport);
+      continue;
+    }
+    if (row.status === "posted" && game.status === "cancelled") {
       const outcome = gradeOutcome(asPickRow({
         id: row.id,
         gameId: row.game_id,
@@ -726,7 +805,10 @@ export async function selectOfficialCard(
   const wanted = ranked.filter((g) => wantedIdSet.has(g.id));
 
   if (isShadowSoak()) {
-    await recordSoakWouldHavePosted(wanted);
+    const soak = await recordSoakFromCandidates(wanted, minEdge, minConf);
+    if (!soak.ok) {
+      await addLog("skip", `Soak recorder failed — certification warehouse is not 0 bets (${soak.error})`);
+    }
   }
 
   const sql = await getSql();

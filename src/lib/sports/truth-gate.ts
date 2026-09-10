@@ -73,8 +73,8 @@ export function gradeTruth(
         return { ok: false, reason: "PASS_GAME_MISMATCH", detail: "Frozen teams disagree with final event." };
     } catch { return { ok: false, reason: "PASS_DATA_CONFLICT", detail: "Unreadable frozen ticket." }; }
   }
-  if (game.status === "postponed") return { ok: false, reason: "PASS_POSTPONED", detail: "void" };
-  if (game.status === "cancelled") return { ok: false, reason: "PASS_CANCELLED", detail: "void" };
+  if (game.status === "postponed") return { ok: false, reason: "PASS_POSTPONED", detail: "pending settlement — ESPN postpone is not a sportsbook void" };
+  if (game.status === "cancelled") return { ok: false, reason: "PASS_CANCELLED", detail: "cancelled — sportsbook void" };
   if (game.status === "suspended") return { ok: false, reason: "PASS_DATA_CONFLICT", detail: "suspended" };
   if (game.status !== "final") return { ok: false, reason: "PASS_CRITICAL_DATA_MISSING", detail: "Not final." };
   if (!isFreshTimestamp(game.fetchedAt, 30 * 60_000, now) || game.home.score == null || game.away.score == null || !Number.isFinite(game.home.score) || !Number.isFinite(game.away.score) || game.home.score < 0 || game.away.score < 0) {

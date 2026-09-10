@@ -65,6 +65,8 @@ export function buildDeskHealth(input: {
   staleMarketFeeds?: boolean;
   latestAlert?: string | null;
   shadowSoak?: boolean;
+  soakRecorderFailed?: boolean;
+  soakWouldHavePosted?: number | null;
 }): DeskHealth {
   const now = input.now ?? Date.now();
   const auto = automationStatus(input.lastTickAt, now);
@@ -99,6 +101,8 @@ export function buildDeskHealth(input: {
     staleMarketFeeds: input.staleMarketFeeds ?? false,
     latestAlert: input.latestAlert ?? null,
     shadowSoak: input.shadowSoak ?? isShadowSoak(),
+    soakRecorderFailed: input.soakRecorderFailed ?? false,
+    soakWouldHavePosted: input.soakWouldHavePosted ?? null,
   };
 }
 
