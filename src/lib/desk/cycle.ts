@@ -521,7 +521,7 @@ export async function postPickById(
 
 
   // Never let legacy or manually early-queued automated tickets bypass the one-hour window.
-  if (!opts.ignoreWindow && Date.parse(game.startAt) - Date.now() < MIN_AUTOMATED_POST_LEAD_MS) {
+  if (!opts.ignoreWindow && Date.parse(game.startAt) - Date.now() > MIN_AUTOMATED_POST_LEAD_MS) {
     return { ok: true, posted: false, pickId, error: "Waiting for one-hour posting window" };
   }
 
