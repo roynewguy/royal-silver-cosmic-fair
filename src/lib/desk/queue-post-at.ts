@@ -5,9 +5,8 @@ function postAtFor(startAt: string, leadMinutes: number): string {
 }
 
 /**
- * Legacy soft_floor (research-only; expired before flush) would post immediately if present.
- * LOCK (and any non-soft): post_at = min(now, tip−lead) so early selections
- * flush tonight; once inside the lead window, behave as before.
+ * Legacy soft_floor (research-only; expired before flush) may post immediately if present.
+ * Official LOCK picks stay queued until the lead window opens, then become due immediately.
  */
 export function queuePostAt(
   tier: PickTier | string,
@@ -16,6 +15,5 @@ export function queuePostAt(
   now: Date = new Date(),
 ): string {
   if (tier === "soft_floor") return now.toISOString();
-  const lead = postAtFor(startAt, leadMinutes);
-  return Date.parse(lead) > now.getTime() ? now.toISOString() : lead;
+  return postAtFor(startAt, leadMinutes);
 }
