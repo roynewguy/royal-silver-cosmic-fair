@@ -75,7 +75,10 @@ import {
   upsertGames,
 } from "./store";
 
+
 const verifiedThisTick = new WeakMap<GameCard, number>();
+const MIN_AUTOMATED_POST_LEAD_MS = 60 * 60_000;
+
 
 function asPickRow(partial: Partial<PickRow> & Pick<PickRow, "id" | "gameId" | "sport" | "league" | "matchup" | "market" | "selection" | "side" | "lockedOdds" | "lockedOddsJson" | "reason" | "confidence" | "edgePct" | "units" | "status" | "startAt" | "postAt" | "createdAt">): PickRow {
   return {
@@ -110,6 +113,7 @@ function asPickRow(partial: Partial<PickRow> & Pick<PickRow, "id" | "gameId" | "
   };
 }
 
+
 export async function refreshSlate(): Promise<GameCard[]> {
   beginEspnScan();
   const raw = await fetchAllSlates();
@@ -139,10 +143,12 @@ export async function refreshSlate(): Promise<GameCard[]> {
   return next;
 }
 
+
 async function webhookUrl(): Promise<string> {
   const stored = await readWebhook();
   return resolveWebhook(stored).url;
 }
+
 
 export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
   const sql = await getSql();
@@ -446,6 +452,7 @@ export async function gradeOpenPicks(games: GameCard[]): Promise<number> {
   return graded;
 }
 
+
 /** Expire leftover soft_floor queued tickets so legacy DESK rows never flush to Discord. */
 export async function expireSoftFloorQueued(): Promise<number> {
   const sql = await getSql();
@@ -468,6 +475,7 @@ export async function expireSoftFloorQueued(): Promise<number> {
   }
   return n;
 }
+
 
 export async function postPickById(
   pickId: number,
@@ -492,6 +500,7 @@ export async function postPickById(
   const row = windowed[0];
   if (!row) return { ok: true, posted: false, pickId };
 
+
   const game = games.find((g) => g.id === row.game_id);
   if (!game) {
     await sql`update picks set status = 'skipped', skip_reason = ${"PASS_CRITICAL_DATA_MISSING"} where id = ${row.id} and status = 'queued'`;
@@ -508,6 +517,12 @@ export async function postPickById(
   if (game.status !== "scheduled") {
     await sql`update picks set status = 'skipped', skip_reason = ${"PASS_GAME_STARTED"} where id = ${row.id} and status = 'queued'`;
     return { ok: true, posted: false, pickId };
+  }
+
+
+  // Never let legacy or manually early-queued automated tickets bypass the one-hour window.
+  if (!opts.ignoreWindow && Date.parse(game.startAt) - Date.now() < MIN_AUTOMATED_POST_LEAD_MS) {
+    return { ok: true, posted: false, pickId, error: "Waiting for one-hour posting window" };
   }
 
   const earlyCtx = await sql<{ context_json: string | null; freeze_json: string | null; status: string }>`
@@ -539,6 +554,7 @@ export async function postPickById(
     return { ok: true, posted: false, pickId, error: blocked };
   }
 
+
   const queuedMeta = await sql<{ market: string; ledger: string | null }>`select market, ledger from picks where id = ${row.id}`;
   const queuedMarket = (queuedMeta[0]?.market ?? "spread") as import("@/lib/sports/types").Market;
   if (queuedMeta[0]?.ledger !== activeLedger()) return { ok: true, posted: false, pickId, error: "Inactive ledger" };
@@ -560,6 +576,7 @@ export async function postPickById(
   const liveGame = verified.game;
   const freshRank = rankGame(liveGame);
 
+
   const full = await sql<{
     id: number;
     sport: string;
@@ -578,6 +595,7 @@ export async function postPickById(
   const pick = full[0];
   if (!pick) return { ok: false, posted: false, pickId, error: "Pick vanished." };
   if (pick.freeze_json || pick.status === "posted") return { ok: true, posted: false, pickId };
+
 
   let ctx: Partial<QueuedContext> = {};
   try {
@@ -640,6 +658,7 @@ export async function postPickById(
     return { ok: true, posted: false, pickId };
   }
 
+
   const factualReason = formatWhy(liveGame, gate.rank);
   Object.assign(gate.freeze, { reason: factualReason });
   const asRow = asPickRow({
@@ -675,6 +694,7 @@ export async function postPickById(
     await addLog("post", "Due pick waiting — no DISCORD_WEBHOOK_URL.", pick.sport);
     return { ok: false, posted: false, pickId, error: "No Discord webhook configured." };
   }
+
 
   const result = await sendOnce(
     pick.id,
@@ -739,6 +759,7 @@ export async function postPickById(
   return { ok: true, posted: true, pickId };
 }
 
+
 export async function prefetchDueDraftKings(games: GameCard[], minEdge: number, minConf: number, lead: number, maxDailyPicks = 3): Promise<GameCard[]> {
   const next = new Map(games.map(g => [g.id, g]));
   // Official path: LOCK-only slate. Soft/DESK is research-only and never kept alive for Discord.
@@ -764,6 +785,7 @@ export async function prefetchDueDraftKings(games: GameCard[], minEdge: number, 
   return [...next.values()];
 }
 
+
 export async function flushDuePosts(games: GameCard[], minEdge: number, minConf: number, workerToken: string): Promise<number> {
   const sql = await getSql();
   const due = await sql<{ id: number }>`
@@ -777,6 +799,7 @@ export async function flushDuePosts(games: GameCard[], minEdge: number, minConf:
   }
   return posted;
 }
+
 
 export async function selectOfficialCard(
   games: GameCard[],
@@ -804,12 +827,14 @@ export async function selectOfficialCard(
   const wantedIdSet = new Set(plan.keepIds);
   const wanted = ranked.filter((g) => wantedIdSet.has(g.id));
 
+
   if (isShadowSoak()) {
     const soak = await recordSoakFromCandidates(wanted, minEdge, minConf);
     if (!soak.ok) {
       await addLog("skip", `Soak recorder failed — certification warehouse is not 0 bets (${soak.error})`);
     }
   }
+
 
   const sql = await getSql();
   for (const game of correlated) {
@@ -826,6 +851,7 @@ export async function selectOfficialCard(
     await addLog("skip", `${row.selection} — ${ROTATE_SKIP_REASON}`, row.sport);
   }
 
+
   // Funnel visibility: log when keepIds empty and (slots remain OR slate has zero LOCKs).
   // Soft/DESK stays research-only. No-play Discord only when remaining slots exist.
   if (plan.keepIds.length === 0) {
@@ -839,7 +865,9 @@ export async function selectOfficialCard(
     }
   }
 
+
   const existingByGame = await loadLatestPicksByGames(wanted.map((g) => g.id));
+
 
   let queued = 0;
   for (const game of wanted) {
@@ -849,6 +877,7 @@ export async function selectOfficialCard(
     if (game.status !== "scheduled") continue;
     const existing = existingByGame.get(game.id) ?? null;
     if (existing && (existing.status === "posted" || existing.status === "graded" || existing.status === "posting")) continue;
+
 
     // Official auto-queue is LOCK-only; soft_floor never bypasses truth gate onto Discord.
     const reason = formatWhy(game, rank).trim().slice(0, 1000);
@@ -921,8 +950,10 @@ export async function selectOfficialCard(
     queued += 1;
   }
 
+
   return queued;
 }
+
 
 async function captureClosingQuotes(games: GameCard[]): Promise<void> {
   const sql = await getSql();
@@ -999,6 +1030,7 @@ async function captureClosingQuotes(games: GameCard[]): Promise<void> {
     );
   }
 }
+
 
 export async function runTick(source: string, opts: { research?: boolean } = {}) {
   let locked: string | null = null;
@@ -1113,6 +1145,7 @@ export async function runTick(source: string, opts: { research?: boolean } = {})
     if (locked) await clearWorkerLock(locked);
   }
 }
+
 
 export async function readDeskState() {
   return readDesk();
