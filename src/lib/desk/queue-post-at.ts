@@ -1,5 +1,7 @@
 import type { PickTier } from "@/lib/sports/types";
 
+const MIN_OFFICIAL_LEAD_MINUTES = 60;
+
 function postAtFor(startAt: string, leadMinutes: number): string {
   return new Date(new Date(startAt).getTime() - leadMinutes * 60_000).toISOString();
 }
@@ -15,5 +17,5 @@ export function queuePostAt(
   now: Date = new Date(),
 ): string {
   if (tier === "soft_floor") return now.toISOString();
-  return postAtFor(startAt, leadMinutes);
+  return postAtFor(startAt, Math.max(MIN_OFFICIAL_LEAD_MINUTES, leadMinutes));
 }
