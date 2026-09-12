@@ -26,7 +26,9 @@ export type AlertCode =
   | "MODEL_DATA_FAILURE";
 
 const lastSent = new Map<string, number>();
-const COOLDOWN_MS = 30 * 60_000;
+// Worker ticks run every 10 minutes. Keep an unchanged incident quiet for four hours.
+// The timestamp is persisted so this throttle survives serverless instances.
+const COOLDOWN_MS = 4 * 60 * 60_000;
 
 export function resolveAlertWebhook(env: NodeJS.ProcessEnv = process.env): string {
   return channelWebhook("alerts", "", env);
@@ -63,7 +65,6 @@ export function shouldAlert(
   store.set(code, now);
   return true;
 }
-
 
 export function isAlertMuted(code: AlertCode | string, env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env.ALERT_MUTE_CODES;
